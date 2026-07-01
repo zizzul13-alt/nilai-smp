@@ -1160,20 +1160,21 @@ def page_dokumen():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
-    # ===== CEK MODEL AKTIF DI GROQ (HANYA 1x PER SESSION) =====
+    # ===== INISIALISASI SESSION STATE =====
     if "groq_models" not in st.session_state:
+        st.session_state.groq_models = []
+    if "active_models" not in st.session_state:
+        st.session_state.active_models = []
+    
+    # ===== CEK MODEL AKTIF (HANYA 1x) =====
+    if not st.session_state.groq_models:
         try:
-            # Coba ambil API Key dari Secrets
             groq_api_key = st.secrets["groq_api_key"]
-            
             import requests
-            url = "https://api.groq.com/openai/v1/models"
-            headers = {
-                "Authorization": f"Bearer {groq_api_key}",
-                "Content-Type": "application/json"
-            }
-            response = requests.get(url, headers=headers)
-            
+            response = requests.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {groq_api_key}"}
+            )
             if response.status_code == 200:
                 models = response.json().get('data', [])
                 model_ids = [m['id'] for m in models]
@@ -1196,6 +1197,7 @@ def page_dokumen():
                 st.write(f"✅ `{m}`")
             st.caption(f"Total {len(st.session_state.active_models)} model aktif")
     
+    # ===== LANJUT KE KODE UTAMA =====
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas. Silahkan tambah kelas di menu Pengaturan.")
