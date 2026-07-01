@@ -7,27 +7,12 @@ from io import BytesIO
 import re
 
 # ============ KONFIGURASI ============
-# Tambahkan tema custom di awal app.py
 st.set_page_config(
     page_title="Asisten Pengajar SMP",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Tambahkan CSS custom
-st.markdown("""
-<style>
-    .stButton > button {
-        background-color: #4CAF50;
-        color: white;
-        border-radius: 8px;
-    }
-    .css-1d391kg {
-        background-color: #f0f2f6;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 # ============ INISIALISASI SUPABASE ============
 @st.cache_resource
@@ -38,17 +23,47 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# ============ FUNGSI DATABASE ============
+# ============ FUNGSI DATABASE DENGAN CACHE ============
+# Cache 5 menit untuk data yang jarang berubah (kelas, siswa, jadwal, soal, kkm)
+@st.cache_data(ttl=300)
 def get_kelas():
     response = supabase.table("kelas").select("*").order("nama_kelas").execute()
     return response.data
 
+@st.cache_data(ttl=300)
 def get_siswa(kelas_id=None):
     query = supabase.table("siswa").select("*")
     if kelas_id:
         query = query.eq("kelas_id", kelas_id)
     return query.execute().data
 
+@st.cache_data(ttl=300)
+def get_jadwal(kelas_id=None):
+    query = supabase.table("jadwal").select("*")
+    if kelas_id:
+        query = query.eq("kelas_id", kelas_id)
+    return query.execute().data
+
+@st.cache_data(ttl=300)
+def get_bank_soal(kelas_id=None, keyword=None):
+    query = supabase.table("bank_soal").select("*")
+    if kelas_id:
+        query = query.eq("kelas_id", kelas_id)
+    if keyword:
+        query = query.text_search("soal_materi", f"{keyword}")
+    return query.execute().data
+
+@st.cache_data(ttl=300)
+def get_kkm(kelas_id=None, kategori=None):
+    query = supabase.table("kkm").select("*")
+    if kelas_id:
+        query = query.eq("kelas_id", kelas_id)
+    if kategori:
+        query = query.eq("kategori", kategori)
+    return query.execute().data
+
+# Cache 1 menit untuk data nilai (sering berubah)
+@st.cache_data(ttl=60)
 def get_nilai(kelas_id=None, kategori=None, topik=None):
     query = supabase.table("nilai").select("*")
     if kelas_id:
@@ -59,27 +74,9 @@ def get_nilai(kelas_id=None, kategori=None, topik=None):
         query = query.eq("topik", topik)
     return query.execute().data
 
-def get_jadwal(kelas_id=None):
-    query = supabase.table("jadwal").select("*")
-    if kelas_id:
-        query = query.eq("kelas_id", kelas_id)
-    return query.execute().data
-
-def get_bank_soal(kelas_id=None, keyword=None):
-    query = supabase.table("bank_soal").select("*")
-    if kelas_id:
-        query = query.eq("kelas_id", kelas_id)
-    if keyword:
-        query = query.text_search("soal_materi", f"{keyword}")
-    return query.execute().data
-
-def get_kkm(kelas_id=None, kategori=None):
-    query = supabase.table("kkm").select("*")
-    if kelas_id:
-        query = query.eq("kelas_id", kelas_id)
-    if kategori:
-        query = query.eq("kategori", kategori)
-    return query.execute().data
+# Fungsi untuk menghapus cache setelah menyimpan data
+def clear_cache():
+    st.cache_data.clear()
 
 # ============ FUNGSI UTILITY ============
 def hari_ke_angka(hari):
@@ -259,12 +256,13 @@ def page_input_nilai():
                     }).execute()
                     saved += 1
             
+            # Hapus cache setelah menyimpan data baru
+            clear_cache()
             st.success(f"✅ Berhasil menyimpan {saved} nilai!")
             st.balloons()
         except Exception as e:
             st.error(f"❌ Gagal menyimpan: {str(e)}")
 
-# ============ HALAMAN: LIHAT & EXPORT NILAI ============
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
     st.title("📊 Lihat & Export Nilai")
@@ -318,22 +316,18 @@ def page_lihat_nilai():
     # Tampilkan dataframe
     st.dataframe(df, use_container_width=True, hide_index=True)
     
-    # 🔥 PERBAIKAN: Statistik
+    # Statistik
     if show_stats and len(df) > 0:
         st.markdown("---")
         st.subheader("📊 Statistik Nilai")
         
-        # Pilih kolom numerik (kategori nilai)
         kategori_kolom = ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
-        
-        # Filter kolom yang ada di dataframe
         existing_kolom = [k for k in kategori_kolom if k in df.columns]
         
         if existing_kolom:
-            # Hitung statistik
             stats_data = []
             for kat in existing_kolom:
-                values = df[kat][df[kat] > 0]  # Hanya nilai > 0
+                values = df[kat][df[kat] > 0]
                 if len(values) > 0:
                     stats_data.append({
                         "Kategori": kat,
@@ -347,28 +341,22 @@ def page_lihat_nilai():
                 df_stats = pd.DataFrame(stats_data)
                 st.dataframe(df_stats, use_container_width=True, hide_index=True)
                 
-                # Tambahkan grafik sederhana (opsional)
                 st.markdown("---")
                 st.subheader("📈 Rata-rata per Kategori")
                 chart_data = df_stats[['Kategori', 'Rata-rata']].set_index('Kategori')
                 st.bar_chart(chart_data)
             else:
                 st.info("Belum ada data nilai yang cukup untuk statistik.")
-        else:
-            st.info("Belum ada data nilai yang tersimpan.")
     
     # Export Excel
     st.markdown("---")
     if st.button("📥 Download Excel"):
         try:
-            # Buat Excel dengan 2 sheet
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                # Sheet 1: Ringkasan
                 df_ringkasan = df.copy()
                 df_ringkasan.to_excel(writer, sheet_name="Ringkasan", index=False)
                 
-                # Sheet 2: Detail
                 detail_data = []
                 for s in siswa:
                     for n in nilai:
@@ -385,7 +373,6 @@ def page_lihat_nilai():
                 df_detail = pd.DataFrame(detail_data)
                 df_detail.to_excel(writer, sheet_name="Detail", index=False)
             
-            # Download
             st.download_button(
                 label="⬇️ Download File Excel",
                 data=output.getvalue(),
@@ -395,7 +382,7 @@ def page_lihat_nilai():
             st.success("File Excel siap didownload!")
         except Exception as e:
             st.error(f"❌ Gagal export: {str(e)}")
-            
+
 # ============ HALAMAN: KALENDER & JADWAL ============
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
@@ -428,6 +415,7 @@ def page_jadwal():
                         "topik": topik,
                         "bab": bab
                     }).execute()
+                    clear_cache()
                     st.success("✅ Jadwal berhasil ditambahkan!")
                     st.rerun()
                 except Exception as e:
@@ -451,12 +439,10 @@ def page_jadwal():
     
     if jadwal:
         df = pd.DataFrame(jadwal)
-        # Urutkan berdasarkan hari dan jam
         df['hari_angka'] = df['hari'].apply(hari_ke_angka)
         df['jam_time'] = pd.to_datetime(df['jam'])
         df = df.sort_values(['hari_angka', 'jam_time'])
         
-        # Tampilkan
         df_display = df[['nama_kelas', 'hari', 'jam', 'topik', 'bab']]
         df_display.columns = ['Kelas', 'Hari', 'Jam', 'Topik', 'Bab']
         st.dataframe(df_display, use_container_width=True, hide_index=True)
@@ -500,6 +486,7 @@ def page_bank_soal():
                             "topik": topik,
                             "tag": tag
                         }).execute()
+                        clear_cache()
                         st.success("✅ Soal berhasil disimpan!")
                         st.rerun()
                     except Exception as e:
@@ -509,13 +496,15 @@ def page_bank_soal():
     st.markdown("---")
     st.subheader("🔍 Cari Soal")
     
+    kelas = get_kelas()
+    kelas_options = {k['nama_kelas']: k['id'] for k in kelas} if kelas else {}
+    
     cols = st.columns(3)
     cari_kelas = cols[0].selectbox("Kelas", ["Semua"] + list(kelas_options.keys()) if kelas else ["Semua"])
     cari_keyword = cols[1].text_input("Kata Kunci (cari di soal, materi, atau topik)")
     cari_tag = cols[2].selectbox("Tag", ["Semua", "UH", "UTS", "UAS", "Remedial", "Pengayaan", "Quiz", "Tugas", "Materi"])
     
     if st.button("🔍 Cari", use_container_width=True):
-        # Ambil data
         soal_data = []
         if cari_kelas != "Semua" and kelas:
             soal_data = get_bank_soal(kelas_options[cari_kelas])
@@ -523,7 +512,6 @@ def page_bank_soal():
             for k in kelas:
                 soal_data.extend(get_bank_soal(k['id']))
         
-        # Filter
         if cari_keyword:
             soal_data = [s for s in soal_data if 
                         cari_keyword.lower() in s.get('soal', '').lower() or
@@ -533,7 +521,6 @@ def page_bank_soal():
         if cari_tag != "Semua":
             soal_data = [s for s in soal_data if s.get('tag') == cari_tag]
         
-        # Tampilkan
         if soal_data:
             df = pd.DataFrame(soal_data)
             df_display = df[['topik', 'tag', 'soal', 'jawaban', 'materi']]
@@ -541,7 +528,6 @@ def page_bank_soal():
         else:
             st.info("Tidak ditemukan soal yang sesuai.")
 
-# ============ HALAMAN: PENGATURAN KELAS & SISWA ============
 # ============ HALAMAN: PENGATURAN KELAS & SISWA ============
 def page_pengaturan():
     st.title("⚙️ Pengaturan Kelas & Siswa")
@@ -552,7 +538,6 @@ def page_pengaturan():
     with tab1:
         st.subheader("Kelola Kelas")
         
-        # Tambah Kelas
         with st.form("form_kelas"):
             nama_kelas = st.text_input("Nama Kelas (contoh: 7A, 8B, 9C)")
             submit = st.form_submit_button("➕ Tambah Kelas")
@@ -560,12 +545,12 @@ def page_pengaturan():
             if submit and nama_kelas:
                 try:
                     supabase.table("kelas").insert({"nama_kelas": nama_kelas}).execute()
+                    clear_cache()
                     st.success(f"✅ Kelas {nama_kelas} berhasil ditambahkan!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
         
-        # Daftar Kelas
         kelas = get_kelas()
         if kelas:
             st.markdown("---")
@@ -575,12 +560,11 @@ def page_pengaturan():
                 cols[0].write(f"📚 {k['nama_kelas']}")
                 if cols[1].button(f"🗑️ Hapus", key=f"del_kelas_{k['id']}"):
                     try:
-                        # Hapus siswa dulu
                         siswa = get_siswa(k['id'])
                         for s in siswa:
                             supabase.table("siswa").delete().eq("id", s['id']).execute()
-                        # Hapus kelas
                         supabase.table("kelas").delete().eq("id", k['id']).execute()
+                        clear_cache()
                         st.success(f"✅ Kelas {k['nama_kelas']} berhasil dihapus!")
                         st.rerun()
                     except Exception as e:
@@ -595,15 +579,13 @@ def page_pengaturan():
             st.warning("Tambahkan kelas terlebih dahulu.")
         else:
             kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
-            # 🔥 PERBAIKAN: tambahkan key unik
             kelas_terpilih_siswa = st.selectbox(
                 "Pilih Kelas", 
                 list(kelas_options.keys()),
-                key="select_kelas_siswa"  # <-- key unik
+                key="select_kelas_siswa"
             )
             kelas_id = kelas_options[kelas_terpilih_siswa]
             
-            # Tambah Siswa
             with st.form("form_siswa"):
                 metode = st.radio("Metode Tambah", ["Satuan", "Massal"], key="radio_siswa")
                 
@@ -617,6 +599,7 @@ def page_pengaturan():
                                 "nama": nama,
                                 "kelas_id": kelas_id
                             }).execute()
+                            clear_cache()
                             st.success(f"✅ {nama} berhasil ditambahkan!")
                             st.rerun()
                         except Exception as e:
@@ -637,12 +620,12 @@ def page_pengaturan():
                                     "nama": nama,
                                     "kelas_id": kelas_id
                                 }).execute()
+                            clear_cache()
                             st.success(f"✅ Berhasil menambahkan {len(nama_list)} siswa!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ Gagal: {str(e)}")
             
-            # Daftar Siswa
             siswa = get_siswa(kelas_id)
             if siswa:
                 st.markdown("---")
@@ -654,6 +637,7 @@ def page_pengaturan():
                     if cols[1].button(f"🗑️", key=f"del_siswa_{s['id']}"):
                         try:
                             supabase.table("siswa").delete().eq("id", s['id']).execute()
+                            clear_cache()
                             st.success(f"✅ {s['nama']} berhasil dihapus!")
                             st.rerun()
                         except Exception as e:
@@ -668,15 +652,13 @@ def page_pengaturan():
             st.warning("Tambahkan kelas terlebih dahulu.")
         else:
             kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
-            # 🔥 PERBAIKAN: tambahkan key unik
             kelas_terpilih_kkm = st.selectbox(
                 "Pilih Kelas", 
                 list(kelas_options.keys()),
-                key="select_kelas_kkm"  # <-- key unik
+                key="select_kelas_kkm"
             )
             kelas_id = kelas_options[kelas_terpilih_kkm]
             
-            # Form KKM
             with st.form("form_kkm"):
                 st.write("Set KKM per kategori:")
                 
@@ -686,7 +668,6 @@ def page_pengaturan():
                 cols = st.columns(2)
                 for i, kategori in enumerate(kategori_list):
                     col = cols[i % 2]
-                    # Ambil KKM yang sudah ada
                     existing = get_kkm(kelas_id, kategori)
                     default = existing[0]['kkm'] if existing else 75
                     kkm_values[kategori] = col.number_input(
@@ -702,7 +683,6 @@ def page_pengaturan():
                 if submit:
                     try:
                         for kategori, nilai in kkm_values.items():
-                            # Cek apakah sudah ada
                             existing = get_kkm(kelas_id, kategori)
                             if existing:
                                 supabase.table("kkm").update({
@@ -714,10 +694,11 @@ def page_pengaturan():
                                     "kategori": kategori,
                                     "kkm": nilai
                                 }).execute()
+                        clear_cache()
                         st.success("✅ KKM berhasil disimpan!")
                     except Exception as e:
                         st.error(f"❌ Gagal: {str(e)}")
-                        
+
 # ============ ROUTING ============
 if menu == "🏠 Dashboard":
     page_dashboard()
@@ -735,4 +716,4 @@ elif menu == "⚙️ Pengaturan Kelas & Siswa":
 # ============ FOOTER ============
 st.sidebar.markdown("---")
 st.sidebar.caption("Made with ❤️ untuk Guru SMP")
-st.sidebar.caption(f"Version 1.0 | {datetime.now().year}")
+st.sidebar.caption(f"Version 2.0 | {datetime.now().year}")
