@@ -6,4 +6,4 @@ pandas
 python-dotenv
 Pillow
 PyPDF2
-python-magic
+filetype>=1.2.0
