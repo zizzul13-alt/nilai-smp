@@ -1156,13 +1156,17 @@ def page_dokumen():
         else:
             st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
     
-    # ===== TAB 3: GENERATE AI =====
-    with tab3:
-        st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
-        st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
-        st.info("🎯 **Gratis!** Menggunakan Groq AI - Cepat & Tanpa biaya")
-        
-        # Input API Key
+# ===== TAB 3: GENERATE AI =====
+with tab3:
+    st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
+    st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
+    st.info("🎯 **Gratis!** Menggunakan Groq AI - Cepat & Tanpa biaya")
+    
+    # ===== AMBIL API KEY DARI SECRETS =====
+    try:
+        groq_api_key = st.secrets["groq_api_key"]
+        st.success("✅ Groq API Key ditemukan di Secrets! Siap digunakan.")
+    except:
         groq_api_key = st.text_input(
             "🔑 Groq API Key", 
             type="password",
@@ -1174,8 +1178,13 @@ def page_dokumen():
         if not groq_api_key:
             st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
             st.caption("📌 Belum punya? Daftar gratis di [console.groq.com/keys](https://console.groq.com/keys)")
+            st.info("💡 Simpan API Key di Streamlit Secrets agar tidak perlu input ulang!")
             return
-        
+    
+    # Tampilkan status (tanpa menampilkan key)
+    if groq_api_key:
+        st.info("🔒 API Key terdeteksi! (tersembunyi untuk keamanan)")
+
         # Form Generate
         with st.form("form_generate_ai"):
             cols = st.columns(2)
