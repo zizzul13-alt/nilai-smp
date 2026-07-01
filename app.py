@@ -372,7 +372,7 @@ def jam_ke_string(jam):
         return jam
     return jam.strftime("%H:%M")
 
-# ============ FUNGSI PROMPT UNTUK AI ============
+# ============ FUNGSI PROMPT AI ============
 def create_prompt_ai(jenis_dokumen, mata_pelajaran, topik, kelas, tujuan, kd, waktu):
     """Membuat prompt untuk AI berdasarkan jenis dokumen"""
     
@@ -999,8 +999,14 @@ def page_dokumen():
     
     kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
     
-    tab1, tab2 = st.tabs(["📤 Upload Dokumen", "📂 Lihat Dokumen"])
+    # === 3 TAB ===
+    tab1, tab2, tab3 = st.tabs([
+        "📤 Upload Dokumen", 
+        "📂 Lihat Dokumen", 
+        "🤖 Generate AI"
+    ])
     
+    # ===== TAB 1: UPLOAD DOKUMEN =====
     with tab1:
         st.subheader("Upload Dokumen Pembelajaran")
         
@@ -1081,6 +1087,7 @@ def page_dokumen():
                     except Exception as e:
                         st.error(f"❌ Gagal upload: {str(e)}")
     
+    # ===== TAB 2: LIHAT DOKUMEN =====
     with tab2:
         st.subheader("Daftar Dokumen")
         
@@ -1148,6 +1155,165 @@ def page_dokumen():
                     st.markdown("---")
         else:
             st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
+    
+    # ===== TAB 3: GENERATE AI =====
+    with tab3:
+        st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
+        st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
+        st.info("🎯 **Gratis!** Menggunakan Groq AI - Cepat & Tanpa biaya")
+        
+        # Input API Key
+        groq_api_key = st.text_input(
+            "🔑 Groq API Key", 
+            type="password",
+            help="Dapatkan gratis di console.groq.com/keys",
+            placeholder="Masukkan API Key Groq Anda...",
+            key="groq_dokumen_key"
+        )
+        
+        if not groq_api_key:
+            st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
+            st.caption("📌 Belum punya? Daftar gratis di [console.groq.com/keys](https://console.groq.com/keys)")
+            return
+        
+        # Form Generate
+        with st.form("form_generate_ai"):
+            cols = st.columns(2)
+            jenis_dokumen = cols[0].selectbox(
+                "📄 Jenis Dokumen",
+                ["RPP", "Modul Ajar", "LKPD", "Materi"],
+                help="Pilih jenis perangkat pembelajaran yang ingin dibuat"
+            )
+            kelas_terpilih = cols[1].selectbox(
+                "📚 Kelas", 
+                list(kelas_options.keys())
+            )
+            
+            mata_pelajaran = st.text_input(
+                "📖 Mata Pelajaran", 
+                placeholder="Contoh: Matematika, IPA, Bahasa Indonesia"
+            )
+            topik = st.text_input(
+                "🎯 Topik/Materi", 
+                placeholder="Contoh: Bilangan Bulat, Sistem Peredaran Darah"
+            )
+            
+            st.markdown("---")
+            st.subheader("📋 Detail Tambahan (Opsional)")
+            
+            cols2 = st.columns(2)
+            tujuan_pembelajaran = cols2[0].text_area(
+                "🎯 Tujuan Pembelajaran",
+                placeholder="Contoh: Siswa mampu menghitung operasi penjumlahan bilangan bulat...",
+                height=100
+            )
+            kompetensi_dasar = cols2[1].text_area(
+                "📋 Kompetensi Dasar",
+                placeholder="Contoh: 3.1 Menjelaskan operasi hitung bilangan bulat...",
+                height=100
+            )
+            
+            alokasi_waktu = st.number_input("⏱️ Alokasi Waktu (JP)", min_value=1, max_value=10, value=2)
+            
+            # Pilihan model Groq
+            model_groq = st.selectbox(
+                "🧠 Model AI",
+                ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+                help="Llama 3.1 70B = terbaik, Mixtral = lebih kreatif"
+            )
+            
+            st.caption(f"📊 Estimasi token: ~500-1500 tokens per dokumen")
+            
+            generate_btn = st.form_submit_button("🚀 Generate Dokumen", type="primary", use_container_width=True)
+        
+        if generate_btn:
+            if not mata_pelajaran or not topik:
+                st.error("❌ Mata Pelajaran dan Topik wajib diisi!")
+            else:
+                with st.spinner("⏳ AI sedang menulis dokumen..."):
+                    try:
+                        from langchain_groq import ChatGroq
+                        from langchain_core.prompts import ChatPromptTemplate
+                        from langchain_core.output_parsers import StrOutputParser
+                        
+                        # Inisialisasi Groq
+                        llm = ChatGroq(
+                            model=model_groq,
+                            temperature=0.7,
+                            groq_api_key=groq_api_key
+                        )
+                        
+                        # Buat prompt
+                        prompt_text = create_prompt_ai(
+                            jenis_dokumen=jenis_dokumen,
+                            mata_pelajaran=mata_pelajaran,
+                            topik=topik,
+                            kelas=kelas_terpilih,
+                            tujuan=tujuan_pembelajaran,
+                            kd=kompetensi_dasar,
+                            waktu=alokasi_waktu
+                        )
+                        
+                        # Panggil Groq
+                        prompt_template = ChatPromptTemplate.from_messages([
+                            ("system", f"Anda adalah guru profesional yang membuat {jenis_dokumen} berkualitas tinggi."),
+                            ("user", "{input}")
+                        ])
+                        
+                        chain = prompt_template | llm | StrOutputParser()
+                        hasil = chain.invoke({"input": prompt_text})
+                        
+                        # Tampilkan hasil
+                        st.markdown("---")
+                        st.subheader(f"📄 {jenis_dokumen} - {topik}")
+                        
+                        # Preview dalam markdown
+                        st.markdown(hasil)
+                        
+                        # Tombol Simpan & Download
+                        st.markdown("---")
+                        st.subheader("💾 Simpan atau Download")
+                        
+                        cols_save = st.columns(3)
+                        
+                        # Tombol Simpan ke Database
+                        if cols_save[0].button("💾 Simpan ke Database", use_container_width=True):
+                            try:
+                                supabase.table("dokumen").insert({
+                                    "kelas_id": kelas_options[kelas_terpilih],
+                                    "judul": f"{jenis_dokumen} - {topik} - {date.today()}",
+                                    "jenis": jenis_dokumen,
+                                    "topik": topik,
+                                    "file_name": f"{jenis_dokumen}_{topik}.txt",
+                                    "file_url": f"generated_{jenis_dokumen}_{topik}.txt",
+                                    "file_size": len(hasil),
+                                    "semester": 1
+                                }).execute()
+                                
+                                clear_cache()
+                                st.success("✅ Dokumen berhasil disimpan ke database!")
+                                st.balloons()
+                            except Exception as e:
+                                st.error(f"❌ Gagal simpan: {str(e)}")
+                        
+                        # Tombol Download
+                        if cols_save[1].button("📥 Download", use_container_width=True):
+                            st.download_button(
+                                label="⬇️ Klik untuk Download",
+                                data=hasil,
+                                file_name=f"{jenis_dokumen}_{topik}_{date.today()}.md",
+                                mime="text/markdown",
+                                use_container_width=True
+                            )
+                        
+                        # Tombol Copy
+                        if cols_save[2].button("📋 Copy ke Clipboard", use_container_width=True):
+                            st.code(hasil, language="markdown")
+                            st.info("✅ Teks sudah siap di-copy!")
+                            
+                    except Exception as e:
+                        st.error(f"❌ Gagal generate: {str(e)}")
+                        st.info("💡 Pastikan API Key benar dan model tersedia")
 
 # ============ HALAMAN: PENGATURAN KELAS & SISWA ============
 def page_pengaturan():
