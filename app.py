@@ -499,6 +499,7 @@ def page_bank_soal():
             st.info("Tidak ditemukan soal yang sesuai.")
 
 # ============ HALAMAN: PENGATURAN KELAS & SISWA ============
+# ============ HALAMAN: PENGATURAN KELAS & SISWA ============
 def page_pengaturan():
     st.title("⚙️ Pengaturan Kelas & Siswa")
     
@@ -529,8 +530,6 @@ def page_pengaturan():
             for k in kelas:
                 cols = st.columns([3, 1])
                 cols[0].write(f"📚 {k['nama_kelas']}")
-                
-                # Tambahkan warning dan konfirmasi untuk hapus kelas
                 if cols[1].button(f"🗑️ Hapus", key=f"del_kelas_{k['id']}"):
                     try:
                         # Hapus siswa dulu
@@ -553,15 +552,20 @@ def page_pengaturan():
             st.warning("Tambahkan kelas terlebih dahulu.")
         else:
             kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
-            kelas_terpilih = st.selectbox("Pilih Kelas", list(kelas_options.keys()))
-            kelas_id = kelas_options[kelas_terpilih]
+            # 🔥 PERBAIKAN: tambahkan key unik
+            kelas_terpilih_siswa = st.selectbox(
+                "Pilih Kelas", 
+                list(kelas_options.keys()),
+                key="select_kelas_siswa"  # <-- key unik
+            )
+            kelas_id = kelas_options[kelas_terpilih_siswa]
             
             # Tambah Siswa
             with st.form("form_siswa"):
-                metode = st.radio("Metode Tambah", ["Satuan", "Massal"])
+                metode = st.radio("Metode Tambah", ["Satuan", "Massal"], key="radio_siswa")
                 
                 if metode == "Satuan":
-                    nama = st.text_input("Nama Siswa")
+                    nama = st.text_input("Nama Siswa", key="nama_siswa_satuan")
                     submit = st.form_submit_button("➕ Tambah Siswa")
                     
                     if submit and nama:
@@ -577,7 +581,8 @@ def page_pengaturan():
                 else:
                     daftar_nama = st.text_area(
                         "Copy-paste daftar nama (satu per baris)",
-                        placeholder="Budi\nAni\nCitra\nDodi"
+                        placeholder="Budi\nAni\nCitra\nDodi",
+                        key="daftar_nama_massal"
                     )
                     submit = st.form_submit_button("➕ Tambah Massal")
                     
@@ -598,7 +603,7 @@ def page_pengaturan():
             siswa = get_siswa(kelas_id)
             if siswa:
                 st.markdown("---")
-                st.subheader(f"Daftar Siswa Kelas {kelas_terpilih}")
+                st.subheader(f"Daftar Siswa Kelas {kelas_terpilih_siswa}")
                 
                 for s in siswa:
                     cols = st.columns([3, 1])
@@ -615,10 +620,18 @@ def page_pengaturan():
     with tab3:
         st.subheader("Setting KKM")
         
-        if kelas:
+        kelas = get_kelas()
+        if not kelas:
+            st.warning("Tambahkan kelas terlebih dahulu.")
+        else:
             kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
-            kelas_terpilih = st.selectbox("Pilih Kelas", list(kelas_options.keys()))
-            kelas_id = kelas_options[kelas_terpilih]
+            # 🔥 PERBAIKAN: tambahkan key unik
+            kelas_terpilih_kkm = st.selectbox(
+                "Pilih Kelas", 
+                list(kelas_options.keys()),
+                key="select_kelas_kkm"  # <-- key unik
+            )
+            kelas_id = kelas_options[kelas_terpilih_kkm]
             
             # Form KKM
             with st.form("form_kkm"):
@@ -661,7 +674,7 @@ def page_pengaturan():
                         st.success("✅ KKM berhasil disimpan!")
                     except Exception as e:
                         st.error(f"❌ Gagal: {str(e)}")
-
+                        
 # ============ ROUTING ============
 if menu == "🏠 Dashboard":
     page_dashboard()
