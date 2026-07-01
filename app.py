@@ -250,6 +250,7 @@ def page_input_nilai():
             st.error(f"❌ Gagal menyimpan: {str(e)}")
 
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
+# ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
     st.title("📊 Lihat & Export Nilai")
     
@@ -284,35 +285,62 @@ def page_lihat_nilai():
     if topik_filter:
         nilai = [n for n in nilai if topik_filter.lower() in n.get('topik', '').lower()]
     
-    # Buat dataframe
+    # Buat dataframe dengan pivot
     data = []
     for s in siswa:
         row = {"Nama": s['nama']}
+        # Inisialisasi semua kategori dengan 0
+        for kat in ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]:
+            row[kat] = 0
+        # Isi nilai yang ada
         for n in nilai:
             if n['siswa_id'] == s['id']:
                 row[n['kategori']] = n['nilai']
         data.append(row)
     
     df = pd.DataFrame(data)
-    df = df.fillna("-")
     
-    # Tampilkan
+    # Tampilkan dataframe
     st.dataframe(df, use_container_width=True, hide_index=True)
     
+    # 🔥 PERBAIKAN: Statistik
     if show_stats and len(df) > 0:
         st.markdown("---")
-        st.subheader("📊 Statistik")
+        st.subheader("📊 Statistik Nilai")
         
-        # Pisahkan kolom numerik
-        num_cols = df.select_dtypes(include=['float64', 'int64']).columns
+        # Pilih kolom numerik (kategori nilai)
+        kategori_kolom = ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
         
-        if len(num_cols) > 0:
-            stats = pd.DataFrame({
-                "Rata-rata": df[num_cols].mean().round(2),
-                "Tertinggi": df[num_cols].max(),
-                "Terendah": df[num_cols].min()
-            })
-            st.dataframe(stats, use_container_width=True)
+        # Filter kolom yang ada di dataframe
+        existing_kolom = [k for k in kategori_kolom if k in df.columns]
+        
+        if existing_kolom:
+            # Hitung statistik
+            stats_data = []
+            for kat in existing_kolom:
+                values = df[kat][df[kat] > 0]  # Hanya nilai > 0
+                if len(values) > 0:
+                    stats_data.append({
+                        "Kategori": kat,
+                        "Rata-rata": round(values.mean(), 2),
+                        "Tertinggi": values.max(),
+                        "Terendah": values.min(),
+                        "Jumlah Data": len(values)
+                    })
+            
+            if stats_data:
+                df_stats = pd.DataFrame(stats_data)
+                st.dataframe(df_stats, use_container_width=True, hide_index=True)
+                
+                # Tambahkan grafik sederhana (opsional)
+                st.markdown("---")
+                st.subheader("📈 Rata-rata per Kategori")
+                chart_data = df_stats[['Kategori', 'Rata-rata']].set_index('Kategori')
+                st.bar_chart(chart_data)
+            else:
+                st.info("Belum ada data nilai yang cukup untuk statistik.")
+        else:
+            st.info("Belum ada data nilai yang tersimpan.")
     
     # Export Excel
     st.markdown("---")
@@ -352,7 +380,7 @@ def page_lihat_nilai():
             st.success("File Excel siap didownload!")
         except Exception as e:
             st.error(f"❌ Gagal export: {str(e)}")
-
+            
 # ============ HALAMAN: KALENDER & JADWAL ============
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
