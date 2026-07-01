@@ -1386,10 +1386,17 @@ def page_dokumen():
             alokasi_waktu = st.number_input("⏱️ Alokasi Waktu (JP)", min_value=1, max_value=10, value=2)
             
             model_groq = st.selectbox(
-                "🧠 Model AI",
-                ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
-                help="Llama 3.1 70B = terbaik, Mixtral = lebih kreatif"
-            )
+    "🧠 Model AI (aktif)",
+    [
+        "llama-3.1-8b-instant",           # Cepat & ringan
+        "llama-3.3-70b-versatile",        # 🔥 REKOMENDASI untuk RPP
+        "llama-3.3-70b-specdec",          # Cepat & berkualitas
+        "gemma2-9b-it",                   # Google, bagus
+        "llama-4-scout-17b-16e-instruct"  # Terbaru Vision+Text
+    ],
+    index=1,  # Default ke llama-3.3-70b-versatile
+    help="Pilih model AI - llama-3.3-70b-versatile adalah rekomendasi terbaik untuk RPP"
+)
             
             st.caption("📊 Estimasi token: ~500-1500 tokens per dokumen")
             
