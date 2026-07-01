@@ -1056,17 +1056,17 @@ def page_pengaturan():
     with tab1:
         st.subheader("Kelola Kelas")
         
-        # Form Tambah Kelas
+        # Form Tambah Kelas (COMPACT)
         with st.form("form_kelas"):
             cols_form = st.columns([3, 1])
-            nama_kelas = cols_form[0].text_input("Nama Kelas (contoh: 7A, 8B, 9C)", placeholder="Masukkan nama kelas...")
+            nama_kelas = cols_form[0].text_input("Nama Kelas", placeholder="Contoh: 7A, 8B, 9C")
             submit = cols_form[1].form_submit_button("➕ Tambah", use_container_width=True)
             
             if submit and nama_kelas:
                 try:
-                    supabase.table("kelas").insert({"nama_kelas": nama_kelas}).execute()
+                    supabase.table("kelas").insert({"nama_kelas": nama_kelas.upper()}).execute()
                     clear_cache()
-                    st.success(f"✅ Kelas {nama_kelas} berhasil ditambahkan!")
+                    st.success(f"✅ Kelas {nama_kelas.upper()} berhasil ditambahkan!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
@@ -1077,10 +1077,10 @@ def page_pengaturan():
             st.markdown("---")
             st.subheader(f"📚 Daftar Kelas ({len(kelas)})")
             
-            # CSS untuk tampilan tiles seperti File Explorer
+            # CSS untuk tiles
             st.markdown("""
             <style>
-                .kelas-grid {
+                .kelas-grid-container {
                     display: grid;
                     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
                     gap: 12px;
@@ -1093,52 +1093,32 @@ def page_pengaturan():
                     text-align: center;
                     transition: all 0.2s;
                     border: 2px solid transparent;
-                    cursor: default;
-                    position: relative;
-                    min-height: 80px;
+                    min-height: 90px;
                     display: flex;
                     flex-direction: column;
                     justify-content: center;
                     align-items: center;
+                    position: relative;
                 }
                 .kelas-tile:hover {
-                    background: #e0e4ea;
+                    transform: translateY(-3px);
+                    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
                     border-color: #4CAF50;
-                    transform: translateY(-2px);
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                }
-                .kelas-tile .nama-kelas {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: #1a1a2e;
-                    margin-bottom: 4px;
-                }
-                .kelas-tile .jumlah-siswa {
-                    font-size: 12px;
-                    color: #666;
-                }
-                .kelas-tile .hapus-btn {
-                    position: absolute;
-                    top: 4px;
-                    right: 8px;
-                    background: none;
-                    border: none;
-                    color: #999;
-                    font-size: 14px;
-                    cursor: pointer;
-                    transition: all 0.2s;
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                }
-                .kelas-tile .hapus-btn:hover {
-                    color: #ff4b4b;
-                    background: #ffebee;
                 }
                 .kelas-tile .icon-kelas {
                     font-size: 28px;
                     margin-bottom: 2px;
                 }
-                /* Warna berbeda untuk setiap tile */
+                .kelas-tile .nama-kelas {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: #1a1a2e;
+                }
+                .kelas-tile .jumlah-siswa {
+                    font-size: 12px;
+                    color: #666;
+                }
+                /* Warna berbeda */
                 .kelas-tile:nth-child(6n+1) { background: #e3f2fd; }
                 .kelas-tile:nth-child(6n+2) { background: #e8f5e9; }
                 .kelas-tile:nth-child(6n+3) { background: #fff3e0; }
@@ -1146,54 +1126,42 @@ def page_pengaturan():
                 .kelas-tile:nth-child(6n+5) { background: #f3e5f5; }
                 .kelas-tile:nth-child(6n+6) { background: #e0f7fa; }
                 
-                /* Responsif HP */
                 @media only screen and (max-width: 768px) {
-                    .kelas-grid {
+                    .kelas-grid-container {
                         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
                         gap: 8px;
                     }
                     .kelas-tile {
                         padding: 12px 8px;
-                        min-height: 70px;
+                        min-height: 75px;
                     }
-                    .kelas-tile .nama-kelas {
-                        font-size: 15px;
-                    }
-                    .kelas-tile .icon-kelas {
-                        font-size: 22px;
-                    }
+                    .kelas-tile .nama-kelas { font-size: 15px; }
+                    .kelas-tile .icon-kelas { font-size: 22px; }
                 }
                 @media only screen and (max-width: 480px) {
-                    .kelas-grid {
+                    .kelas-grid-container {
                         grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
                         gap: 6px;
                     }
                     .kelas-tile {
                         padding: 10px 6px;
-                        min-height: 60px;
+                        min-height: 65px;
                         border-radius: 8px;
                     }
-                    .kelas-tile .nama-kelas {
-                        font-size: 13px;
-                    }
-                    .kelas-tile .jumlah-siswa {
-                        font-size: 10px;
-                    }
-                    .kelas-tile .icon-kelas {
-                        font-size: 18px;
-                    }
+                    .kelas-tile .nama-kelas { font-size: 13px; }
+                    .kelas-tile .jumlah-siswa { font-size: 10px; }
+                    .kelas-tile .icon-kelas { font-size: 18px; }
                 }
             </style>
             """, unsafe_allow_html=True)
             
-            # Buat grid HTML
-            tiles_html = '<div class="kelas-grid">'
+            # Buat grid HTML (tanpa tombol hapus)
+            tiles_html = '<div class="kelas-grid-container">'
             for k in kelas:
-                # Hitung jumlah siswa di kelas ini
                 siswa_di_kelas = get_siswa(k['id'])
                 jumlah_siswa = len(siswa_di_kelas)
                 
-                # Ikon random berdasarkan nama kelas
+                # Ikon berdasarkan tingkat
                 icon = "📚"
                 if "7" in k['nama_kelas']:
                     icon = "📘"
@@ -1204,7 +1172,6 @@ def page_pengaturan():
                 
                 tiles_html += f'''
                 <div class="kelas-tile">
-                    <button class="hapus-btn" onclick="alert('Konfirmasi hapus kelas {k["nama_kelas"]}?')">✕</button>
                     <div class="icon-kelas">{icon}</div>
                     <div class="nama-kelas">{k["nama_kelas"]}</div>
                     <div class="jumlah-siswa">👨‍🎓 {jumlah_siswa} siswa</div>
@@ -1212,34 +1179,42 @@ def page_pengaturan():
                 '''
             tiles_html += '</div>'
             
-            # Tampilkan grid
+            # Tampilkan grid tiles
             st.markdown(tiles_html, unsafe_allow_html=True)
             
-            # Tombol hapus dengan konfirmasi (Streamlit native)
+            # ============ TOMBOL HAPUS (Pakai Streamlit Native) ============
             st.markdown("---")
-            st.caption("💡 Klik tile untuk melihat detail, hover untuk efek")
             
-            # Pilihan hapus dengan dropdown (lebih aman)
+            # Pilihan hapus dengan dropdown (lebih aman & jelas)
             with st.expander("🗑️ Hapus Kelas", expanded=False):
-                kelas_to_delete = st.selectbox(
+                st.caption("⚠️ Hapus kelas akan menghapus semua siswa dan data nilai di kelas tersebut!")
+                
+                cols_hapus = st.columns([2, 1])
+                kelas_to_delete = cols_hapus[0].selectbox(
                     "Pilih kelas yang akan dihapus",
-                    [k['nama_kelas'] for k in kelas]
+                    [k['nama_kelas'] for k in kelas],
+                    key="delete_kelas_select"
                 )
-                st.warning(f"⚠️ Semua data siswa dan nilai di kelas {kelas_to_delete} akan ikut terhapus!")
-                if st.button(f"✅ Ya, Hapus {kelas_to_delete}!", type="primary"):
+                
+                # Tampilkan info siswa di kelas tersebut
+                kelas_id_delete = next(k['id'] for k in kelas if k['nama_kelas'] == kelas_to_delete)
+                siswa_delete = get_siswa(kelas_id_delete)
+                cols_hapus[1].metric("Jumlah Siswa", len(siswa_delete))
+                
+                if st.button(f"🗑️ Hapus {kelas_to_delete}", type="primary", use_container_width=True):
                     try:
-                        kelas_id = next(k['id'] for k in kelas if k['nama_kelas'] == kelas_to_delete)
-                        siswa = get_siswa(kelas_id)
-                        for s in siswa:
+                        # Hapus siswa dulu
+                        for s in siswa_delete:
                             supabase.table("siswa").delete().eq("id", s['id']).execute()
-                        supabase.table("kelas").delete().eq("id", kelas_id).execute()
+                        # Hapus kelas
+                        supabase.table("kelas").delete().eq("id", kelas_id_delete).execute()
                         clear_cache()
                         st.success(f"✅ Kelas {kelas_to_delete} berhasil dihapus!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Gagal hapus kelas: {str(e)}")
         else:
-            st.info("Belum ada kelas. Tambahkan kelas pertama Anda!")
+            st.info("📭 Belum ada kelas. Tambahkan kelas pertama Anda!")
 
 # ============ ROUTING ============
 if menu == "🏠 Dashboard":
