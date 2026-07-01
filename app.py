@@ -1160,28 +1160,41 @@ def page_dokumen():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
-    # ===== CEK MODEL AKTIF (SENYAP) =====
+    # ===== CEK MODEL AKTIF DI GROQ (HANYA 1x PER SESSION) =====
     if "groq_models" not in st.session_state:
         try:
+            # Coba ambil API Key dari Secrets
             groq_api_key = st.secrets["groq_api_key"]
+            
             import requests
-            response = requests.get(
-                "https://api.groq.com/openai/v1/models",
-                headers={"Authorization": f"Bearer {groq_api_key}"}
-            )
+            url = "https://api.groq.com/openai/v1/models"
+            headers = {
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            }
+            response = requests.get(url, headers=headers)
+            
             if response.status_code == 200:
-                st.session_state.groq_models = [
-                    m['id'] for m in response.json().get('data', [])
-                    if 'preview' not in m['id'].lower()
-                ]
+                models = response.json().get('data', [])
+                model_ids = [m['id'] for m in models]
+                st.session_state.groq_models = model_ids
+                # Filter yang aktif (bisa dipakai)
+                active = [m for m in model_ids if 'preview' not in m.lower()]
+                st.session_state.active_models = active
             else:
                 st.session_state.groq_models = []
-        except:
+                st.session_state.active_models = []
+        except Exception as e:
             st.session_state.groq_models = []
+            st.session_state.active_models = []
     
-    # ===== TAMPILKAN DI SIDEBAR ATAU BAWAH =====
-    if st.session_state.groq_models:
-        st.sidebar.caption(f"🤖 Model aktif: {', '.join(st.session_state.groq_models[:3])}...")
+    # ===== TAMPILKAN MODEL YANG AKTIF =====
+    if st.session_state.active_models:
+        with st.expander("🔍 Model AI yang Tersedia", expanded=False):
+            st.write("Model yang bisa digunakan:")
+            for m in st.session_state.active_models:
+                st.write(f"✅ `{m}`")
+            st.caption(f"Total {len(st.session_state.active_models)} model aktif")
     
     kelas = get_kelas()
     if not kelas:
