@@ -1077,8 +1077,8 @@ def page_pengaturan():
             st.markdown("---")
             st.subheader(f"📚 Daftar Kelas ({len(kelas)})")
             
-            # CSS untuk tiles
-            st.markdown("""
+            # ==== BUAT HTML UNTUK TILES ====
+            html_tiles = """
             <style>
                 .kelas-grid-container {
                     display: grid;
@@ -1098,7 +1098,6 @@ def page_pengaturan():
                     flex-direction: column;
                     justify-content: center;
                     align-items: center;
-                    position: relative;
                 }
                 .kelas-tile:hover {
                     transform: translateY(-3px);
@@ -1118,7 +1117,6 @@ def page_pengaturan():
                     font-size: 12px;
                     color: #666;
                 }
-                /* Warna berbeda */
                 .kelas-tile:nth-child(6n+1) { background: #e3f2fd; }
                 .kelas-tile:nth-child(6n+2) { background: #e8f5e9; }
                 .kelas-tile:nth-child(6n+3) { background: #fff3e0; }
@@ -1153,10 +1151,9 @@ def page_pengaturan():
                     .kelas-tile .icon-kelas { font-size: 18px; }
                 }
             </style>
-            """, unsafe_allow_html=True)
+            <div class="kelas-grid-container">
+            """
             
-            # Buat grid HTML (tanpa tombol hapus)
-            tiles_html = '<div class="kelas-grid-container">'
             for k in kelas:
                 siswa_di_kelas = get_siswa(k['id'])
                 jumlah_siswa = len(siswa_di_kelas)
@@ -1170,22 +1167,22 @@ def page_pengaturan():
                 elif "9" in k['nama_kelas']:
                     icon = "📕"
                 
-                tiles_html += f'''
+                html_tiles += f'''
                 <div class="kelas-tile">
                     <div class="icon-kelas">{icon}</div>
                     <div class="nama-kelas">{k["nama_kelas"]}</div>
                     <div class="jumlah-siswa">👨‍🎓 {jumlah_siswa} siswa</div>
                 </div>
                 '''
-            tiles_html += '</div>'
             
-            # Tampilkan grid tiles
-            st.markdown(tiles_html, unsafe_allow_html=True)
+            html_tiles += '</div>'
+            
+            # ==== TAMPILKAN DENGAN st.components.v1.html ====
+            st.components.v1.html(html_tiles, height=400, scrolling=True)
             
             # ============ TOMBOL HAPUS (Pakai Streamlit Native) ============
             st.markdown("---")
             
-            # Pilihan hapus dengan dropdown (lebih aman & jelas)
             with st.expander("🗑️ Hapus Kelas", expanded=False):
                 st.caption("⚠️ Hapus kelas akan menghapus semua siswa dan data nilai di kelas tersebut!")
                 
@@ -1196,17 +1193,14 @@ def page_pengaturan():
                     key="delete_kelas_select"
                 )
                 
-                # Tampilkan info siswa di kelas tersebut
                 kelas_id_delete = next(k['id'] for k in kelas if k['nama_kelas'] == kelas_to_delete)
                 siswa_delete = get_siswa(kelas_id_delete)
                 cols_hapus[1].metric("Jumlah Siswa", len(siswa_delete))
                 
                 if st.button(f"🗑️ Hapus {kelas_to_delete}", type="primary", use_container_width=True):
                     try:
-                        # Hapus siswa dulu
                         for s in siswa_delete:
                             supabase.table("siswa").delete().eq("id", s['id']).execute()
-                        # Hapus kelas
                         supabase.table("kelas").delete().eq("id", kelas_id_delete).execute()
                         clear_cache()
                         st.success(f"✅ Kelas {kelas_to_delete} berhasil dihapus!")
