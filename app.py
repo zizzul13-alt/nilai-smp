@@ -10,6 +10,11 @@ from PIL import Image
 import PyPDF2
 import filetype
 
+# ===== TAMBAHKAN INI UNTUK GROQ =====
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
 # ============ KONFIGURASI ============
 st.set_page_config(
     page_title="Asisten Pengajar SMP",
@@ -368,6 +373,104 @@ def jam_ke_string(jam):
         return jam
     return jam.strftime("%H:%M")
 
+# ============ FUNGSI PROMPT UNTUK AI ============
+def create_prompt_ai(jenis_dokumen, mata_pelajaran, topik, kelas, tujuan, kd, waktu):
+    """Membuat prompt untuk AI berdasarkan jenis dokumen"""
+    
+    if jenis_dokumen == "RPP":
+        return f"""
+Buatkan RPP (Rencana Pelaksanaan Pembelajaran) dengan format lengkap untuk:
+
+Mata Pelajaran: {mata_pelajaran}
+Kelas: {kelas}
+Topik: {topik}
+Alokasi Waktu: {waktu} JP
+
+Tujuan Pembelajaran:
+{tujuan if tujuan else 'Sesuaikan dengan topik'}
+
+Kompetensi Dasar:
+{kd if kd else 'Sesuaikan dengan topik'}
+
+Format RPP yang diminta:
+1. Identitas Sekolah
+2. Kompetensi Inti
+3. Kompetensi Dasar & Indikator
+4. Tujuan Pembelajaran
+5. Materi Pembelajaran
+6. Metode Pembelajaran
+7. Media & Sumber Belajar
+8. Langkah-langkah Kegiatan (Pendahuluan, Inti, Penutup)
+9. Penilaian (Sikap, Pengetahuan, Keterampilan)
+
+Buat dengan bahasa yang jelas, profesional, dan siap pakai!
+"""
+    
+    elif jenis_dokumen == "Modul Ajar":
+        return f"""
+Buatkan Modul Ajar untuk:
+
+Mata Pelajaran: {mata_pelajaran}
+Kelas: {kelas}
+Topik: {topik}
+
+Tujuan Pembelajaran:
+{tujuan if tujuan else 'Sesuaikan dengan topik'}
+
+Format Modul Ajar:
+1. Pendahuluan (Apersepsi, Motivasi)
+2. Uraian Materi (lengkap dan terstruktur)
+3. Rangkuman
+4. Latihan Soal (minimal 5 soal)
+5. Kunci Jawaban
+6. Daftar Pustaka
+
+Buat dengan bahasa yang mudah dipahami siswa!
+"""
+    
+    elif jenis_dokumen == "LKPD":
+        return f"""
+Buatkan LKPD (Lembar Kerja Peserta Didik) untuk:
+
+Mata Pelajaran: {mata_pelajaran}
+Kelas: {kelas}
+Topik: {topik}
+
+Tujuan Pembelajaran:
+{tujuan if tujuan else 'Sesuaikan dengan topik'}
+
+Format LKPD:
+1. Judul LKPD
+2. Petunjuk Pengerjaan
+3. Tujuan Pembelajaran
+4. Alat dan Bahan (jika ada)
+5. Langkah-langkah Kegiatan
+6. Tabel/Data Pengamatan
+7. Pertanyaan Diskusi (minimal 5 pertanyaan)
+8. Kesimpulan
+
+Buat LKPD yang interaktif dan mudah dikerjakan siswa!
+"""
+    
+    else:  # Materi
+        return f"""
+Buatkan Materi Pembelajaran untuk:
+
+Mata Pelajaran: {mata_pelajaran}
+Kelas: {kelas}
+Topik: {topik}
+
+Format Materi:
+1. Pendahuluan (latar belakang)
+2. Uraian Materi (lengkap, terstruktur, dengan contoh)
+3. Ilustrasi/Diagram (deskripsikan)
+4. Rangkuman
+5. Latihan Soal (minimal 5)
+6. Kunci Jawaban
+
+Buat materi yang menarik dan mudah dipahami!
+"""
+
 # ============ SIDEBAR NAVIGASI ============
 st.sidebar.title("📚 Menu Guru")
 st.sidebar.markdown("---")
@@ -646,8 +749,8 @@ def page_lihat_nilai():
             st.error(f"❌ Gagal export: {str(e)}")
 
 # ============ HALAMAN: KALENDER & JADWAL (VERSI BARU) ============
-def page_jadwal():
-    st.title("📅 Kalender & Jadwal")
+def page_dokumen():
+    st.title("📁 Dokumen Pembelajaran")
     
     kelas = get_kelas()
     if not kelas:
@@ -656,8 +759,8 @@ def page_jadwal():
     
     kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
     
-    # === TABS ===
-    tab1, tab2, tab3 = st.tabs(["📋 Lihat Jadwal", "➕ Tambah Manual", "⚡ Generate Semester"])
+    # ===== TABS =====
+    tab1, tab2, tab3 = st.tabs(["📤 Upload Dokumen", "📂 Lihat Dokumen", "🤖 Generate AI"])
     
     # === TAB 1: LIHAT JADWAL ===
     with tab1:
@@ -746,67 +849,172 @@ def page_jadwal():
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
     
-    # === TAB 3: GENERATE SEMESTER ===
+    # ===== TAB 3: GENERATE AI =====
     with tab3:
-        st.subheader("⚡ Generate Jadwal 1 Semester")
-        st.info("💡 Fitur ini akan membuat jadwal otomatis untuk 16 minggu (1 semester)")
+        st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
+        st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
+        st.info("🎯 **Gratis!** Menggunakan Groq AI - Cepat & Tanpa biaya")
         
-        with st.form("form_generate"):
+        # Input API Key
+        groq_api_key = st.text_input(
+            "🔑 Groq API Key", 
+            type="password",
+            help="Dapatkan gratis di console.groq.com/keys",
+            placeholder="Masukkan API Key Groq Anda..."
+        )
+        
+        if not groq_api_key:
+            st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
+            st.caption("📌 Belum punya? Daftar gratis di [console.groq.com/keys](https://console.groq.com/keys)")
+            return
+        
+        # Form Generate
+        with st.form("form_generate_ai"):
             cols = st.columns(2)
-            kelas_gen = cols[0].selectbox("Kelas", list(kelas_options.keys()))
-            hari_gen = cols[0].selectbox("Hari", ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"])
-            jam_gen = cols[1].time_input("Jam Mulai", value=datetime.strptime("07:30", "%H:%M").time())
-            semester_gen = cols[1].selectbox("Semester", [1, 2])
+            jenis_dokumen = cols[0].selectbox(
+                "📄 Jenis Dokumen",
+                ["RPP", "Modul Ajar", "LKPD", "Materi"],
+                help="Pilih jenis perangkat pembelajaran yang ingin dibuat"
+            )
+            kelas_terpilih = cols[1].selectbox(
+                "📚 Kelas", 
+                list(kelas_options.keys())
+            )
+            
+            mata_pelajaran = st.text_input(
+                "📖 Mata Pelajaran", 
+                placeholder="Contoh: Matematika, IPA, Bahasa Indonesia"
+            )
+            topik = st.text_input(
+                "🎯 Topik/Materi", 
+                placeholder="Contoh: Bilangan Bulat, Sistem Peredaran Darah"
+            )
             
             st.markdown("---")
-            st.subheader("📝 Setting Topik & Bab")
+            st.subheader("📋 Detail Tambahan (Opsional)")
             
             cols2 = st.columns(2)
-            topik_awal = cols2[0].text_input("Topik Awal", value="Matematika")
-            bab_awal = cols2[1].number_input("Bab Awal", min_value=1, value=1)
+            tujuan_pembelajaran = cols2[0].text_area(
+                "🎯 Tujuan Pembelajaran",
+                placeholder="Contoh: Siswa mampu menghitung operasi penjumlahan bilangan bulat...",
+                height=100
+            )
+            kompetensi_dasar = cols2[1].text_area(
+                "📋 Kompetensi Dasar",
+                placeholder="Contoh: 3.1 Menjelaskan operasi hitung bilangan bulat...",
+                height=100
+            )
             
-            jumlah_minggu = st.slider("Jumlah Minggu", min_value=12, max_value=20, value=16)
+            alokasi_waktu = st.number_input("⏱️ Alokasi Waktu (JP)", min_value=1, max_value=10, value=2)
             
-            st.warning("⚠️ Periksa kembali data di atas. Jadwal yang sudah ada akan dihapus dan diganti!")
+            # Pilihan model Groq
+            model_groq = st.selectbox(
+                "🧠 Model AI",
+                ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
+                help="Llama 3.1 70B = terbaik, Mixtral = lebih kreatif"
+            )
             
-            submit_gen = st.form_submit_button("🚀 Generate Jadwal Semester", type="primary")
+            st.caption(f"📊 Estimasi token: ~500-1500 tokens per dokumen")
             
-            if submit_gen:
-                try:
-                    kelas_id = kelas_options[kelas_gen]
-                    tahun_ajaran = f"{date.today().year}/{date.today().year + 1}"
-                    
-                    # Hapus jadwal lama untuk kelas & semester ini (yang digenerate)
-                    jadwal_lama = get_jadwal(kelas_id)
-                    for j in jadwal_lama:
-                        if j.get('is_generated', False) and j.get('semester') == semester_gen:
-                            supabase.table("jadwal").delete().eq("id", j['id']).execute()
-                    
-                    # Generate jadwal baru
-                    jadwal_baru = generate_jadwal_semester(
-                        kelas_id,
-                        hari_gen,
-                        jam_gen,
-                        topik_awal,
-                        bab_awal,
-                        semester_gen,
-                        tahun_ajaran,
-                        jumlah_minggu
-                    )
-                    
-                    if jadwal_baru:
-                        # Insert semua jadwal
-                        for j in jadwal_baru:
-                            supabase.table("jadwal").insert(j).execute()
+            generate_btn = st.form_submit_button("🚀 Generate Dokumen", type="primary", use_container_width=True)
+        
+        if generate_btn:
+            if not mata_pelajaran or not topik:
+                st.error("❌ Mata Pelajaran dan Topik wajib diisi!")
+            else:
+                with st.spinner("⏳ AI sedang menulis dokumen..."):
+                    try:
+                        # Inisialisasi Groq
+                        llm = ChatGroq(
+                            model=model_groq,
+                            temperature=0.7,
+                            groq_api_key=groq_api_key
+                        )
                         
-                        clear_cache()
-                        st.success(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
-                        st.balloons()
-                        st.info(f"📅 Semester {semester_gen} | {tahun_ajaran}")
-                        st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Gagal generate: {str(e)}")
+                        # Buat prompt
+                        prompt_text = create_prompt_ai(
+                            jenis_dokumen=jenis_dokumen,
+                            mata_pelajaran=mata_pelajaran,
+                            topik=topik,
+                            kelas=kelas_terpilih,
+                            tujuan=tujuan_pembelajaran,
+                            kd=kompetensi_dasar,
+                            waktu=alokasi_waktu
+                        )
+                        
+                        # Panggil Groq
+                        prompt_template = ChatPromptTemplate.from_messages([
+                            ("system", f"Anda adalah guru profesional yang membuat {jenis_dokumen} berkualitas tinggi."),
+                            ("user", "{input}")
+                        ])
+                        
+                        chain = prompt_template | llm | StrOutputParser()
+                        hasil = chain.invoke({"input": prompt_text})
+                        
+                        # Tampilkan hasil
+                        st.markdown("---")
+                        st.subheader(f"📄 {jenis_dokumen} - {topik}")
+                        
+                        # Tampilkan di text area agar bisa copy
+                        st.text_area("Hasil Generate", hasil, height=500)
+                        
+                        # Preview dalam markdown
+                        with st.expander("👁️ Preview"):
+                            st.markdown(hasil)
+                        
+                        # Tombol Simpan & Download
+                        st.markdown("---")
+                        st.subheader("💾 Simpan atau Download")
+                        
+                        cols_save = st.columns(3)
+                        
+                        # Tombol Simpan ke Database
+                        if cols_save[0].button("💾 Simpan ke Database", use_container_width=True):
+                            try:
+                                # Simpan sebagai dokumen
+                                supabase.table("dokumen").insert({
+                                    "kelas_id": kelas_options[kelas_terpilih],
+                                    "judul": f"{jenis_dokumen} - {topik} - {date.today()}",
+                                    "jenis": jenis_dokumen,
+                                    "topik": topik,
+                                    "file_name": f"{jenis_dokumen}_{topik}.md",
+                                    "file_url": f"generated_{jenis_dokumen}_{topik}.txt",
+                                    "file_size": len(hasil),
+                                    "semester": 1
+                                }).execute()
+                                
+                                # Simpan riwayat
+                                supabase.table("riwayat_ai").insert({
+                                    "jenis": jenis_dokumen,
+                                    "prompt": prompt_text,
+                                    "hasil": hasil,
+                                    "kelas_id": kelas_options[kelas_terpilih]
+                                }).execute()
+                                
+                                clear_cache()
+                                st.success("✅ Dokumen berhasil disimpan ke database!")
+                                st.balloons()
+                            except Exception as e:
+                                st.error(f"❌ Gagal simpan: {str(e)}")
+                        
+                        # Tombol Download
+                        if cols_save[1].button("📥 Download", use_container_width=True):
+                            st.download_button(
+                                label="⬇️ Klik untuk Download",
+                                data=hasil,
+                                file_name=f"{jenis_dokumen}_{topik}_{date.today()}.md",
+                                mime="text/markdown",
+                                use_container_width=True
+                            )
+                        
+                        # Tombol Copy
+                        if cols_save[2].button("📋 Copy", use_container_width=True):
+                            st.code(hasil, language="markdown")
+                            st.info("✅ Teks sudah siap di-copy!")
+                            
+                    except Exception as e:
+                        st.error(f"❌ Gagal generate: {str(e)}")
+                        st.info("💡 Pastikan API Key benar dan model tersedia")
 
 # ============ HALAMAN: BANK SOAL & MATERI ============
 def page_bank_soal():
