@@ -1160,20 +1160,6 @@ def page_dokumen():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
-    # ===== DEBUG: CEK SECRETS =====
-    st.write("### 🔍 Debug Secrets")
-    st.write("Keys yang tersedia di Secrets:", list(st.secrets.keys()))
-    
-    if "groq_api_key" in st.secrets:
-        st.success("✅ 'groq_api_key' DITEMUKAN di Secrets!")
-        st.write("Panjang key:", len(st.secrets["groq_api_key"]), "karakter")
-    else:
-        st.error("❌ 'groq_api_key' TIDAK DITEMUKAN di Secrets!")
-        st.write("Keys yang tersedia:", list(st.secrets.keys()))
-    
-    st.markdown("---")
-    # ... lanjut ke kode selanjutnya ...
-    
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas. Silahkan tambah kelas di menu Pengaturan.")
@@ -1338,28 +1324,27 @@ def page_dokumen():
         else:
             st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
     
-# ===== TAB 3: GENERATE AI =====
-with tab3:
-    st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
-    st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
-    
-    # ===== AMBIL API KEY (SENYAP) =====
-    try:
-        groq_api_key = st.secrets["groq_api_key"]
-    except:
-        groq_api_key = st.text_input(
-            "🔑 Groq API Key",
-            type="password",
-            placeholder="Masukkan API Key Groq Anda..."
-        )
-        if not groq_api_key:
-            st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
-            st.caption("📌 Dapatkan gratis di [console.groq.com/keys](https://console.groq.com/keys)")
-            return
+    # ===== TAB 3: GENERATE AI =====
+    with tab3:
+        st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
+        st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
         
-        # Tampilkan status
-        if groq_api_key:
-            st.info("🔒 API Key terdeteksi! (tersembunyi untuk keamanan)")
+        # ===== AMBIL API KEY (TANPA DEBUG) =====
+        try:
+            groq_api_key = st.secrets["groq_api_key"]
+        except:
+            groq_api_key = st.text_input(
+                "🔑 Groq API Key",
+                type="password",
+                help="Dapatkan gratis di console.groq.com/keys",
+                placeholder="Masukkan API Key Groq Anda...",
+                key="groq_dokumen_key"
+            )
+            
+            if not groq_api_key:
+                st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
+                st.caption("📌 Belum punya? Daftar gratis di [console.groq.com/keys](https://console.groq.com/keys)")
+                return  # <-- Masih di dalam fungsi page_dokumen()
         
         # Form Generate
         with st.form("form_generate_ai"):
