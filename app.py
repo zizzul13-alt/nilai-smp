@@ -214,6 +214,64 @@ def upload_file_to_supabase(file_bytes, file_name):
         st.error(f"❌ Gagal upload file: {str(e)}")
         return None
 
+# ============ FUNGSI GENERATE JADWAL ============
+def generate_jadwal_semester(kelas_id, hari, jam, topik_awal, bab_awal, semester, tahun_ajaran, jumlah_minggu=16):
+    """
+    Generate jadwal otomatis untuk 1 semester
+    """
+    try:
+        # Mapping hari ke angka (untuk urutan)
+        hari_map = {
+            "Senin": 0, "Selasa": 1, "Rabu": 2, "Kamis": 3, 
+            "Jumat": 4, "Sabtu": 5, "Minggu": 6
+        }
+        
+        # Daftar topik untuk 16 minggu (sesuaikan dengan mata pelajaran Anda)
+        topik_list = [
+            f"{topik_awal} - Bab {bab_awal}",
+            f"{topik_awal} - Bab {bab_awal + 1}",
+            f"{topik_awal} - Bab {bab_awal + 2}",
+            f"{topik_awal} - Bab {bab_awal + 3}",
+            f"Review & Latihan Soal",
+            f"UH {topik_awal}",
+            f"{topik_awal} - Bab {bab_awal + 4}",
+            f"{topik_awal} - Bab {bab_awal + 5}",
+            f"{topik_awal} - Bab {bab_awal + 6}",
+            f"Review & Latihan Soal",
+            f"UH {topik_awal}",
+            f"UTS {topik_awal}",
+            f"{topik_awal} - Bab {bab_awal + 7}",
+            f"{topik_awal} - Bab {bab_awal + 8}",
+            f"Review & UAS",
+            f"UAS {topik_awal}"
+        ]
+        
+        # Jika hanya 16 minggu, potong
+        if len(topik_list) > jumlah_minggu:
+            topik_list = topik_list[:jumlah_minggu]
+        
+        # Generate jadwal
+        jadwal_insert = []
+        for minggu in range(1, jumlah_minggu + 1):
+            # Topik untuk minggu ini
+            topik = topik_list[minggu - 1] if minggu - 1 < len(topik_list) else f"Bab {bab_awal + minggu - 1}"
+            
+            jadwal_insert.append({
+                "kelas_id": kelas_id,
+                "hari": hari,
+                "jam": str(jam),
+                "topik": topik,
+                "bab": f"Bab {bab_awal + minggu - 1}",
+                "minggu_ke": minggu,
+                "semester": semester,
+                "tahun_ajaran": tahun_ajaran,
+                "is_generated": True
+            })
+        
+        return jadwal_insert
+    except Exception as e:
+        st.error(f"Error generate jadwal: {str(e)}")
+        return None
 # ============ FUNGSI UTILITY ============
 def hari_ke_angka(hari):
     hari_map = {
@@ -221,6 +279,12 @@ def hari_ke_angka(hari):
         "Jumat": 4, "Sabtu": 5, "Minggu": 6
     }
     return hari_map.get(hari, 0)
+
+# Tambahkan fungsi ini untuk jam
+def jam_ke_string(jam):
+    if isinstance(jam, str):
+        return jam
+    return jam.strftime("%H:%M")
 
 # ============ SIDEBAR NAVIGASI ============
 st.sidebar.title("📚 Menu Guru")
@@ -499,7 +563,7 @@ def page_lihat_nilai():
         except Exception as e:
             st.error(f"❌ Gagal export: {str(e)}")
 
-# ============ HALAMAN: KALENDER & JADWAL ============
+# ============ HALAMAN: KALENDER & JADWAL (VERSI BARU) ============
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
     
@@ -510,14 +574,74 @@ def page_jadwal():
     
     kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
     
-    with st.expander("➕ Tambah Jadwal Baru", expanded=False):
+    # === TABS ===
+    tab1, tab2, tab3 = st.tabs(["📋 Lihat Jadwal", "➕ Tambah Manual", "⚡ Generate Semester"])
+    
+    # === TAB 1: LIHAT JADWAL ===
+    with tab1:
+        st.subheader("📋 Jadwal Mengajar")
+        
+        cols = st.columns(3)
+        kelas_lihat = cols[0].selectbox(
+            "Pilih Kelas", 
+            ["Semua Kelas"] + list(kelas_options.keys())
+        )
+        filter_semester = cols[1].selectbox(
+            "Filter Semester",
+            ["Semua", 1, 2]
+        )
+        filter_minggu = cols[2].selectbox(
+            "Filter Minggu",
+            ["Semua"] + [f"Minggu {i}" for i in range(1, 17)]
+        )
+        
+        jadwal = []
+        if kelas_lihat == "Semua Kelas":
+            for k in kelas:
+                j = get_jadwal(k['id'])
+                for item in j:
+                    item['nama_kelas'] = k['nama_kelas']
+                jadwal.extend(j)
+        else:
+            jadwal = get_jadwal(kelas_options[kelas_lihat])
+            for item in jadwal:
+                item['nama_kelas'] = kelas_lihat
+        
+        # Filter
+        if filter_semester != "Semua":
+            jadwal = [j for j in jadwal if j.get('semester', 1) == filter_semester]
+        if filter_minggu != "Semua":
+            minggu_ke = int(filter_minggu.split()[1])
+            jadwal = [j for j in jadwal if j.get('minggu_ke', 0) == minggu_ke]
+        
+        if jadwal:
+            df = pd.DataFrame(jadwal)
+            df['hari_angka'] = df['hari'].apply(hari_ke_angka)
+            df['jam_time'] = pd.to_datetime(df['jam'])
+            df = df.sort_values(['hari_angka', 'jam_time'])
+            
+            df_display = df[['nama_kelas', 'hari', 'jam', 'topik', 'bab', 'minggu_ke', 'semester']]
+            df_display.columns = ['Kelas', 'Hari', 'Jam', 'Topik', 'Bab', 'Minggu ke-', 'Semester']
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+            
+            # Tampilkan info jumlah jadwal
+            st.info(f"📊 Total {len(jadwal)} jadwal")
+        else:
+            st.info("Belum ada jadwal untuk kelas ini.")
+    
+    # === TAB 2: TAMBAH MANUAL ===
+    with tab2:
+        st.subheader("➕ Tambah Jadwal Manual")
+        
         with st.form("form_jadwal"):
             cols = st.columns(3)
             kelas_terpilih = cols[0].selectbox("Pilih Kelas", list(kelas_options.keys()))
             hari = cols[0].selectbox("Hari", ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"])
             jam = cols[1].time_input("Jam")
-            topik = cols[1].text_input("Topik")
+            semester = cols[1].selectbox("Semester", [1, 2])
+            topik = cols[2].text_input("Topik")
             bab = cols[2].text_input("Bab")
+            minggu_ke = cols[2].number_input("Minggu ke-", min_value=1, max_value=20, value=1)
             
             submit = st.form_submit_button("Simpan Jadwal")
             
@@ -528,7 +652,11 @@ def page_jadwal():
                         "hari": hari,
                         "jam": str(jam),
                         "topik": topik,
-                        "bab": bab
+                        "bab": bab,
+                        "minggu_ke": minggu_ke,
+                        "semester": semester,
+                        "tahun_ajaran": str(date.today().year),
+                        "is_generated": False
                     }).execute()
                     clear_cache()
                     st.success("✅ Jadwal berhasil ditambahkan!")
@@ -536,32 +664,67 @@ def page_jadwal():
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
     
-    st.markdown("---")
-    kelas_lihat = st.selectbox("Lihat Jadwal Kelas", ["Semua Kelas"] + list(kelas_options.keys()))
-    
-    jadwal = []
-    if kelas_lihat == "Semua Kelas":
-        for k in kelas:
-            j = get_jadwal(k['id'])
-            for item in j:
-                item['nama_kelas'] = k['nama_kelas']
-            jadwal.extend(j)
-    else:
-        jadwal = get_jadwal(kelas_options[kelas_lihat])
-        for item in jadwal:
-            item['nama_kelas'] = kelas_lihat
-    
-    if jadwal:
-        df = pd.DataFrame(jadwal)
-        df['hari_angka'] = df['hari'].apply(hari_ke_angka)
-        df['jam_time'] = pd.to_datetime(df['jam'])
-        df = df.sort_values(['hari_angka', 'jam_time'])
+    # === TAB 3: GENERATE SEMESTER ===
+    with tab3:
+        st.subheader("⚡ Generate Jadwal 1 Semester")
+        st.info("💡 Fitur ini akan membuat jadwal otomatis untuk 16 minggu (1 semester)")
         
-        df_display = df[['nama_kelas', 'hari', 'jam', 'topik', 'bab']]
-        df_display.columns = ['Kelas', 'Hari', 'Jam', 'Topik', 'Bab']
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-    else:
-        st.info("Belum ada jadwal untuk kelas ini.")
+        with st.form("form_generate"):
+            cols = st.columns(2)
+            kelas_gen = cols[0].selectbox("Kelas", list(kelas_options.keys()))
+            hari_gen = cols[0].selectbox("Hari", ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"])
+            jam_gen = cols[1].time_input("Jam Mulai", value=datetime.strptime("07:30", "%H:%M").time())
+            semester_gen = cols[1].selectbox("Semester", [1, 2])
+            
+            st.markdown("---")
+            st.subheader("📝 Setting Topik & Bab")
+            
+            cols2 = st.columns(2)
+            topik_awal = cols2[0].text_input("Topik Awal", value="Matematika")
+            bab_awal = cols2[1].number_input("Bab Awal", min_value=1, value=1)
+            
+            jumlah_minggu = st.slider("Jumlah Minggu", min_value=12, max_value=20, value=16)
+            
+            st.warning("⚠️ Periksa kembali data di atas. Jadwal yang sudah ada akan dihapus dan diganti!")
+            
+            submit_gen = st.form_submit_button("🚀 Generate Jadwal Semester", type="primary")
+            
+            if submit_gen:
+                try:
+                    kelas_id = kelas_options[kelas_gen]
+                    tahun_ajaran = f"{date.today().year}/{date.today().year + 1}"
+                    
+                    # Hapus jadwal lama untuk kelas & semester ini (yang digenerate)
+                    jadwal_lama = get_jadwal(kelas_id)
+                    for j in jadwal_lama:
+                        if j.get('is_generated', False) and j.get('semester') == semester_gen:
+                            supabase.table("jadwal").delete().eq("id", j['id']).execute()
+                    
+                    # Generate jadwal baru
+                    jadwal_baru = generate_jadwal_semester(
+                        kelas_id,
+                        hari_gen,
+                        jam_gen,
+                        topik_awal,
+                        bab_awal,
+                        semester_gen,
+                        tahun_ajaran,
+                        jumlah_minggu
+                    )
+                    
+                    if jadwal_baru:
+                        # Insert semua jadwal
+                        for j in jadwal_baru:
+                            supabase.table("jadwal").insert(j).execute()
+                        
+                        clear_cache()
+                        st.success(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
+                        st.balloons()
+                        st.info(f"📅 Semester {semester_gen} | {tahun_ajaran}")
+                        st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Gagal generate: {str(e)}")
 
 # ============ HALAMAN: BANK SOAL & MATERI ============
 def page_bank_soal():
