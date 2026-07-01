@@ -8,7 +8,7 @@ import re
 import io
 from PIL import Image
 import PyPDF2
-import magic
+import filetype
 
 # ============ KONFIGURASI ============
 st.set_page_config(
@@ -89,20 +89,39 @@ def clear_cache():
     st.cache_data.clear()
 
 # ============ FUNGSI KOMPRES FILE ============
+# ============ FUNGSI KOMPRES FILE (TANPA MAGIC) ============
 def compress_file(file_bytes, file_name):
     """
     Kompres file sebelum upload ke Supabase
     """
     try:
-        # Deteksi tipe file
-        file_type = magic.from_buffer(file_bytes, mime=True)
+        # Deteksi tipe file menggunakan filetype
+        kind = filetype.guess(file_bytes)
+        
+        if kind is None:
+            # Jika tidak terdeteksi, coba dari ekstensi
+            ext = file_name.split('.')[-1].lower()
+            if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp']:
+                file_type = 'image'
+            elif ext == 'pdf':
+                file_type = 'application/pdf'
+            else:
+                file_type = 'other'
+        else:
+            mime = kind.mime
+            if mime.startswith('image/'):
+                file_type = 'image'
+            elif mime == 'application/pdf':
+                file_type = 'application/pdf'
+            else:
+                file_type = 'other'
         
         # Jika file kecil (< 10 MB), tidak perlu kompres
         if len(file_bytes) < 10 * 1024 * 1024:
             return file_bytes, file_name
         
         # === KOMPRES GAMBAR ===
-        if file_type.startswith('image/'):
+        if file_type == 'image':
             try:
                 # Buka gambar
                 image = Image.open(io.BytesIO(file_bytes))
@@ -114,7 +133,7 @@ def compress_file(file_bytes, file_name):
                 
                 # Simpan dengan kualitas 75%
                 output = io.BytesIO()
-                if file_type == 'image/png':
+                if image.format == 'PNG':
                     image.save(output, format='PNG', optimize=True)
                 else:
                     image.save(output, format='JPEG', quality=75, optimize=True)
@@ -124,6 +143,9 @@ def compress_file(file_bytes, file_name):
                 # Jika masih > 50 MB, kompres lebih agresif
                 if len(compressed) > 50 * 1024 * 1024:
                     output = io.BytesIO()
+                    # Konversi ke JPEG dengan kualitas 50
+                    if image.mode in ('RGBA', 'LA', 'P'):
+                        image = image.convert('RGB')
                     image.save(output, format='JPEG', quality=50, optimize=True)
                     compressed = output.getvalue()
                 
