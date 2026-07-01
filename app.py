@@ -7,12 +7,27 @@ from io import BytesIO
 import re
 
 # ============ KONFIGURASI ============
+# Tambahkan tema custom di awal app.py
 st.set_page_config(
     page_title="Asisten Pengajar SMP",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Tambahkan CSS custom
+st.markdown("""
+<style>
+    .stButton > button {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 8px;
+    }
+    .css-1d391kg {
+        background-color: #f0f2f6;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ============ INISIALISASI SUPABASE ============
 @st.cache_resource
