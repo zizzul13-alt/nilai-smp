@@ -1160,6 +1160,20 @@ def page_dokumen():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
+    # ===== DEBUG: CEK SECRETS =====
+    st.write("### 🔍 Debug Secrets")
+    st.write("Keys yang tersedia di Secrets:", list(st.secrets.keys()))
+    
+    if "groq_api_key" in st.secrets:
+        st.success("✅ 'groq_api_key' DITEMUKAN di Secrets!")
+        st.write("Panjang key:", len(st.secrets["groq_api_key"]), "karakter")
+    else:
+        st.error("❌ 'groq_api_key' TIDAK DITEMUKAN di Secrets!")
+        st.write("Keys yang tersedia:", list(st.secrets.keys()))
+    
+    st.markdown("---")
+    # ... lanjut ke kode selanjutnya ...
+    
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas. Silahkan tambah kelas di menu Pengaturan.")
