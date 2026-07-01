@@ -14,9 +14,91 @@ import filetype
 st.set_page_config(
     page_title="Asisten Pengajar SMP",
     page_icon="📚",
-    layout="wide",
+    layout="wide",  # Bisa ganti ke "centered" kalau mau
     initial_sidebar_state="expanded"
 )
+
+# ============ CSS KHUSUS HP ============
+st.markdown("""
+<style>
+    /* Perbaikan tampilan HP */
+    @media only screen and (max-width: 768px) {
+        .stApp {
+            font-size: 16px !important;
+        }
+        h1 {
+            font-size: 24px !important;
+        }
+        h2 {
+            font-size: 20px !important;
+        }
+        h3 {
+            font-size: 18px !important;
+        }
+        .stButton button {
+            font-size: 16px !important;
+            padding: 12px 24px !important;
+            width: 100% !important;
+        }
+        .stTextInput input, 
+        .stSelectbox select,
+        .stNumberInput input {
+            font-size: 16px !important;
+            padding: 12px !important;
+        }
+        .stTextArea textarea {
+            font-size: 16px !important;
+            padding: 12px !important;
+        }
+        .stDataFrame {
+            font-size: 14px !important;
+        }
+        .stDataFrame table {
+            font-size: 14px !important;
+        }
+        .stMetric {
+            font-size: 18px !important;
+        }
+        .stRadio label {
+            font-size: 16px !important;
+            padding: 8px !important;
+        }
+        .stTabs button {
+            font-size: 14px !important;
+            padding: 10px 16px !important;
+        }
+        /* Sidebar lebih lebar di HP */
+        .css-1d391kg {
+            width: 280px !important;
+        }
+    }
+    @media only screen and (max-width: 480px) {
+        .stApp {
+            font-size: 14px !important;
+        }
+        h1 {
+            font-size: 20px !important;
+        }
+        h2 {
+            font-size: 17px !important;
+        }
+        .stButton button {
+            font-size: 14px !important;
+            padding: 10px 16px !important;
+        }
+        .stDataFrame {
+            font-size: 12px !important;
+        }
+    }
+    /* Tampilan lebih rapi */
+    .stAlert {
+        font-size: 14px !important;
+    }
+    .stSuccess {
+        font-size: 14px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ============ INISIALISASI SUPABASE ============
 @st.cache_resource
