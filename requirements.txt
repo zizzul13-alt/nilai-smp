@@ -4,6 +4,6 @@ postgrest-py==0.16.0
 openpyxl==3.1.2
 pandas==2.0.3
 python-dotenv==1.0.0
-Pillow==10.1.0        # Untuk kompres gambar
-PyPDF2==3.0.1         # Untuk kompres PDF
-python-magic==0.4.27  # Deteksi tipe file
+Pillow==10.1.0
+PyPDF2==3.0.1
+python-magic==0.4.27
