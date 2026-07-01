@@ -1156,19 +1156,187 @@ def page_dokumen():
         else:
             st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
     
-# ===== TAB 3: GENERATE AI =====
-with tab3:
-    st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
-    st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
-    st.info("🎯 **Gratis!** Menggunakan Groq AI - Cepat & Tanpa biaya")
+# ============ HALAMAN: DOKUMEN PEMBELAJARAN ============
+def page_dokumen():
+    st.title("📁 Dokumen Pembelajaran")
     
-    # ===== AMBIL API KEY DARI SECRETS =====
+    kelas = get_kelas()
+    if not kelas:
+        st.warning("Belum ada kelas. Silahkan tambah kelas di menu Pengaturan.")
+        return
+    
+    kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
+    
+    # === 3 TAB ===
+    tab1, tab2, tab3 = st.tabs([
+        "📤 Upload Dokumen", 
+        "📂 Lihat Dokumen", 
+        "🤖 Generate AI"
+    ])
+    
+    # ===== TAB 1: UPLOAD DOKUMEN =====
+    with tab1:
+        st.subheader("Upload Dokumen Pembelajaran")
+        
+        with st.form("form_upload_dokumen"):
+            cols = st.columns(2)
+            
+            kelas_terpilih = cols[0].selectbox("Kelas", list(kelas_options.keys()))
+            jenis = cols[0].selectbox(
+                "Jenis Dokumen",
+                ["RPP", "Modul Ajar", "LKPD", "Materi"]
+            )
+            semester = cols[1].selectbox("Semester", [1, 2])
+            judul = cols[1].text_input("Judul Dokumen")
+            
+            topik = st.text_input("Topik")
+            bab = st.text_input("Bab")
+            
+            uploaded_file = st.file_uploader(
+                "Pilih File (PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, JPG, PNG)",
+                type=['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png']
+            )
+            
+            if uploaded_file:
+                file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
+                st.info(f"📊 Ukuran file: {file_size_mb:.2f} MB")
+                if file_size_mb > 50:
+                    st.warning("⚠️ File ini akan dikompres otomatis sebelum upload!")
+            
+            submit = st.form_submit_button("📤 Upload Dokumen")
+            
+            if submit:
+                if not uploaded_file:
+                    st.error("❌ Silakan pilih file terlebih dahulu!")
+                elif not judul:
+                    st.error("❌ Judul dokumen wajib diisi!")
+                else:
+                    try:
+                        file_bytes = uploaded_file.read()
+                        file_name = uploaded_file.name
+                        
+                        with st.spinner("⏳ Mengompres file..."):
+                            compressed_bytes, new_name = compress_file(file_bytes, file_name)
+                        
+                        if compressed_bytes is None:
+                            st.error("❌ File terlalu besar dan tidak bisa dikompres.")
+                            return
+                        
+                        if len(compressed_bytes) > 50 * 1024 * 1024:
+                            st.error(f"❌ File setelah kompres masih {len(compressed_bytes)/1024/1024:.1f} MB > 50 MB.")
+                            return
+                        
+                        with st.spinner("⏳ Mengupload file..."):
+                            file_url = upload_file_to_supabase(compressed_bytes, new_name)
+                        
+                        if file_url:
+                            supabase.table("dokumen").insert({
+                                "kelas_id": kelas_options[kelas_terpilih],
+                                "judul": judul,
+                                "jenis": jenis,
+                                "topik": topik if topik else None,
+                                "bab": bab if bab else None,
+                                "file_name": new_name,
+                                "file_url": file_url,
+                                "file_size": len(compressed_bytes),
+                                "semester": semester
+                            }).execute()
+                            
+                            clear_cache()
+                            
+                            original_size = len(file_bytes) / 1024 / 1024
+                            compressed_size = len(compressed_bytes) / 1024 / 1024
+                            saving = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
+                            
+                            st.success(f"✅ Dokumen '{judul}' berhasil diupload!")
+                            st.info(f"📊 Ukuran: {original_size:.1f} MB → {compressed_size:.1f} MB (hemat {saving:.0f}%)")
+                            st.balloons()
+                            
+                    except Exception as e:
+                        st.error(f"❌ Gagal upload: {str(e)}")
+    
+    # ===== TAB 2: LIHAT DOKUMEN =====
+    with tab2:
+        st.subheader("Daftar Dokumen")
+        
+        cols = st.columns(3)
+        filter_kelas = cols[0].selectbox(
+            "Filter Kelas", 
+            ["Semua"] + list(kelas_options.keys())
+        )
+        filter_jenis = cols[1].selectbox(
+            "Filter Jenis",
+            ["Semua", "RPP", "Modul Ajar", "LKPD", "Materi"]
+        )
+        filter_semester = cols[2].selectbox(
+            "Filter Semester",
+            ["Semua", 1, 2]
+        )
+        
+        dokumen = []
+        if filter_kelas == "Semua":
+            for k in kelas:
+                dokumen.extend(get_dokumen(k['id']))
+        else:
+            dokumen = get_dokumen(kelas_options[filter_kelas])
+        
+        if filter_jenis != "Semua":
+            dokumen = [d for d in dokumen if d['jenis'] == filter_jenis]
+        if filter_semester != "Semua":
+            dokumen = [d for d in dokumen if d.get('semester') == filter_semester]
+        
+        if dokumen:
+            for d in dokumen:
+                with st.container():
+                    cols = st.columns([2, 1, 1, 0.5])
+                    
+                    kelas_nama = next((k['nama_kelas'] for k in kelas if k['id'] == d['kelas_id']), "Unknown")
+                    
+                    cols[0].write(f"**{d['judul']}**")
+                    cols[0].caption(f"📂 {d['jenis']} | 📚 {kelas_nama} | Semester {d.get('semester', 1)}")
+                    if d.get('topik'):
+                        cols[0].caption(f"Topik: {d['topik']}")
+                    
+                    file_size_mb = d.get('file_size', 0) / (1024 * 1024)
+                    cols[0].caption(f"📊 {file_size_mb:.1f} MB")
+                    
+                    if cols[1].button("📥 Download", key=f"download_{d['id']}"):
+                        try:
+                            st.markdown(
+                                f'<a href="{d["file_url"]}" download="{d["file_name"]}" target="_blank">⬇️ Klik untuk Download</a>',
+                                unsafe_allow_html=True
+                            )
+                        except Exception as e:
+                            st.error(f"Gagal download: {str(e)}")
+                    
+                    if cols[3].button("🗑️", key=f"del_doc_{d['id']}"):
+                        st.warning(f"⚠️ Yakin hapus dokumen '{d['judul']}'?")
+                        if st.button(f"✅ Ya, Hapus!", key=f"confirm_del_doc_{d['id']}"):
+                            try:
+                                supabase.table("dokumen").delete().eq("id", d['id']).execute()
+                                clear_cache()
+                                st.success(f"✅ Dokumen dihapus!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Gagal: {str(e)}")
+                    
+                    st.markdown("---")
+        else:
+            st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
+    
+    # ===== TAB 3: GENERATE AI =====
+    with tab3:
+        st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
+        st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
+        st.info("🎯 **Gratis!** Menggunakan Groq AI - Cepat & Tanpa biaya")
+        
+        # ===== AMBIL API KEY DARI SECRETS =====
         try:
             groq_api_key = st.secrets["groq_api_key"]
             st.success("✅ Groq API Key ditemukan di Secrets! Siap digunakan.")
         except:
             groq_api_key = st.text_input(
-                "🔑 Groq API Key", 
+                "🔑 Groq API Key",
                 type="password",
                 help="Dapatkan gratis di console.groq.com/keys",
                 placeholder="Masukkan API Key Groq Anda...",
@@ -1179,12 +1347,12 @@ with tab3:
                 st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
                 st.caption("📌 Belum punya? Daftar gratis di [console.groq.com/keys](https://console.groq.com/keys)")
                 st.info("💡 Simpan API Key di Streamlit Secrets agar tidak perlu input ulang!")
-                return  # <-- return di dalam fungsi, AMAN!    
-                
-    # Tampilkan status (tanpa menampilkan key)
-    if groq_api_key:
-        st.info("🔒 API Key terdeteksi! (tersembunyi untuk keamanan)")
-
+                return
+        
+        # Tampilkan status
+        if groq_api_key:
+            st.info("🔒 API Key terdeteksi! (tersembunyi untuk keamanan)")
+        
         # Form Generate
         with st.form("form_generate_ai"):
             cols = st.columns(2)
@@ -1194,16 +1362,16 @@ with tab3:
                 help="Pilih jenis perangkat pembelajaran yang ingin dibuat"
             )
             kelas_terpilih = cols[1].selectbox(
-                "📚 Kelas", 
+                "📚 Kelas",
                 list(kelas_options.keys())
             )
             
             mata_pelajaran = st.text_input(
-                "📖 Mata Pelajaran", 
+                "📖 Mata Pelajaran",
                 placeholder="Contoh: Matematika, IPA, Bahasa Indonesia"
             )
             topik = st.text_input(
-                "🎯 Topik/Materi", 
+                "🎯 Topik/Materi",
                 placeholder="Contoh: Bilangan Bulat, Sistem Peredaran Darah"
             )
             
@@ -1224,14 +1392,13 @@ with tab3:
             
             alokasi_waktu = st.number_input("⏱️ Alokasi Waktu (JP)", min_value=1, max_value=10, value=2)
             
-            # Pilihan model Groq
             model_groq = st.selectbox(
                 "🧠 Model AI",
                 ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
                 help="Llama 3.1 70B = terbaik, Mixtral = lebih kreatif"
             )
             
-            st.caption(f"📊 Estimasi token: ~500-1500 tokens per dokumen")
+            st.caption("📊 Estimasi token: ~500-1500 tokens per dokumen")
             
             generate_btn = st.form_submit_button("🚀 Generate Dokumen", type="primary", use_container_width=True)
         
@@ -1245,14 +1412,12 @@ with tab3:
                         from langchain_core.prompts import ChatPromptTemplate
                         from langchain_core.output_parsers import StrOutputParser
                         
-                        # Inisialisasi Groq
                         llm = ChatGroq(
                             model=model_groq,
                             temperature=0.7,
                             groq_api_key=groq_api_key
                         )
                         
-                        # Buat prompt
                         prompt_text = create_prompt_ai(
                             jenis_dokumen=jenis_dokumen,
                             mata_pelajaran=mata_pelajaran,
@@ -1263,7 +1428,6 @@ with tab3:
                             waktu=alokasi_waktu
                         )
                         
-                        # Panggil Groq
                         prompt_template = ChatPromptTemplate.from_messages([
                             ("system", f"Anda adalah guru profesional yang membuat {jenis_dokumen} berkualitas tinggi."),
                             ("user", "{input}")
@@ -1272,20 +1436,15 @@ with tab3:
                         chain = prompt_template | llm | StrOutputParser()
                         hasil = chain.invoke({"input": prompt_text})
                         
-                        # Tampilkan hasil
                         st.markdown("---")
                         st.subheader(f"📄 {jenis_dokumen} - {topik}")
-                        
-                        # Preview dalam markdown
                         st.markdown(hasil)
                         
-                        # Tombol Simpan & Download
                         st.markdown("---")
                         st.subheader("💾 Simpan atau Download")
                         
                         cols_save = st.columns(3)
                         
-                        # Tombol Simpan ke Database
                         if cols_save[0].button("💾 Simpan ke Database", use_container_width=True):
                             try:
                                 supabase.table("dokumen").insert({
@@ -1305,7 +1464,6 @@ with tab3:
                             except Exception as e:
                                 st.error(f"❌ Gagal simpan: {str(e)}")
                         
-                        # Tombol Download
                         if cols_save[1].button("📥 Download", use_container_width=True):
                             st.download_button(
                                 label="⬇️ Klik untuk Download",
@@ -1315,7 +1473,6 @@ with tab3:
                                 use_container_width=True
                             )
                         
-                        # Tombol Copy
                         if cols_save[2].button("📋 Copy ke Clipboard", use_container_width=True):
                             st.code(hasil, language="markdown")
                             st.info("✅ Teks sudah siap di-copy!")
