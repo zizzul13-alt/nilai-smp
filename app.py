@@ -1338,30 +1338,24 @@ def page_dokumen():
         else:
             st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
     
-    # ===== TAB 3: GENERATE AI =====
-    with tab3:
-        st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
-        st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
-        st.info("🎯 **Gratis!** Menggunakan Groq AI - Cepat & Tanpa biaya")
-        
-        # ===== AMBIL API KEY DARI SECRETS =====
-        try:
-            groq_api_key = st.secrets["groq_api_key"]
-            st.success("✅ Groq API Key ditemukan di Secrets! Siap digunakan.")
-        except:
-            groq_api_key = st.text_input(
-                "🔑 Groq API Key",
-                type="password",
-                help="Dapatkan gratis di console.groq.com/keys",
-                placeholder="Masukkan API Key Groq Anda...",
-                key="groq_dokumen_key"
-            )
-            
-            if not groq_api_key:
-                st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
-                st.caption("📌 Belum punya? Daftar gratis di [console.groq.com/keys](https://console.groq.com/keys)")
-                st.info("💡 Simpan API Key di Streamlit Secrets agar tidak perlu input ulang!")
-                return
+# ===== TAB 3: GENERATE AI =====
+with tab3:
+    st.subheader("🤖 Buat Perangkat Pembelajaran dengan AI")
+    st.caption("💡 Masukkan materi dan biarkan AI membuat RPP, Modul Ajar, atau LKPD secara otomatis!")
+    
+    # ===== AMBIL API KEY (SENYAP) =====
+    try:
+        groq_api_key = st.secrets["groq_api_key"]
+    except:
+        groq_api_key = st.text_input(
+            "🔑 Groq API Key",
+            type="password",
+            placeholder="Masukkan API Key Groq Anda..."
+        )
+        if not groq_api_key:
+            st.warning("⚠️ Masukkan Groq API Key terlebih dahulu!")
+            st.caption("📌 Dapatkan gratis di [console.groq.com/keys](https://console.groq.com/keys)")
+            return
         
         # Tampilkan status
         if groq_api_key:
