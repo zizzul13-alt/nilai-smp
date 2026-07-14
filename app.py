@@ -229,7 +229,6 @@ def compress_file(file_bytes, file_name):
                 # Jika masih > 50 MB, kompres lebih agresif
                 if len(compressed) > 50 * 1024 * 1024:
                     output = io.BytesIO()
-                    # Konversi ke JPEG dengan kualitas 50
                     if image.mode in ('RGBA', 'LA', 'P'):
                         image = image.convert('RGB')
                     image.save(output, format='JPEG', quality=50, optimize=True)
@@ -249,13 +248,14 @@ def compress_file(file_bytes, file_name):
         # === KOMPRES PDF ===
         elif file_type == 'application/pdf':
             try:
+                # Baca PDF
                 pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
                 pdf_writer = PyPDF2.PdfWriter()
                 
-                # Salin semua halaman dengan kompresi
-                for  in pdf_reader.s:
+                # ✅ PERBAIKAN: loop yang benar
+                for page in pdf_reader.pages:
                     try:
-                        .compress_content_streams()
+                        page.compress_content_streams()
                     except:
                         pass
                     pdf_writer.add_page(page)
