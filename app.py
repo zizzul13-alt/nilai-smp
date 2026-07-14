@@ -253,9 +253,9 @@ def compress_file(file_bytes, file_name):
                 pdf_writer = PyPDF2.PdfWriter()
                 
                 # Salin semua halaman dengan kompresi
-                for page in pdf_reader.pages:
+                for  in pdf_reader.s:
                     try:
-                        page.compress_content_streams()
+                        .compress_content_streams()
                     except:
                         pass
                     pdf_writer.add_page(page)
@@ -1529,7 +1529,6 @@ def page_pengaturan():
     with tab1:
         st.subheader("Kelola Kelas")
         
-        # Form Tambah Kelas (COMPACT)
         with st.form("form_kelas"):
             cols_form = st.columns([3, 1])
             nama_kelas = cols_form[0].text_input("Nama Kelas", placeholder="Contoh: 7A, 8B, 9C")
@@ -1544,161 +1543,180 @@ def page_pengaturan():
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
         
-        # ============ TAMPILAN KELAS - GRID TILES ============
+        # Tampilan kelas grid
         kelas = get_kelas()
         if kelas:
             st.markdown("---")
             st.subheader(f"📚 Daftar Kelas ({len(kelas)})")
             
-            # ==== BUAT HTML UNTUK TILES ====
-            html_tiles = """
-            <style>
-                .kelas-grid-container {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-                    gap: 12px;
-                    padding: 8px 0;
-                }
-                .kelas-tile {
-                    background: #f0f2f6;
-                    border-radius: 12px;
-                    padding: 16px 12px;
-                    text-align: center;
-                    transition: all 0.2s;
-                    border: 2px solid transparent;
-                    min-height: 90px;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
-                    align-items: center;
-                }
-                .kelas-tile:hover {
-                    transform: translateY(-3px);
-                    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-                    border-color: #4CAF50;
-                }
-                .kelas-tile .icon-kelas {
-                    font-size: 28px;
-                    margin-bottom: 2px;
-                }
-                .kelas-tile .nama-kelas {
-                    font-size: 18px;
-                    font-weight: 600;
-                    color: #1a1a2e;
-                }
-                .kelas-tile .jumlah-siswa {
-                    font-size: 12px;
-                    color: #666;
-                }
-                .kelas-tile:nth-child(6n+1) { background: #e3f2fd; }
-                .kelas-tile:nth-child(6n+2) { background: #e8f5e9; }
-                .kelas-tile:nth-child(6n+3) { background: #fff3e0; }
-                .kelas-tile:nth-child(6n+4) { background: #fce4ec; }
-                .kelas-tile:nth-child(6n+5) { background: #f3e5f5; }
-                .kelas-tile:nth-child(6n+6) { background: #e0f7fa; }
-                
-                @media only screen and (max-width: 768px) {
-                    .kelas-grid-container {
-                        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-                        gap: 8px;
-                    }
-                    .kelas-tile {
-                        padding: 12px 8px;
-                        min-height: 75px;
-                    }
-                    .kelas-tile .nama-kelas { font-size: 15px; }
-                    .kelas-tile .icon-kelas { font-size: 22px; }
-                }
-                @media only screen and (max-width: 480px) {
-                    .kelas-grid-container {
-                        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-                        gap: 6px;
-                    }
-                    .kelas-tile {
-                        padding: 10px 6px;
-                        min-height: 65px;
-                        border-radius: 8px;
-                    }
-                    .kelas-tile .nama-kelas { font-size: 13px; }
-                    .kelas-tile .jumlah-siswa { font-size: 10px; }
-                    .kelas-tile .icon-kelas { font-size: 18px; }
-                }
-            </style>
-            <div class="kelas-grid-container">
-            """
+            # Tampilkan kelas dalam grid sederhana
+            cols = st.columns(4)
+            for idx, k in enumerate(kelas):
+                col = cols[idx % 4]
+                with col:
+                    siswa_count = len(get_siswa(k['id']))
+                    st.markdown(f"""
+                    <div style="background:#f0f2f6; padding:12px; border-radius:10px; text-align:center; margin:4px;">
+                        <div style="font-size:24px;">📚</div>
+                        <div style="font-weight:bold; font-size:18px;">{k['nama_kelas']}</div>
+                        <div style="font-size:12px; color:#666;">{siswa_count} siswa</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
-            for k in kelas:
-                siswa_di_kelas = get_siswa(k['id'])
-                jumlah_siswa = len(siswa_di_kelas)
-                
-                # Ikon berdasarkan tingkat
-                icon = "📚"
-                if "7" in k['nama_kelas']:
-                    icon = "📘"
-                elif "8" in k['nama_kelas']:
-                    icon = "📗"
-                elif "9" in k['nama_kelas']:
-                    icon = "📕"
-                
-                html_tiles += f'''
-                <div class="kelas-tile">
-                    <div class="icon-kelas">{icon}</div>
-                    <div class="nama-kelas">{k["nama_kelas"]}</div>
-                    <div class="jumlah-siswa">👨‍🎓 {jumlah_siswa} siswa</div>
-                </div>
-                '''
-            
-            html_tiles += '</div>'
-            
-            # ==== TAMPILKAN DENGAN st.components.v1.html ====
-            st.components.v1.html(html_tiles, height=400, scrolling=True)
-            
-            # ============ TOMBOL HAPUS (Pakai Streamlit Native) ============
+            # Hapus kelas (dengan konfirmasi)
             st.markdown("---")
-            
             with st.expander("🗑️ Hapus Kelas", expanded=False):
-                st.caption("⚠️ Hapus kelas akan menghapus semua siswa dan data nilai di kelas tersebut!")
-                
-                cols_hapus = st.columns([2, 1])
-                kelas_to_delete = cols_hapus[0].selectbox(
+                kelas_to_delete = st.selectbox(
                     "Pilih kelas yang akan dihapus",
                     [k['nama_kelas'] for k in kelas],
                     key="delete_kelas_select"
                 )
-                
-                kelas_id_delete = next(k['id'] for k in kelas if k['nama_kelas'] == kelas_to_delete)
-                siswa_delete = get_siswa(kelas_id_delete)
-                cols_hapus[1].metric("Jumlah Siswa", len(siswa_delete))
-                
-                if st.button(f"🗑️ Hapus {kelas_to_delete}", type="primary", use_container_width=True):
+                st.warning(f"⚠️ Semua data siswa dan nilai di kelas ini akan ikut terhapus!")
+                if st.button(f"✅ Ya, Hapus {kelas_to_delete}!", type="primary"):
                     try:
-                        for s in siswa_delete:
+                        kelas_id = next(k['id'] for k in kelas if k['nama_kelas'] == kelas_to_delete)
+                        siswa = get_siswa(kelas_id)
+                        for s in siswa:
                             supabase.table("siswa").delete().eq("id", s['id']).execute()
-                        supabase.table("kelas").delete().eq("id", kelas_id_delete).execute()
+                        supabase.table("kelas").delete().eq("id", kelas_id).execute()
                         clear_cache()
                         st.success(f"✅ Kelas {kelas_to_delete} berhasil dihapus!")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"❌ Gagal hapus kelas: {str(e)}")
+                        st.error(f"❌ Gagal: {str(e)}")
+    
+    # TAB 2: Siswa
+    with tab2:
+        st.subheader("Kelola Siswa")
+        
+        kelas = get_kelas()
+        if not kelas:
+            st.warning("Tambahkan kelas terlebih dahulu.")
         else:
-            st.info("📭 Belum ada kelas. Tambahkan kelas pertama Anda!")
-
-# ============ ROUTING ============
-if menu == "🏠 Dashboard":
-    page_dashboard()
-elif menu == "📝 Input Nilai Rapel":
-    page_input_nilai()
-elif menu == "📊 Lihat & Export Nilai":
-    page_lihat_nilai()
-elif menu == "📅 Kalender & Jadwal":
-    page_jadwal()
-elif menu == "📖 Bank Soal & Materi":
-    page_bank_soal()
-elif menu == "📁 Dokumen Pembelajaran":
-    page_dokumen()
-elif menu == "⚙️ Pengaturan Kelas & Siswa":
-    page_pengaturan()
-
+            kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
+            kelas_terpilih = st.selectbox(
+                "Pilih Kelas", 
+                list(kelas_options.keys()),
+                key="select_kelas_siswa"
+            )
+            kelas_id = kelas_options[kelas_terpilih]
+            
+            # Tambah siswa
+            with st.form("form_siswa"):
+                metode = st.radio("Metode Tambah", ["Satuan", "Massal"], key="radio_siswa")
+                
+                if metode == "Satuan":
+                    nama = st.text_input("Nama Siswa", key="nama_siswa_satuan")
+                    submit = st.form_submit_button("➕ Tambah Siswa")
+                    
+                    if submit and nama:
+                        try:
+                            supabase.table("siswa").insert({
+                                "nama": nama,
+                                "kelas_id": kelas_id
+                            }).execute()
+                            clear_cache()
+                            st.success(f"✅ {nama} berhasil ditambahkan!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Gagal: {str(e)}")
+                else:
+                    daftar_nama = st.text_area(
+                        "Copy-paste daftar nama (satu per baris)",
+                        placeholder="Budi\nAni\nCitra\nDodi",
+                        key="daftar_nama_massal"
+                    )
+                    submit = st.form_submit_button("➕ Tambah Massal")
+                    
+                    if submit and daftar_nama:
+                        nama_list = [n.strip() for n in daftar_nama.split('\n') if n.strip()]
+                        try:
+                            for nama in nama_list:
+                                supabase.table("siswa").insert({
+                                    "nama": nama,
+                                    "kelas_id": kelas_id
+                                }).execute()
+                            clear_cache()
+                            st.success(f"✅ Berhasil menambahkan {len(nama_list)} siswa!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Gagal: {str(e)}")
+            
+            # Daftar siswa
+            siswa = get_siswa(kelas_id)
+            if siswa:
+                st.markdown("---")
+                st.subheader(f"Daftar Siswa Kelas {kelas_terpilih}")
+                
+                for s in siswa:
+                    cols = st.columns([3, 1])
+                    cols[0].write(f"👨‍🎓 {s['nama']}")
+                    if cols[1].button(f"🗑️", key=f"del_siswa_{s['id']}"):
+                        st.warning(f"⚠️ Yakin ingin menghapus siswa {s['nama']}?")
+                        if st.button(f"✅ Ya, Hapus!", key=f"confirm_del_siswa_{s['id']}"):
+                            try:
+                                supabase.table("siswa").delete().eq("id", s['id']).execute()
+                                clear_cache()
+                                st.success(f"✅ {s['nama']} berhasil dihapus!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Gagal: {str(e)}")
+    
+    # TAB 3: KKM
+    with tab3:
+        st.subheader("Setting KKM")
+        
+        kelas = get_kelas()
+        if not kelas:
+            st.warning("Tambahkan kelas terlebih dahulu.")
+        else:
+            kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
+            kelas_terpilih = st.selectbox(
+                "Pilih Kelas", 
+                list(kelas_options.keys()),
+                key="select_kelas_kkm"
+            )
+            kelas_id = kelas_options[kelas_terpilih]
+            
+            with st.form("form_kkm"):
+                st.write("Set KKM per kategori:")
+                
+                kategori_list = ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
+                kkm_values = {}
+                
+                cols = st.columns(2)
+                for i, kategori in enumerate(kategori_list):
+                    col = cols[i % 2]
+                    existing = get_kkm(kelas_id, kategori)
+                    default = existing[0]['kkm'] if existing else 75
+                    kkm_values[kategori] = col.number_input(
+                        kategori, 
+                        min_value=0, 
+                        max_value=100, 
+                        value=default,
+                        key=f"kkm_{kategori}_{kelas_id}"
+                    )
+                
+                submit = st.form_submit_button("💾 Simpan KKM")
+                
+                if submit:
+                    try:
+                        for kategori, nilai in kkm_values.items():
+                            existing = get_kkm(kelas_id, kategori)
+                            if existing:
+                                supabase.table("kkm").update({
+                                    "kkm": nilai
+                                }).eq("id", existing[0]['id']).execute()
+                            else:
+                                supabase.table("kkm").insert({
+                                    "kelas_id": kelas_id,
+                                    "kategori": kategori,
+                                    "kkm": nilai
+                                }).execute()
+                        clear_cache()
+                        st.success("✅ KKM berhasil disimpan!")
+                    except Exception as e:
+                        st.error(f"❌ Gagal: {str(e)}")
 # ============ FOOTER ============
 st.sidebar.markdown("---")
 st.sidebar.caption("Made with ❤️ untuk Guru SMP")
