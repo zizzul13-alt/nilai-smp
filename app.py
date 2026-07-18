@@ -1028,8 +1028,8 @@ def page_jadwal():
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
-    
-    # === TAB 3: GENERATE MANUAL ===
+    p
+        # === TAB 3: GENERATE MANUAL ===
     with tab3:
         st.subheader("⚡ Generate Jadwal 1 Semester")
         st.info("💡 Fitur ini akan membuat jadwal otomatis untuk 16 minggu (1 semester)")
@@ -1038,7 +1038,28 @@ def page_jadwal():
             cols = st.columns(2)
             kelas_gen = cols[0].selectbox("Kelas", list(kelas_options.keys()))
             hari_gen = cols[0].selectbox("Hari", ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"])
-            jam_gen = cols[1].time_input("Jam Mulai", value=datetime.strptime("07:30", "%H:%M").time())
+            
+            # ===== [UPDATE] PILIHAN JAM MANUAL DENGAN INTERVAL 5 MENIT =====
+            # Buat pilihan jam dari 00:00 sampai 23:55 dengan interval 5 menit
+            jam_options = []
+            for h in range(24):
+                for m in range(0, 60, 5):
+                    jam_options.append(f"{h:02d}:{m:02d}")
+            
+            # Pilihan jam default (07:30)
+            default_jam = "07:30"
+            default_index = jam_options.index(default_jam) if default_jam in jam_options else 0
+            
+            jam_pilihan = cols[1].selectbox(
+                "Jam Mulai (Format 24 jam)",
+                jam_options,
+                index=default_index,
+                help="Pilih jam mulai dengan interval 5 menit (00:00 - 23:55)"
+            )
+            
+            # Konversi string jam ke format time untuk disimpan
+            jam_gen = datetime.strptime(jam_pilihan, "%H:%M").time()
+            
             semester_gen = cols[1].selectbox("Semester", [1, 2])
             
             st.markdown("---")
@@ -1069,7 +1090,7 @@ def page_jadwal():
                     jadwal_baru = generate_jadwal_semester(
                         kelas_id,
                         hari_gen,
-                        jam_gen,
+                        jam_gen,  # <-- Menggunakan jam dari pilihan manual
                         topik_awal,
                         bab_awal,
                         semester_gen,
@@ -1083,12 +1104,13 @@ def page_jadwal():
                         
                         clear_cache()
                         st.success(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
+                        st.info(f"⏰ Jam mulai: {jam_pilihan} WIB")
                         st.balloons()
                         st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Gagal generate: {str(e)}")
-
+                    
 # ============ HALAMAN: BANK SOAL & MATERI ============
 def page_bank_soal():
     st.title("📖 Bank Soal & Materi")
