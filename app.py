@@ -6,7 +6,7 @@ import openpyxl
 from io import BytesIO
 import re
 import io
-from PIL import Image
+from PIL import Image 
 import PyPDF2
 import filetype
 
@@ -603,72 +603,128 @@ def page_input_nilai():
             })
         
         df_input = pd.DataFrame(data)
+        # ===== KODE BARU [UPDATE] =====
+        # [UPDATE] Tambahkan CSS di atas data editor
+        st.markdown("""
+        <style>
+            /* Perbesar area sentuh di data editor */
+            .stDataFrame {
+                font-size: 16px !important;
+            }
+            .stDataFrame input {
+                font-size: 18px !important;  /* Angka lebih besar */
+                padding: 12px !important;    /* Area sentuh lebih luas */
+                min-height: 44px !important; /* Tinggi minimal untuk jari */
+            }
+            .stDataFrame textarea {
+                font-size: 16px !important;
+                padding: 12px !important;
+                min-height: 44px !important;
+            }
+            @media only screen and (max-width: 768px) {
+                .stDataFrame {
+                    font-size: 14px !important;
+                }
+                .stDataFrame input {
+                    font-size: 16px !important;
+                    padding: 10px !important;
+                    min-height: 40px !important;
+                }
+                .stDataFrame .col-Nilai {
+                    min-width: 80px !important;
+                }
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # [UPDATE] Data Editor dengan pengaturan ramah sentuhan
         edited_df = st.data_editor(
             df_input,
             column_config={
-                "Nama": st.column_config.TextColumn("Nama Siswa", disabled=True),
+                "Nama": st.column_config.TextColumn(
+                    "Nama",
+                    disabled=True,
+                    width="medium"  # Lebih lebar untuk nama panjang
+                ),
                 "Nilai": st.column_config.NumberColumn(
                     "Nilai",
                     min_value=0,
                     max_value=100,
-                    step=0.5,
-                    format="%.1f"
+                    step=1,  # [UPDATE] Langkah 1 (bukan 0.5) lebih mudah di HP
+                    format="%.0f",
+                    width="small"
                 ),
-                "Catatan": st.column_config.TextColumn("Catatan"),
-                "Nilai Sebelumnya": st.column_config.TextColumn("Nilai Sebelumnya", disabled=True)
+                "Catatan": st.column_config.TextColumn(
+                    "Catatan",
+                    width="large"  # Lebar untuk catatan
+                ),
+                "Nilai Sebelumnya": st.column_config.TextColumn(
+                    "Nilai Sebelumnya",
+                    disabled=True,
+                    width="small"
+                )
             },
             hide_index=True,
-            use_container_width=True
+            use_container_width=True,
+            num_rows="fixed"  # Tidak bisa tambah/hapus baris
         )
+
+        # [UPDATE] Tambahkan panduan untuk HP di bawah form
+        st.caption("""
+        💡 **Tips input di HP:**
+        - 👆 Ketuk kolom Nilai untuk mengisi angka
+        - 📱 Rotasi HP ke **landscape** untuk tabel lebih lebar
+        - 👉 Geser tabel ke kiri/kanan untuk lihat semua kolom
+        """)
         
-        submit = st.form_submit_button("💾 Simpan Semua Nilai")
+                submit = st.form_submit_button("💾 Simpan Semua Nilai")
     
-    if submit:
-        if not topik:
-            st.error("❌ Topik wajib diisi!")
-        else:
-            try:
-                saved = 0
-                updated = 0
-                for idx, row in edited_df.iterrows():
-                    if row['Nilai'] > 0:
-                        # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
-                        existing = supabase.table("nilai").select("*")\
-                            .eq("siswa_id", siswa[idx]['id'])\
-                            .eq("kelas_id", kelas_id)\
-                            .eq("kategori", kategori)\
-                            .eq("topik", topik).execute()
+            if submit:
+                if not topik:
+                    st.error("❌ Topik wajib diisi!")
+                else:
+                    try:
+                        saved = 0
+                        updated = 0
+                        for idx, row in edited_df.iterrows():
+                            if row['Nilai'] > 0:
+                                # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                                existing = supabase.table("nilai").select("*")\
+                                    .eq("siswa_id", siswa[idx]['id'])\
+                                    .eq("kelas_id", kelas_id)\
+                                    .eq("kategori", kategori)\
+                                    .eq("topik", topik).execute()
                         
-                        if existing.data:
-                            # Update nilai yang sudah ada
-                            supabase.table("nilai").update({
-                                "nilai": row['Nilai'],
-                                "bab": bab,
-                                "tanggal": str(tanggal),
-                                "semester": semester,
-                                "catatan": row['Catatan'] if row['Catatan'] else None
-                            }).eq("id", existing.data[0]['id']).execute()
-                            updated += 1
-                        else:
-                            # Insert nilai baru
-                            supabase.table("nilai").insert({
-                                "siswa_id": siswa[idx]['id'],
-                                "kelas_id": kelas_id,
-                                "kategori": kategori,
-                                "nilai": row['Nilai'],
-                                "topik": topik,
-                                "bab": bab,
-                                "tanggal": str(tanggal),
-                                "semester": semester,
-                                "catatan": row['Catatan'] if row['Catatan'] else None
-                            }).execute()
-                            saved += 1
+                                if existing.data:
+                                    # Update nilai yang sudah ada
+                                    supabase.table("nilai").update({
+                                        "nilai": row['Nilai'],
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": row['Catatan'] if row['Catatan'] else None
+                                    }).eq("id", existing.data[0]['id']).execute()
+                                    updated += 1
+                                else:
+                                    # Insert nilai baru
+                                    supabase.table("nilai").insert({
+                                        "siswa_id": siswa[idx]['id'],
+                                        "kelas_id": kelas_id,
+                                        "kategori": kategori,
+                                        "nilai": row['Nilai'],
+                                        "topik": topik,
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": row['Catatan'] if row['Catatan'] else None
+                                    }).execute()
+                                    saved += 1
                 
-                clear_cache()
-                st.success(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
-                st.balloons()
-            except Exception as e:
-                st.error(f"❌ Gagal menyimpan: {str(e)}")
+                        clear_cache()
+                        st.success(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"❌ Gagal menyimpan: {str(e)}")
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
     st.title("📊 Lihat & Export Nilai")
