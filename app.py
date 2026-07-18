@@ -15,7 +15,7 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-# ============ CONFIGURATION ============
+# ============ KONFIGURASI ============
 st.set_page_config(
     page_title="Asisten Pengajar SMP",
     page_icon="📚",
@@ -23,9 +23,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============ INITIALIZE SESSION STATES ============
+# ============ INISIALISASI SESSION STATE ============
 def init_session_states():
-    # Jadwal states
+    # State untuk Jadwal
     if "hapus_id" not in st.session_state:
         st.session_state.hapus_id = None
     if "hapus_text" not in st.session_state:
@@ -35,7 +35,7 @@ def init_session_states():
     if "jadwal_error_msg" not in st.session_state:
         st.session_state.jadwal_error_msg = None
 
-    # Dokumen states
+    # State untuk Dokumen
     if "hapus_doc_id" not in st.session_state:
         st.session_state.hapus_doc_id = None
     if "hapus_doc_judul" not in st.session_state:
@@ -45,7 +45,7 @@ def init_session_states():
     if "doc_error_msg" not in st.session_state:
         st.session_state.doc_error_msg = None
 
-    # Siswa states
+    # State untuk Siswa
     if "hapus_siswa_id" not in st.session_state:
         st.session_state.hapus_siswa_id = None
     if "hapus_siswa_nama" not in st.session_state:
@@ -55,7 +55,7 @@ def init_session_states():
     if "siswa_error_msg" not in st.session_state:
         st.session_state.siswa_error_msg = None
 
-    # Bab/Generate states
+    # State untuk Bab/Generate
     if "daftar_bab" not in st.session_state:
         st.session_state.daftar_bab = [
             {"nama": "Bab 1 - Pengenalan", "durasi": 2},
@@ -1002,7 +1002,7 @@ def page_lihat_nilai():
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
     
-    # ===== CALLBACKS JADWAL =====
+    # ===== CALLBACK JADWAL =====
     def select_jadwal_to_delete(jadwal_id, text):
         st.session_state.hapus_id = jadwal_id
         st.session_state.hapus_text = text
@@ -1039,7 +1039,7 @@ def page_jadwal():
     with tab1:
         st.subheader("📋 Jadwal Mengajar")
         
-        # Display feedback messages if any
+        # Tampilkan pesan umpan balik jika ada
         if st.session_state.jadwal_success_msg:
             st.success(st.session_state.jadwal_success_msg)
             st.session_state.jadwal_success_msg = None
@@ -1451,7 +1451,7 @@ def page_bank_soal():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
-    # ===== CALLBACKS DOKUMEN =====
+    # ===== CALLBACK DOKUMEN =====
     def select_doc_to_delete(doc_id, judul):
         st.session_state.hapus_doc_id = doc_id
         st.session_state.hapus_doc_judul = judul
@@ -1568,7 +1568,7 @@ def page_dokumen():
     with tab2:
         st.subheader("Daftar Dokumen")
         
-        # Display feedback messages if any
+        # Tampilkan pesan umpan balik jika ada
         if st.session_state.doc_success_msg:
             st.success(st.session_state.doc_success_msg)
             st.session_state.doc_success_msg = None
@@ -1814,7 +1814,7 @@ def page_dokumen():
 def page_pengaturan():
     st.title("⚙️ Pengaturan Kelas & Siswa")
     
-    # ===== CALLBACKS SISWA =====
+    # ===== CALLBACK SISWA =====
     def select_siswa_to_delete(siswa_id, nama):
         st.session_state.hapus_siswa_id = siswa_id
         st.session_state.hapus_siswa_nama = nama
@@ -1905,7 +1905,7 @@ def page_pengaturan():
     with tab2:
         st.subheader("Kelola Siswa")
         
-        # Display feedback messages if any
+        # Tampilkan pesan umpan balik jika ada
         if st.session_state.siswa_success_msg:
             st.success(st.session_state.siswa_success_msg)
             st.session_state.siswa_success_msg = None
