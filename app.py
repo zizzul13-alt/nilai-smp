@@ -560,6 +560,7 @@ def tampilan_kartu(data_list, judul="Daftar"):
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
 # ============ HALAMAN: DASHBOARD ============
 def page_dashboard():
     st.title("🏠 Dashboard Guru")
@@ -807,6 +808,7 @@ def page_input_nilai():
                 st.balloons()
             except Exception as e:
                 st.error(f"❌ Gagal menyimpan: {str(e)}")
+                
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
     st.title("📊 Lihat & Export Nilai")
@@ -1028,7 +1030,7 @@ def page_jadwal():
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
-    p
+    
         # === TAB 3: GENERATE MANUAL ===
     with tab3:
         st.subheader("⚡ Generate Jadwal 1 Semester")
