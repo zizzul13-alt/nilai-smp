@@ -15,7 +15,7 @@ from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-# ============ KONFIGURASI ============
+# ============ CONFIGURATION ============
 st.set_page_config(
     page_title="Asisten Pengajar SMP",
     page_icon="📚",
@@ -23,7 +23,51 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============ CSS KHUSUS HP ============
+# ============ INITIALIZE SESSION STATES ============
+def init_session_states():
+    # Jadwal states
+    if "hapus_id" not in st.session_state:
+        st.session_state.hapus_id = None
+    if "hapus_text" not in st.session_state:
+        st.session_state.hapus_text = ""
+    if "jadwal_success_msg" not in st.session_state:
+        st.session_state.jadwal_success_msg = None
+    if "jadwal_error_msg" not in st.session_state:
+        st.session_state.jadwal_error_msg = None
+
+    # Dokumen states
+    if "hapus_doc_id" not in st.session_state:
+        st.session_state.hapus_doc_id = None
+    if "hapus_doc_judul" not in st.session_state:
+        st.session_state.hapus_doc_judul = ""
+    if "doc_success_msg" not in st.session_state:
+        st.session_state.doc_success_msg = None
+    if "doc_error_msg" not in st.session_state:
+        st.session_state.doc_error_msg = None
+
+    # Siswa states
+    if "hapus_siswa_id" not in st.session_state:
+        st.session_state.hapus_siswa_id = None
+    if "hapus_siswa_nama" not in st.session_state:
+        st.session_state.hapus_siswa_nama = ""
+    if "siswa_success_msg" not in st.session_state:
+        st.session_state.siswa_success_msg = None
+    if "siswa_error_msg" not in st.session_state:
+        st.session_state.siswa_error_msg = None
+
+    # Bab/Generate states
+    if "daftar_bab" not in st.session_state:
+        st.session_state.daftar_bab = [
+            {"nama": "Bab 1 - Pengenalan", "durasi": 2},
+            {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
+            {"nama": "Bab 3 - Review & UH", "durasi": 1},
+        ]
+    if "hapus_bab_check" not in st.session_state:
+        st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
+
+init_session_states()
+
+# ============ CSS KHUSUS HP & KUSTOMISASI GLOBAL ============
 st.markdown("""
 <style>
     /* Perbaikan tampilan HP */
@@ -102,11 +146,7 @@ st.markdown("""
     .stSuccess {
         font-size: 14px !important;
     }
-</style>
-""", unsafe_allow_html=True)
-# ===== CSS UNTUK TOMBOL DI HP =====
-st.markdown("""
-<style>
+
     /* Tombol lebih besar dan mudah diklik di HP */
     .stButton button {
         font-size: 16px !important;
@@ -143,11 +183,24 @@ st.markdown("""
 # ============ INISIALISASI SUPABASE ============
 @st.cache_resource
 def init_supabase():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+    try:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        return create_client(url, key)
+    except Exception as e:
+        return None
 
 supabase = init_supabase()
+
+if supabase is None:
+    st.error("⚠️ **Kredensial database (Supabase) belum diatur dengan benar!**")
+    st.info("Silakan buat atau lengkapi file konfigurasi `.streamlit/secrets.toml` Anda dengan format berikut:")
+    st.code("""
+[supabase]
+url = "https://your-project-url.supabase.co"
+key = "your-supabase-anon-key"
+    """, language="toml")
+    st.stop()
 
 # ============ FUNGSI DATABASE DENGAN CACHE ============
 @st.cache_data(ttl=300)
@@ -822,7 +875,7 @@ def page_input_nilai():
                             saved += 1
                 
                 clear_cache()
-                st.success(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
                 st.balloons()
             except Exception as e:
                 st.error(f"❌ Gagal menyimpan: {str(e)}")
@@ -949,16 +1002,6 @@ def page_lihat_nilai():
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
     
-    # ===== INISIALISASI SESSION STATE UNTUK JADWAL =====
-    if "hapus_id" not in st.session_state:
-        st.session_state.hapus_id = None
-    if "hapus_text" not in st.session_state:
-        st.session_state.hapus_text = ""
-    if "jadwal_success_msg" not in st.session_state:
-        st.session_state.jadwal_success_msg = None
-    if "jadwal_error_msg" not in st.session_state:
-        st.session_state.jadwal_error_msg = None
-
     # ===== CALLBACKS JADWAL =====
     def select_jadwal_to_delete(jadwal_id, text):
         st.session_state.hapus_id = jadwal_id
@@ -1169,7 +1212,7 @@ def page_jadwal():
                         "is_generated": False
                     }).execute()
                     clear_cache()
-                    st.success("✅ Jadwal berhasil ditambahkan!")
+                    st.toast("✅ Jadwal berhasil ditambahkan!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
@@ -1179,17 +1222,10 @@ def page_jadwal():
         st.subheader("⚡ Generate Jadwal Berdasarkan Bab")
         st.info("💡 Tentukan durasi setiap bab (berapa minggu) untuk membuat jadwal fleksibel")
         
-        # ===== INISIALISASI SESSION STATE =====
-        if "daftar_bab" not in st.session_state:
-            st.session_state.daftar_bab = [
-                {"nama": "Bab 1 - Pengenalan", "durasi": 2},
-                {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
-                {"nama": "Bab 3 - Review & UH", "durasi": 1},
-            ]
-        
-        if "hapus_bab_check" not in st.session_state:
+        # Pastikan ukuran hapus_bab_check sesuai dengan daftar_bab
+        if len(st.session_state.hapus_bab_check) != len(st.session_state.daftar_bab):
             st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
-        
+
         # ===== FORM UTAMA (SEMUA DALAM SATU FORM) =====
         with st.form("form_generate"):
             cols = st.columns(2)
@@ -1306,8 +1342,7 @@ def page_jadwal():
                             supabase.table("jadwal").insert(j).execute()
                         
                         clear_cache()
-                        st.success(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
-                        st.info(f"📚 {len(st.session_state.daftar_bab)} bab | 📅 {total_minggu} minggu | ⏰ {jam_pilihan} WIB")
+                        st.toast(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
                         st.balloons()
                         st.rerun()
                     
@@ -1372,7 +1407,7 @@ def page_bank_soal():
                             "tag": tag
                         }).execute()
                         clear_cache()
-                        st.success("✅ Soal berhasil disimpan!")
+                        st.toast("✅ Soal berhasil disimpan!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Gagal: {str(e)}")
@@ -1416,16 +1451,6 @@ def page_bank_soal():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
-    # ===== INISIALISASI SESSION STATE UNTUK DOKUMEN =====
-    if "hapus_doc_id" not in st.session_state:
-        st.session_state.hapus_doc_id = None
-    if "hapus_doc_judul" not in st.session_state:
-        st.session_state.hapus_doc_judul = ""
-    if "doc_success_msg" not in st.session_state:
-        st.session_state.doc_success_msg = None
-    if "doc_error_msg" not in st.session_state:
-        st.session_state.doc_error_msg = None
-
     # ===== CALLBACKS DOKUMEN =====
     def select_doc_to_delete(doc_id, judul):
         st.session_state.hapus_doc_id = doc_id
@@ -1533,8 +1558,7 @@ def page_dokumen():
                             compressed_size = len(compressed_bytes) / 1024 / 1024
                             saving = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
                             
-                            st.success(f"✅ Dokumen '{judul}' berhasil diupload!")
-                            st.info(f"📊 Ukuran: {original_size:.1f} MB → {compressed_size:.1f} MB (hemat {saving:.0f}%)")
+                            st.toast(f"✅ Dokumen '{judul}' berhasil diupload! (hemat {saving:.0f}%)")
                             st.balloons()
                             
                     except Exception as e:
@@ -1764,7 +1788,7 @@ def page_dokumen():
                                 }).execute()
                                 
                                 clear_cache()
-                                st.success("✅ Dokumen berhasil disimpan ke database!")
+                                st.toast("✅ Dokumen berhasil disimpan ke database!")
                                 st.balloons()
                             except Exception as e:
                                 st.error(f"❌ Gagal simpan: {str(e)}")
@@ -1790,16 +1814,6 @@ def page_dokumen():
 def page_pengaturan():
     st.title("⚙️ Pengaturan Kelas & Siswa")
     
-    # ===== INISIALISASI SESSION STATE UNTUK SISWA =====
-    if "hapus_siswa_id" not in st.session_state:
-        st.session_state.hapus_siswa_id = None
-    if "hapus_siswa_nama" not in st.session_state:
-        st.session_state.hapus_siswa_nama = ""
-    if "siswa_success_msg" not in st.session_state:
-        st.session_state.siswa_success_msg = None
-    if "siswa_error_msg" not in st.session_state:
-        st.session_state.siswa_error_msg = None
-
     # ===== CALLBACKS SISWA =====
     def select_siswa_to_delete(siswa_id, nama):
         st.session_state.hapus_siswa_id = siswa_id
@@ -1831,13 +1845,19 @@ def page_pengaturan():
             submit = cols_form[1].form_submit_button("➕ Tambah", use_container_width=True)
             
             if submit and nama_kelas:
-                try:
-                    supabase.table("kelas").insert({"nama_kelas": nama_kelas.upper()}).execute()
-                    clear_cache()
-                    st.success(f"✅ Kelas {nama_kelas.upper()} berhasil ditambahkan!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Gagal: {str(e)}")
+                nama_kelas_upper = nama_kelas.upper().strip()
+                kelas_existing = [k['nama_kelas'].upper().strip() for k in get_kelas()]
+
+                if nama_kelas_upper in kelas_existing:
+                    st.error(f"❌ Kelas {nama_kelas_upper} sudah ada!")
+                else:
+                    try:
+                        supabase.table("kelas").insert({"nama_kelas": nama_kelas_upper}).execute()
+                        clear_cache()
+                        st.toast(f"✅ Kelas {nama_kelas_upper} berhasil ditambahkan!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Gagal: {str(e)}")
         
         # Tampilan kelas grid
         kelas = get_kelas()
@@ -1914,16 +1934,22 @@ def page_pengaturan():
                     submit = st.form_submit_button("➕ Tambah Siswa")
                     
                     if submit and nama:
-                        try:
-                            supabase.table("siswa").insert({
-                                "nama": nama,
-                                "kelas_id": kelas_id
-                            }).execute()
-                            clear_cache()
-                            st.success(f"✅ {nama} berhasil ditambahkan!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Gagal: {str(e)}")
+                        nama_siswa_strip = nama.strip()
+                        siswa_existing = [s['nama'].lower().strip() for s in get_siswa(kelas_id)]
+
+                        if nama_siswa_strip.lower() in siswa_existing:
+                            st.error(f"❌ Siswa bernama '{nama_siswa_strip}' sudah ada di kelas {kelas_terpilih}!")
+                        else:
+                            try:
+                                supabase.table("siswa").insert({
+                                    "nama": nama_siswa_strip,
+                                    "kelas_id": kelas_id
+                                }).execute()
+                                clear_cache()
+                                st.toast(f"✅ {nama_siswa_strip} berhasil ditambahkan!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Gagal: {str(e)}")
                 else:
                     daftar_nama = st.text_area(
                         "Copy-paste daftar nama (satu per baris)",
@@ -1934,17 +1960,34 @@ def page_pengaturan():
                     
                     if submit and daftar_nama:
                         nama_list = [n.strip() for n in daftar_nama.split('\n') if n.strip()]
-                        try:
-                            for nama in nama_list:
-                                supabase.table("siswa").insert({
-                                    "nama": nama,
-                                    "kelas_id": kelas_id
-                                }).execute()
-                            clear_cache()
-                            st.success(f"✅ Berhasil menambahkan {len(nama_list)} siswa!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Gagal: {str(e)}")
+                        siswa_existing = [s['nama'].lower().strip() for s in get_siswa(kelas_id)]
+
+                        # Filter out existing names
+                        nama_to_insert = []
+                        duplikat_count = 0
+                        for n in nama_list:
+                            if n.lower() in siswa_existing:
+                                duplikat_count += 1
+                            else:
+                                nama_to_insert.append(n)
+
+                        if duplikat_count > 0:
+                            st.warning(f"⚠️ {duplikat_count} nama diabaikan karena sudah terdaftar di kelas ini.")
+
+                        if not nama_to_insert:
+                            st.error("❌ Tidak ada nama baru yang ditambahkan!")
+                        else:
+                            try:
+                                for nama in nama_to_insert:
+                                    supabase.table("siswa").insert({
+                                        "nama": nama,
+                                        "kelas_id": kelas_id
+                                    }).execute()
+                                clear_cache()
+                                st.toast(f"✅ Berhasil menambahkan {len(nama_to_insert)} siswa!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Gagal: {str(e)}")
             
             # Daftar siswa
             siswa = get_siswa(kelas_id)
@@ -2030,7 +2073,7 @@ def page_pengaturan():
                                     "kkm": nilai
                                 }).execute()
                         clear_cache()
-                        st.success("✅ KKM berhasil disimpan!")
+                        st.toast("✅ KKM berhasil disimpan!")
                     except Exception as e:
                         st.error(f"❌ Gagal: {str(e)}")
 
