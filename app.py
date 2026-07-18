@@ -1062,7 +1062,23 @@ def page_jadwal():
             topik_awal = cols2[0].text_input("Topik Awal", value="Matematika")
             bab_awal = cols2[1].number_input("Bab Awal", min_value=1, value=1)
             
-            jumlah_minggu = st.slider("Jumlah Minggu", min_value=12, max_value=20, value=16)
+            # ===== [UPDATE] Slider jumlah minggu (6-20) =====
+            jumlah_minggu = st.slider(
+                "Jumlah Minggu",
+                min_value=6,
+                max_value=20,
+                value=16,
+                step=1,
+                help="6 minggu = 1 bab, 16 minggu = 1 semester penuh"
+            )
+            
+            # [UPDATE] Tampilkan info berdasarkan jumlah minggu
+            if jumlah_minggu <= 8:
+                st.info(f"📘 **{jumlah_minggu} minggu** = 1 Bab ({topik_awal})")
+            elif jumlah_minggu <= 12:
+                st.info(f"📗 **{jumlah_minggu} minggu** = 1-2 Bab")
+            else:
+                st.info(f"📕 **{jumlah_minggu} minggu** = 1 Semester penuh")
             
             st.warning("⚠️ Periksa kembali data di atas. Jadwal yang sudah ada akan dihapus dan diganti!")
             
