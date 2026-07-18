@@ -8,7 +8,7 @@ import re
 import io 
 from PIL import Image 
 import PyPDF2 
-import filetype
+import filetype 
 
 # ===== TAMBAHKAN INI UNTUK GROQ =====
 from langchain_groq import ChatGroq
@@ -301,55 +301,47 @@ def upload_file_to_supabase(file_bytes, file_name):
         return None
 
 # ============ FUNGSI GENERATE JADWAL ============
-def generate_jadwal_semester(kelas_id, hari, jam, topik_awal, bab_awal, semester, tahun_ajaran, jumlah_minggu=16):
+def generate_jadwal_semester(kelas_id, hari, jam, daftar_bab, semester, tahun_ajaran):
     """
-    Generate jadwal otomatis untuk 1 semester
+    Generate jadwal berdasarkan daftar bab dengan durasi masing-masing
+    
+    Parameter:
+    - daftar_bab: list of dict [{"nama": "Bab 1 - Bilangan Bulat", "durasi": 2}, ...]
     """
     try:
-        # Mapping hari ke angka (untuk urutan)
-        hari_map = {
-            "Senin": 0, "Selasa": 1, "Rabu": 2, "Kamis": 3, 
-            "Jumat": 4, "Sabtu": 5, "Minggu": 6
-        }
-        
-        # [UPDATE] Daftar topik dinamis berdasarkan jumlah minggu
-        topik_list = []
-        for i in range(jumlah_minggu):
-            if i == 4 and jumlah_minggu > 6:  # Minggu ke-5 (jika > 6 minggu)
-                topik_list.append("Review & Latihan Soal")
-            elif i == 5 and jumlah_minggu > 8:  # Minggu ke-6 (jika > 8 minggu)
-                topik_list.append(f"UH {topik_awal}")
-            elif i == 7 and jumlah_minggu > 10:  # Minggu ke-8 (jika > 10 minggu)
-                topik_list.append(f"UTS {topik_awal}")
-            elif i == jumlah_minggu - 1:  # Minggu terakhir
-                topik_list.append(f"UAS {topik_awal}")
-            else:
-                # Topik normal per bab
-                bab_ke = bab_awal + i
-                topik_list.append(f"{topik_awal} - Bab {bab_ke}")
-        
-        # Generate jadwal
         jadwal_insert = []
-        for minggu in range(1, jumlah_minggu + 1):
-            # Topik untuk minggu ini
-            topik = topik_list[minggu - 1] if minggu - 1 < len(topik_list) else f"Bab {bab_awal + minggu - 1}"
+        minggu_ke = 1
+        
+        for bab in daftar_bab:
+            nama_bab = bab.get('nama', 'Bab')
+            durasi = bab.get('durasi', 1)
             
-            jadwal_insert.append({
-                "kelas_id": kelas_id,
-                "hari": hari,
-                "jam": str(jam),
-                "topik": topik,
-                "bab": f"Bab {bab_awal + minggu - 1}",
-                "minggu_ke": minggu,
-                "semester": semester,
-                "tahun_ajaran": tahun_ajaran,
-                "is_generated": True
-            })
+            # Generate jadwal untuk setiap minggu dalam bab ini
+            for i in range(durasi):
+                # Jika minggu pertama bab, tulis nama bab lengkap
+                if i == 0:
+                    topik = nama_bab
+                else:
+                    topik = f"{nama_bab} (Lanjutan {i+1})"
+                
+                jadwal_insert.append({
+                    "kelas_id": kelas_id,
+                    "hari": hari,
+                    "jam": str(jam),
+                    "topik": topik,
+                    "bab": nama_bab,
+                    "minggu_ke": minggu_ke,
+                    "semester": semester,
+                    "tahun_ajaran": tahun_ajaran,
+                    "is_generated": True
+                })
+                minggu_ke += 1
         
         return jadwal_insert
     except Exception as e:
         st.error(f"Error generate jadwal: {str(e)}")
         return None
+        
 # ============ FUNGSI UTILITY ============
 def hari_ke_angka(hari):
     hari_map = {
@@ -1084,24 +1076,22 @@ def page_jadwal():
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
     
-        # === TAB 3: GENERATE MANUAL ===
+            # === TAB 3: GENERATE MANUAL ===
     with tab3:
-        st.subheader("⚡ Generate Jadwal 1 Semester")
-        st.info("💡 Fitur ini akan membuat jadwal otomatis untuk 16 minggu (1 semester)")
+        st.subheader("⚡ Generate Jadwal Berdasarkan Bab")
+        st.info("💡 Tentukan durasi setiap bab (berapa minggu) untuk membuat jadwal fleksibel")
         
         with st.form("form_generate"):
             cols = st.columns(2)
             kelas_gen = cols[0].selectbox("Kelas", list(kelas_options.keys()))
             hari_gen = cols[0].selectbox("Hari", ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"])
             
-            # ===== [UPDATE] PILIHAN JAM MANUAL DENGAN INTERVAL 5 MENIT =====
-            # Buat pilihan jam dari 00:00 sampai 23:55 dengan interval 5 menit
+            # ===== PILIHAN JAM =====
             jam_options = []
             for h in range(24):
                 for m in range(0, 60, 5):
                     jam_options.append(f"{h:02d}:{m:02d}")
             
-            # Pilihan jam default (07:30)
             default_jam = "07:30"
             default_index = jam_options.index(default_jam) if default_jam in jam_options else 0
             
@@ -1112,39 +1102,69 @@ def page_jadwal():
                 help="Pilih jam mulai dengan interval 5 menit (00:00 - 23:55)"
             )
             
-            # Konversi string jam ke format time untuk disimpan
             jam_gen = datetime.strptime(jam_pilihan, "%H:%M").time()
-            
             semester_gen = cols[1].selectbox("Semester", [1, 2])
             
             st.markdown("---")
-            st.subheader("📝 Setting Topik & Bab")
+            st.subheader("📝 Daftar Bab & Durasi")
+            st.caption("Tentukan berapa minggu untuk setiap bab. Total minggu akan dihitung otomatis.")
             
-            cols2 = st.columns(2)
-            topik_awal = cols2[0].text_input("Topik Awal", value="Matematika")
-            bab_awal = cols2[1].number_input("Bab Awal", min_value=1, value=1)
+            # ===== INPUT BAB DINAMIS =====
+            # Inisialisasi session state untuk daftar bab
+            if "daftar_bab" not in st.session_state:
+                st.session_state.daftar_bab = [
+                    {"nama": "Bab 1 - Pengenalan", "durasi": 2},
+                    {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
+                    {"nama": "Bab 3 - Review & UH", "durasi": 1},
+                ]
             
-            # ===== [UPDATE] Slider jumlah minggu (6-20) =====
-            jumlah_minggu = st.slider(
-                "Jumlah Minggu",
-                min_value=6,
-                max_value=20,
-                value=16,
-                step=1,
-                help="6 minggu = 1 bab, 16 minggu = 1 semester penuh"
-            )
+            # Tampilkan daftar bab yang sudah ada
+            st.write("**Daftar Bab:**")
+            for idx, bab in enumerate(st.session_state.daftar_bab):
+                cols_bab = st.columns([3, 1, 0.5])
+                cols_bab[0].write(f"{idx+1}. {bab['nama']}")
+                cols_bab[1].write(f"{bab['durasi']} minggu")
+                if cols_bab[2].button("🗑️", key=f"del_bab_{idx}"):
+                    st.session_state.daftar_bab.pop(idx)
+                    st.rerun()
             
-            # [UPDATE] Tampilkan info berdasarkan jumlah minggu
-            if jumlah_minggu <= 8:
-                st.info(f"📘 **{jumlah_minggu} minggu** = 1 Bab ({topik_awal})")
-            elif jumlah_minggu <= 12:
-                st.info(f"📗 **{jumlah_minggu} minggu** = 1-2 Bab")
-            else:
-                st.info(f"📕 **{jumlah_minggu} minggu** = 1 Semester penuh")
+            # Form tambah bab
+            st.markdown("---")
+            st.subheader("➕ Tambah Bab")
+            cols_add = st.columns([2, 1, 1])
+            
+            nama_bab_baru = cols_add[0].text_input("Nama Bab", placeholder="Contoh: Bab 4 - Pengukuran", key="nama_bab_baru")
+            durasi_bab_baru = cols_add[1].number_input("Durasi (minggu)", min_value=1, max_value=6, value=1, key="durasi_bab_baru")
+            
+            if cols_add[2].button("➕ Tambah Bab", use_container_width=True):
+                if nama_bab_baru:
+                    st.session_state.daftar_bab.append({
+                        "nama": nama_bab_baru,
+                        "durasi": durasi_bab_baru
+                    })
+                    st.rerun()
+                else:
+                    st.error("❌ Nama bab wajib diisi!")
+            
+            # ===== RESET DAFTAR BAB =====
+            if st.button("🔄 Reset Daftar Bab", use_container_width=True):
+                st.session_state.daftar_bab = [
+                    {"nama": "Bab 1 - Pengenalan", "durasi": 2},
+                    {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
+                    {"nama": "Bab 3 - Review & UH", "durasi": 1},
+                ]
+                st.rerun()
+            
+            # ===== TOTAL MINGGU =====
+            total_minggu = sum([bab['durasi'] for bab in st.session_state.daftar_bab])
+            st.info(f"📊 **Total: {len(st.session_state.daftar_bab)} bab** | **{total_minggu} minggu**")
+            
+            if total_minggu == 0:
+                st.error("❌ Total minggu tidak boleh 0! Tambahkan bab terlebih dahulu.")
             
             st.warning("⚠️ Periksa kembali data di atas. Jadwal yang sudah ada akan dihapus dan diganti!")
             
-            submit_gen = st.form_submit_button("🚀 Generate Jadwal Semester", type="primary")
+            submit_gen = st.form_submit_button("🚀 Generate Jadwal", type="primary", disabled=(total_minggu == 0))
             
             if submit_gen:
                 try:
@@ -1161,12 +1181,10 @@ def page_jadwal():
                     jadwal_baru = generate_jadwal_semester(
                         kelas_id,
                         hari_gen,
-                        jam_gen,  # <-- Menggunakan jam dari pilihan manual
-                        topik_awal,
-                        bab_awal,
+                        jam_gen,
+                        st.session_state.daftar_bab,
                         semester_gen,
-                        tahun_ajaran,
-                        jumlah_minggu
+                        tahun_ajaran
                     )
                     
                     if jadwal_baru:
@@ -1175,7 +1193,7 @@ def page_jadwal():
                         
                         clear_cache()
                         st.success(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
-                        st.info(f"⏰ Jam mulai: {jam_pilihan} WIB")
+                        st.info(f"📚 {len(st.session_state.daftar_bab)} bab | 📅 {total_minggu} minggu | ⏰ {jam_pilihan} WIB")
                         st.balloons()
                         st.rerun()
                     
