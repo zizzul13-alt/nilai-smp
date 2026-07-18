@@ -540,18 +540,47 @@ def page_input_nilai():
     kelas_terpilih = st.selectbox("Pilih Kelas", list(kelas_options.keys()))
     kelas_id = kelas_options[kelas_terpilih]
     
+    # ===== AMBIL DAFTAR TOPIK YANG SUDAH ADA =====
+    semua_nilai = get_nilai(kelas_id)
+    topik_list = list(set([n.get('topik', '') for n in semua_nilai if n.get('topik')]))
+    topik_list.sort()
+    
     with st.form("form_nilai"):
         cols = st.columns(4)
         kategori = cols[0].selectbox(
             "Kategori", 
             ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
         )
-        topik = cols[1].text_input("Topik")
+        
+        # ===== PILIH TOPIK (Baru atau Existing) =====
+        if topik_list:
+            topik_option = cols[1].selectbox(
+                "Pilih Topik",
+                ["+ Topik Baru"] + topik_list,
+                help="Pilih topik yang sudah pernah digunakan, atau pilih '+ Topik Baru' untuk membuat baru"
+            )
+            
+            if topik_option == "+ Topik Baru":
+                topik = cols[1].text_input("Topik (Baru)", key="topik_baru")
+            else:
+                topik = topik_option
+                # Ambil bab dari topik yang sama jika ada
+                existing = next((n for n in semua_nilai if n.get('topik') == topik), None)
+                bab_auto = existing.get('bab', '') if existing else ''
+                cols[2].info(f"📌 Bab sebelumnya: {bab_auto}" if bab_auto else "")
+        else:
+            topik = cols[1].text_input("Topik")
+        
         bab = cols[2].text_input("Bab")
         semester = cols[3].selectbox("Semester", [1, 2])
         tanggal = st.date_input("Tanggal", value=date.today())
         
         st.markdown("---")
+        
+        # Cek apakah sudah ada nilai untuk topik ini di kategori ini
+        existing_nilai = [n for n in semua_nilai if n.get('topik') == topik and n['kategori'] == kategori]
+        if existing_nilai and topik:
+            st.warning(f"⚠️ Sudah ada {len(existing_nilai)} nilai untuk '{kategori}' dengan topik '{topik}'. Ini akan menambah data baru (tidak menghapus yang lama).")
         
         siswa = get_siswa(kelas_id)
         if not siswa:
@@ -560,13 +589,17 @@ def page_input_nilai():
             return
         
         st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
+        st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
         
         data = []
         for s in siswa:
+            # Cek nilai sebelumnya untuk siswa ini (opsional, untuk referensi)
+            nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
             data.append({
                 "Nama": s['nama'],
                 "Nilai": 0.0,
-                "Catatan": ""
+                "Catatan": "",
+                "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
             })
         
         df_input = pd.DataFrame(data)
@@ -581,7 +614,8 @@ def page_input_nilai():
                     step=0.5,
                     format="%.1f"
                 ),
-                "Catatan": st.column_config.TextColumn("Catatan")
+                "Catatan": st.column_config.TextColumn("Catatan"),
+                "Nilai Sebelumnya": st.column_config.TextColumn("Nilai Sebelumnya", disabled=True)
             },
             hide_index=True,
             use_container_width=True
@@ -590,29 +624,51 @@ def page_input_nilai():
         submit = st.form_submit_button("💾 Simpan Semua Nilai")
     
     if submit:
-        try:
-            saved = 0
-            for idx, row in edited_df.iterrows():
-                if row['Nilai'] > 0:
-                    supabase.table("nilai").insert({
-                        "siswa_id": siswa[idx]['id'],
-                        "kelas_id": kelas_id,
-                        "kategori": kategori,
-                        "nilai": row['Nilai'],
-                        "topik": topik,
-                        "bab": bab,
-                        "tanggal": str(tanggal),
-                        "semester": semester,
-                        "catatan": row['Catatan'] if row['Catatan'] else None
-                    }).execute()
-                    saved += 1
-            
-            clear_cache()
-            st.success(f"✅ Berhasil menyimpan {saved} nilai!")
-            st.balloons()
-        except Exception as e:
-            st.error(f"❌ Gagal menyimpan: {str(e)}")
-
+        if not topik:
+            st.error("❌ Topik wajib diisi!")
+        else:
+            try:
+                saved = 0
+                updated = 0
+                for idx, row in edited_df.iterrows():
+                    if row['Nilai'] > 0:
+                        # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                        existing = supabase.table("nilai").select("*")\
+                            .eq("siswa_id", siswa[idx]['id'])\
+                            .eq("kelas_id", kelas_id)\
+                            .eq("kategori", kategori)\
+                            .eq("topik", topik).execute()
+                        
+                        if existing.data:
+                            # Update nilai yang sudah ada
+                            supabase.table("nilai").update({
+                                "nilai": row['Nilai'],
+                                "bab": bab,
+                                "tanggal": str(tanggal),
+                                "semester": semester,
+                                "catatan": row['Catatan'] if row['Catatan'] else None
+                            }).eq("id", existing.data[0]['id']).execute()
+                            updated += 1
+                        else:
+                            # Insert nilai baru
+                            supabase.table("nilai").insert({
+                                "siswa_id": siswa[idx]['id'],
+                                "kelas_id": kelas_id,
+                                "kategori": kategori,
+                                "nilai": row['Nilai'],
+                                "topik": topik,
+                                "bab": bab,
+                                "tanggal": str(tanggal),
+                                "semester": semester,
+                                "catatan": row['Catatan'] if row['Catatan'] else None
+                            }).execute()
+                            saved += 1
+                
+                clear_cache()
+                st.success(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                st.balloons()
+            except Exception as e:
+                st.error(f"❌ Gagal menyimpan: {str(e)}")
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
     st.title("📊 Lihat & Export Nilai")
