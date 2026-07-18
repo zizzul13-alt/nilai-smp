@@ -822,68 +822,67 @@ def page_input_nilai():
     topik_list = list(set([n.get('topik', '') for n in semua_nilai if n.get('topik')]))
     topik_list.sort()
     
-    with st.form("form_nilai"):
-        cols = st.columns(4)
-        kategori = cols[0].selectbox(
-            "Kategori", 
-            ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
+    cols = st.columns(4)
+    kategori = cols[0].selectbox(
+        "Kategori",
+        ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
+    )
+
+    # ===== PILIH TOPIK (Baru atau Existing) =====
+    if topik_list:
+        topik_option = cols[1].selectbox(
+            "Pilih Topik",
+            ["+ Topik Baru"] + topik_list,
+            help="Pilih topik yang sudah pernah digunakan, atau pilih '+ Topik Baru' untuk membuat baru"
         )
         
-        # ===== PILIH TOPIK (Baru atau Existing) =====
-        if topik_list:
-            topik_option = cols[1].selectbox(
-                "Pilih Topik",
-                ["+ Topik Baru"] + topik_list,
-                help="Pilih topik yang sudah pernah digunakan, atau pilih '+ Topik Baru' untuk membuat baru"
-            )
-            
-            if topik_option == "+ Topik Baru":
-                topik = cols[1].text_input("Topik (Baru)", key="topik_baru")
-            else:
-                topik = topik_option
-                # Ambil bab dari topik yang sama jika ada
-                existing = next((n for n in semua_nilai if n.get('topik') == topik), None)
-                bab_auto = existing.get('bab', '') if existing else ''
-                if bab_auto:
-                    cols[2].info(f"📌 Bab sebelumnya: {bab_auto}")
+        if topik_option == "+ Topik Baru":
+            topik = cols[1].text_input("Topik (Baru)", key="topik_baru")
         else:
-            topik = cols[1].text_input("Topik")
-        
-        bab = cols[2].text_input("Bab")
-        semester = cols[3].selectbox("Semester", [1, 2])
-        tanggal = st.date_input("Tanggal", value=date.today())
-        
-        st.markdown("---")
-        
-        # Cek apakah sudah ada nilai untuk topik ini di kategori ini
-        existing_nilai = [n for n in semua_nilai if n.get('topik') == topik and n['kategori'] == kategori]
-        if existing_nilai and topik:
-            st.warning(f"⚠️ Sudah ada {len(existing_nilai)} nilai untuk '{kategori}' dengan topik '{topik}'. Ini akan menambah data baru (tidak menghapus yang lama).")
-        
-        # Reset temp state jika kelas berubah
-        if st.session_state.current_kelas_id != kelas_id:
-            st.session_state.temp_nilai_kartu = {}
-            st.session_state.temp_catatan_kartu = {}
-            st.session_state.current_kelas_id = kelas_id
+            topik = topik_option
+            # Ambil bab dari topik yang sama jika ada
+            existing = next((n for n in semua_nilai if n.get('topik') == topik), None)
+            bab_auto = existing.get('bab', '') if existing else ''
+            if bab_auto:
+                cols[2].info(f"📌 Bab sebelumnya: {bab_auto}")
+    else:
+        topik = cols[1].text_input("Topik")
 
-        siswa = get_siswa(kelas_id)
-        if not siswa:
-            st.warning("Belum ada siswa di kelas ini.")
-            st.form_submit_button("Simpan", disabled=True)
-            return
+    bab = cols[2].text_input("Bab")
+    semester = cols[3].selectbox("Semester", [1, 2])
+    tanggal = st.date_input("Tanggal", value=date.today())
 
-        st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
-        st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
+    st.markdown("---")
 
-        # Pilihan Mode Tampilan
-        mode_tampilan = st.radio(
-            "📱 Mode Tampilan Input",
-            ["📋 Tabel (Desktop/Laptop)", "📇 Kartu Touchscreen (Sangat Mudah di HP)"],
-            horizontal=True,
-            key="input_nilai_mode"
-        )
+    # Cek apakah sudah ada nilai untuk topik ini di kategori ini
+    existing_nilai = [n for n in semua_nilai if n.get('topik') == topik and n['kategori'] == kategori]
+    if existing_nilai and topik:
+        st.warning(f"⚠️ Sudah ada {len(existing_nilai)} nilai untuk '{kategori}' dengan topik '{topik}'. Ini akan menambah data baru (tidak menghapus yang lama).")
 
-        if mode_tampilan == "📋 Tabel (Desktop/Laptop)":
+    # Reset temp state jika kelas berubah
+    if st.session_state.current_kelas_id != kelas_id:
+        st.session_state.temp_nilai_kartu = {}
+        st.session_state.temp_catatan_kartu = {}
+        st.session_state.current_kelas_id = kelas_id
+
+    siswa = get_siswa(kelas_id)
+    if not siswa:
+        st.warning("Belum ada siswa di kelas ini.")
+        return
+
+    st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
+    st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
+
+    # Pilihan Mode Tampilan
+    mode_tampilan = st.radio(
+        "📱 Mode Tampilan Input",
+        ["📋 Tabel (Desktop/Laptop)", "📇 Kartu Touchscreen (Sangat Mudah di HP)"],
+        horizontal=True,
+        key="input_nilai_mode"
+    )
+
+    if mode_tampilan == "📋 Tabel (Desktop/Laptop)":
+        with st.form("form_tabel_nilai"):
             # ===== DATA EDITOR RAMAH SENTUHAN =====
             st.markdown("""
             <style>
@@ -905,11 +904,13 @@ def page_input_nilai():
 
             data = []
             for s in siswa:
+                key_num = f"num_{s['id']}"
+                val = st.session_state.get(key_num, 0.0)
                 nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
                 data.append({
                     "Nama": s['nama'],
-                    "Nilai": 0.0,
-                    "Catatan": "",
+                    "Nilai": float(val) if val > 0 else 0.0,
+                    "Catatan": st.session_state.temp_catatan_kartu.get(s['id'], ""),
                     "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
                 })
 
@@ -958,10 +959,14 @@ def page_input_nilai():
                         saved = 0
                         updated = 0
                         for idx, row in edited_df.iterrows():
+                            s_id = siswa[idx]['id']
+                            st.session_state[f"num_{s_id}"] = float(row['Nilai'])
+                            st.session_state.temp_catatan_kartu[s_id] = row['Catatan']
+
                             if row['Nilai'] > 0:
                                 # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
                                 existing = supabase.table("nilai").select("*")\
-                                    .eq("siswa_id", siswa[idx]['id'])\
+                                    .eq("siswa_id", s_id)\
                                     .eq("kelas_id", kelas_id)\
                                     .eq("kategori", kategori)\
                                     .eq("topik", topik).execute()
@@ -979,7 +984,7 @@ def page_input_nilai():
                                 else:
                                     # Insert nilai baru
                                     supabase.table("nilai").insert({
-                                        "siswa_id": siswa[idx]['id'],
+                                        "siswa_id": s_id,
                                         "kelas_id": kelas_id,
                                         "kategori": kategori,
                                         "nilai": row['Nilai'],
@@ -997,159 +1002,161 @@ def page_input_nilai():
                     except Exception as e:
                         st.error(f"❌ Gagal menyimpan: {str(e)}")
 
-        else:
-            # ===== MODE KARTU TOUCHSCREEN (SANGAT MUDAH DI HP) =====
-            st.markdown("""
-            <style>
-                .touch-card {
-                    background: white;
-                    border-radius: 14px;
-                    padding: 16px;
-                    margin-bottom: 16px;
-                    border: 1px solid #e2e8f0;
-                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-                }
-                .touch-nama {
-                    font-size: 18px;
-                    font-weight: 700;
-                    color: #1e293b;
-                    margin-bottom: 8px;
-                }
-                .touch-label {
-                    font-size: 13px;
-                    color: #64748b;
-                }
-                .touch-prev {
-                    font-size: 13px;
-                    color: #94a3b8;
-                    font-style: italic;
-                }
-            </style>
+    else:
+        # ===== MODE KARTU TOUCHSCREEN (SANGAT MUDAH DI HP) =====
+        st.markdown("""
+        <style>
+            .touch-card {
+                background: white;
+                border-radius: 14px;
+                padding: 16px;
+                margin-bottom: 16px;
+                border: 1px solid #e2e8f0;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            }
+            .touch-nama {
+                font-size: 18px;
+                font-weight: 700;
+                color: #1e293b;
+                margin-bottom: 8px;
+            }
+            .touch-label {
+                font-size: 13px;
+                color: #64748b;
+            }
+            .touch-prev {
+                font-size: 13px;
+                color: #94a3b8;
+                font-style: italic;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # Inisialisasi local temp state jika kosong
+        # Sinkronisasi widget state key langsung ke number_input
+        for s in siswa:
+            key_num = f"num_{s['id']}"
+            if key_num not in st.session_state:
+                st.session_state[key_num] = 0.0
+            if s['id'] not in st.session_state.temp_catatan_kartu:
+                st.session_state.temp_catatan_kartu[s['id']] = ""
+
+        for s in siswa:
+            nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
+            prev_text = f"Nilai Sebelumnya: {nilai_sebelumnya:.0f}" if nilai_sebelumnya else "Belum ada nilai sebelumnya"
+
+            # Render dalam custom layout container
+            st.markdown(f"""
+            <div class="touch-card">
+                <div class="touch-nama">👨‍🎓 {s['nama']}</div>
+                <div class="touch-prev">📌 {prev_text}</div>
+            </div>
             """, unsafe_allow_html=True)
 
-            # Inisialisasi local temp state jika kosong
-            # Sinkronisasi widget state key langsung ke number_input
-            for s in siswa:
-                key_num = f"num_{s['id']}"
-                if key_num not in st.session_state:
-                    st.session_state[key_num] = 0.0
-                if s['id'] not in st.session_state.temp_catatan_kartu:
-                    st.session_state.temp_catatan_kartu[s['id']] = ""
+            col_actions = st.columns([1, 1, 1, 2])
 
-            for s in siswa:
-                nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
-                prev_text = f"Nilai Sebelumnya: {nilai_sebelumnya:.0f}" if nilai_sebelumnya else "Belum ada nilai sebelumnya"
+            # Callback untuk tombol + & - agar langsung mengubah widget key secara instan
+            def update_grade(s_id, amount):
+                key_num = f"num_{s_id}"
+                cur_val = st.session_state.get(key_num, 0.0)
+                new_val = max(0.0, min(100.0, cur_val + amount))
+                st.session_state[key_num] = float(new_val)
 
-                # Render dalam custom layout container
-                st.markdown(f"""
-                <div class="touch-card">
-                    <div class="touch-nama">👨‍🎓 {s['nama']}</div>
-                    <div class="touch-prev">📌 {prev_text}</div>
-                </div>
-                """, unsafe_allow_html=True)
+            # Tombol Minus (-)
+            col_actions[0].button(
+                "➖ 5",
+                key=f"minus5_{s['id']}",
+                on_click=update_grade,
+                args=(s['id'], -5.0),
+                use_container_width=True
+            )
 
-                col_actions = st.columns([1, 1, 1, 2])
+            # Tombol Plus (+)
+            col_actions[1].button(
+                "➕ 5",
+                key=f"plus5_{s['id']}",
+                on_click=update_grade,
+                args=(s['id'], 5.0),
+                use_container_width=True
+            )
 
-                # Callback untuk tombol + & - agar langsung mengubah widget key secara instan
-                def update_grade(s_id, amount):
-                    key_num = f"num_{s_id}"
-                    cur_val = st.session_state.get(key_num, 0.0)
-                    new_val = max(0.0, min(100.0, cur_val + amount))
-                    st.session_state[key_num] = float(new_val)
+            # Input Angka Langsung (nilai bind ke st.session_state[key_num] via parameter key)
+            nilai_val = col_actions[2].number_input(
+                "Nilai",
+                min_value=0.0,
+                max_value=100.0,
+                step=1.0,
+                key=f"num_{s['id']}",
+                label_visibility="collapsed"
+            )
 
-                # Tombol Minus (-)
-                col_actions[0].button(
-                    "➖ 5",
-                    key=f"minus5_{s['id']}",
-                    on_click=update_grade,
-                    args=(s['id'], -5.0),
-                    use_container_width=True
-                )
+            # Input Catatan
+            st.session_state.temp_catatan_kartu[s['id']] = col_actions[3].text_input(
+                "Catatan",
+                placeholder="Catatan keaktifan/remedial...",
+                key=f"note_{s['id']}",
+                value=st.session_state.temp_catatan_kartu[s['id']],
+                label_visibility="collapsed"
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
 
-                # Tombol Plus (+)
-                col_actions[1].button(
-                    "➕ 5",
-                    key=f"plus5_{s['id']}",
-                    on_click=update_grade,
-                    args=(s['id'], 5.0),
-                    use_container_width=True
-                )
+        # Tombol Simpan Terpisah (tidak di dalam form)
+        submit_kartu = st.button("💾 Simpan Semua Nilai Kartu", type="primary", use_container_width=True)
 
-                # Input Angka Langsung (nilai bind ke st.session_state[key_num] via parameter key)
-                nilai_val = col_actions[2].number_input(
-                    "Nilai",
-                    min_value=0.0,
-                    max_value=100.0,
-                    step=1.0,
-                    key=f"num_{s['id']}",
-                    label_visibility="collapsed"
-                )
+        if submit_kartu:
+            if not topik:
+                st.error("❌ Topik wajib diisi!")
+            else:
+                try:
+                    saved = 0
+                    updated = 0
+                    for s in siswa:
+                        nilai_val = st.session_state.get(f"num_{s['id']}", 0.0)
+                        catatan_val = st.session_state.temp_catatan_kartu[s['id']]
+                        if nilai_val > 0:
+                            # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                            existing = supabase.table("nilai").select("*")\
+                                .eq("siswa_id", s['id'])\
+                                .eq("kelas_id", kelas_id)\
+                                .eq("kategori", kategori)\
+                                .eq("topik", topik).execute()
 
-                # Input Catatan
-                st.session_state.temp_catatan_kartu[s['id']] = col_actions[3].text_input(
-                    "Catatan",
-                    placeholder="Catatan keaktifan/remedial...",
-                    key=f"note_{s['id']}",
-                    label_visibility="collapsed"
-                )
-                st.markdown("<br>", unsafe_allow_html=True)
+                            if existing.data:
+                                # Update nilai yang sudah ada
+                                supabase.table("nilai").update({
+                                    "nilai": nilai_val,
+                                    "bab": bab,
+                                    "tanggal": str(tanggal),
+                                    "semester": semester,
+                                    "catatan": catatan_val if catatan_val else None
+                                }).eq("id", existing.data[0]['id']).execute()
+                                updated += 1
+                            else:
+                                # Insert nilai baru
+                                supabase.table("nilai").insert({
+                                    "siswa_id": s['id'],
+                                    "kelas_id": kelas_id,
+                                    "kategori": kategori,
+                                    "nilai": nilai_val,
+                                    "topik": topik,
+                                    "bab": bab,
+                                    "tanggal": str(tanggal),
+                                    "semester": semester,
+                                    "catatan": catatan_val if catatan_val else None
+                                }).execute()
+                                saved += 1
 
-            # Tombol Simpan Terpisah
-            submit_kartu = st.form_submit_button("💾 Simpan Semua Nilai Kartu")
+                    clear_cache()
+                    st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                    st.balloons()
 
-            if submit_kartu:
-                if not topik:
-                    st.error("❌ Topik wajib diisi!")
-                else:
-                    try:
-                        saved = 0
-                        updated = 0
-                        for s in siswa:
-                            nilai_val = st.session_state.get(f"num_{s['id']}", 0.0)
-                            catatan_val = st.session_state.temp_catatan_kartu[s['id']]
-                            if nilai_val > 0:
-                                # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
-                                existing = supabase.table("nilai").select("*")\
-                                    .eq("siswa_id", s['id'])\
-                                    .eq("kelas_id", kelas_id)\
-                                    .eq("kategori", kategori)\
-                                    .eq("topik", topik).execute()
-
-                                if existing.data:
-                                    # Update nilai yang sudah ada
-                                    supabase.table("nilai").update({
-                                        "nilai": nilai_val,
-                                        "bab": bab,
-                                        "tanggal": str(tanggal),
-                                        "semester": semester,
-                                        "catatan": catatan_val if catatan_val else None
-                                    }).eq("id", existing.data[0]['id']).execute()
-                                    updated += 1
-                                else:
-                                    # Insert nilai baru
-                                    supabase.table("nilai").insert({
-                                        "siswa_id": s['id'],
-                                        "kelas_id": kelas_id,
-                                        "kategori": kategori,
-                                        "nilai": nilai_val,
-                                        "topik": topik,
-                                        "bab": bab,
-                                        "tanggal": str(tanggal),
-                                        "semester": semester,
-                                        "catatan": catatan_val if catatan_val else None
-                                    }).execute()
-                                    saved += 1
-                        
-                        clear_cache()
-                        st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
-                        st.balloons()
-
-                        # Reset temp state
-                        st.session_state.temp_nilai_kartu = {}
-                        st.session_state.temp_catatan_kartu = {}
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Gagal menyimpan: {str(e)}")
+                    # Reset temp state
+                    for s in siswa:
+                        st.session_state[f"num_{s['id']}"] = 0.0
+                        st.session_state.temp_catatan_kartu[s['id']] = ""
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Gagal menyimpan: {str(e)}")
                 
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
