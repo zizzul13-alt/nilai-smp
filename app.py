@@ -1111,7 +1111,7 @@ def page_jadwal():
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
     
-                    # === TAB 3: GENERATE MANUAL ===
+        # === TAB 3: GENERATE MANUAL ===
     with tab3:
         st.subheader("⚡ Generate Jadwal Berdasarkan Bab")
         st.info("💡 Tentukan durasi setiap bab (berapa minggu) untuk membuat jadwal fleksibel")
@@ -1127,7 +1127,7 @@ def page_jadwal():
         if "hapus_bab_check" not in st.session_state:
             st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
         
-        # ===== FORM GENERATE =====
+        # ===== FORM UTAMA (SEMUA DALAM SATU FORM) =====
         with st.form("form_generate"):
             cols = st.columns(2)
             kelas_gen = cols[0].selectbox("Kelas", list(kelas_options.keys()))
@@ -1154,18 +1154,51 @@ def page_jadwal():
             
             st.markdown("---")
             st.subheader("📝 Daftar Bab & Durasi")
-            st.caption("Tentukan berapa minggu untuk setiap bab. Total minggu akan dihitung otomatis.")
+            st.caption("Centang ☑️ 'Hapus' pada bab yang ingin dihapus, lalu klik tombol di bawah")
             
-            # ===== TAMPILAN BAB (HANYA BACA DI DALAM FORM) =====
+            # ===== TAMPILAN BAB =====
             for idx, bab in enumerate(st.session_state.daftar_bab):
                 cols_bab = st.columns([3, 1, 1])
                 cols_bab[0].write(f"{idx+1}. {bab['nama']}")
                 cols_bab[1].write(f"{bab['durasi']} minggu")
-                # Checkbox tetap di dalam form
+                
+                # [FIX] Checkbox dengan key unik
+                check_key = f"check_del_bab_{idx}_{bab['nama']}"
                 st.session_state.hapus_bab_check[idx] = cols_bab[2].checkbox(
                     "Hapus", 
-                    key=f"check_del_bab_{idx}"
+                    key=check_key
                 )
+            
+            # ===== TOMBOL KELOLA BAB (DI DALAM FORM) =====
+            st.markdown("---")
+            st.subheader("⚙️ Kelola Bab")
+            
+            col_btn = st.columns([1, 1, 1])
+            
+            # Tombol hapus
+            if col_btn[0].form_submit_button(
+                "🗑️ Hapus Bab yang Dipilih", 
+                use_container_width=True
+            ):
+                # Hapus dari belakang agar index tidak berubah
+                for idx in reversed(range(len(st.session_state.daftar_bab))):
+                    if st.session_state.hapus_bab_check[idx]:
+                        st.session_state.daftar_bab.pop(idx)
+                        st.session_state.hapus_bab_check.pop(idx)
+                st.rerun()
+            
+            # Tombol reset
+            if col_btn[1].form_submit_button(
+                "🔄 Reset Daftar Bab", 
+                use_container_width=True
+            ):
+                st.session_state.daftar_bab = [
+                    {"nama": "Bab 1 - Pengenalan", "durasi": 2},
+                    {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
+                    {"nama": "Bab 3 - Review & UH", "durasi": 1},
+                ]
+                st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
+                st.rerun()
             
             # ===== TOTAL MINGGU =====
             total_minggu = sum([bab['durasi'] for bab in st.session_state.daftar_bab])
@@ -1176,7 +1209,13 @@ def page_jadwal():
             
             st.warning("⚠️ Periksa kembali data di atas. Jadwal yang sudah ada akan dihapus dan diganti!")
             
-            submit_gen = st.form_submit_button("🚀 Generate Jadwal", type="primary", disabled=(total_minggu == 0))
+            # ===== TOMBOL GENERATE =====
+            submit_gen = st.form_submit_button(
+                "🚀 Generate Jadwal", 
+                type="primary", 
+                use_container_width=True,
+                disabled=(total_minggu == 0)
+            )
             
             if submit_gen:
                 try:
@@ -1211,42 +1250,6 @@ def page_jadwal():
                     
                 except Exception as e:
                     st.error(f"❌ Gagal generate: {str(e)}")
-        
-                # ===== TOMBOL HAPUS & RESET DI LUAR FORM =====
-        st.markdown("---")
-        st.subheader("⚙️ Kelola Bab")
-        
-        # [FIX] Tombol dengan ukuran lebih besar dan warna jelas
-        col_btn = st.columns([1, 1, 1])
-        
-        # Tombol hapus bab yang dipilih (DIBUAT BESAR & WARNA MERAH)
-        if col_btn[0].button(
-            "🗑️ Hapus Bab yang Dipilih", 
-            use_container_width=True,
-            type="primary"  # Warna biru mencolok
-        ):
-            # Hapus dari belakang agar index tidak berubah
-            for idx in reversed(range(len(st.session_state.daftar_bab))):
-                if st.session_state.hapus_bab_check[idx]:
-                    st.session_state.daftar_bab.pop(idx)
-                    st.session_state.hapus_bab_check.pop(idx)
-            st.rerun()
-        
-        # Tombol reset daftar bab (WARNA KUNING/PERINGATAN)
-        if col_btn[1].button(
-            "🔄 Reset Daftar Bab", 
-            use_container_width=True
-        ):
-            st.session_state.daftar_bab = [
-                {"nama": "Bab 1 - Pengenalan", "durasi": 2},
-                {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
-                {"nama": "Bab 3 - Review & UH", "durasi": 1},
-            ]
-            st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
-            st.rerun()
-        
-        # [TAMBAH] Informasi cara pakai
-        st.caption("💡 **Cara pakai:** Centang ☑️ 'Hapus' di bab yang ingin dihapus, lalu klik tombol '🗑️ Hapus Bab yang Dipilih'")
         
         # ===== FORM TAMBAH BAB (TERPISAH) =====
         with st.form("form_tambah_bab"):
