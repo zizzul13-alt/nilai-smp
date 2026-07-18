@@ -25,6 +25,14 @@ st.set_page_config(
 
 # ============ INISIALISASI SESSION STATE ============
 def init_session_states():
+    # Temporary nilai state untuk input kartu touchscreen
+    if "temp_nilai_kartu" not in st.session_state:
+        st.session_state.temp_nilai_kartu = {}
+    if "temp_catatan_kartu" not in st.session_state:
+        st.session_state.temp_catatan_kartu = {}
+    if "current_kelas_id" not in st.session_state:
+        st.session_state.current_kelas_id = None
+
     # State untuk Jadwal
     if "hapus_id" not in st.session_state:
         st.session_state.hapus_id = None
@@ -68,114 +76,149 @@ def init_session_states():
 init_session_states()
 
 # ============ CSS KHUSUS HP & KUSTOMISASI GLOBAL ============
+# Mengimpor Font Google "Plus Jakarta Sans" dan memberikan styling modern, transisi halus, serta perbaikan responsivitas HP.
 st.markdown("""
 <style>
-    /* Perbaikan tampilan HP */
-    @media only screen and (max-width: 768px) {
-        .stApp {
-            font-size: 16px !important;
-        }
-        h1 {
-            font-size: 24px !important;
-        }
-        h2 {
-            font-size: 20px !important;
-        }
-        h3 {
-            font-size: 18px !important;
-        }
-        .stButton button {
-            font-size: 16px !important;
-            padding: 12px 24px !important;
-            width: 100% !important;
-        }
-        .stTextInput input, 
-        .stSelectbox select,
-        .stNumberInput input {
-            font-size: 16px !important;
-            padding: 12px !important;
-        }
-        .stTextArea textarea {
-            font-size: 16px !important;
-            padding: 12px !important;
-        }
-        .stDataFrame {
-            font-size: 14px !important;
-        }
-        .stDataFrame table {
-            font-size: 14px !important;
-        }
-        .stMetric {
-            font-size: 18px !important;
-        }
-        .stRadio label {
-            font-size: 16px !important;
-            padding: 8px !important;
-        }
-        .stTabs button {
-            font-size: 14px !important;
-            padding: 10px 16px !important;
-        }
-        /* Sidebar lebih lebar di HP */
-        .css-1d391kg {
-            width: 280px !important;
-        }
-    }
-    @media only screen and (max-width: 480px) {
-        .stApp {
-            font-size: 14px !important;
-        }
-        h1 {
-            font-size: 20px !important;
-        }
-        h2 {
-            font-size: 17px !important;
-        }
-        .stButton button {
-            font-size: 14px !important;
-            padding: 10px 16px !important;
-        }
-        .stDataFrame {
-            font-size: 12px !important;
-        }
-    }
-    /* Tampilan lebih rapi */
-    .stAlert {
-        font-size: 14px !important;
-    }
-    .stSuccess {
-        font-size: 14px !important;
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+    /* Font Global & Transisi Halus */
+    html, body, [data-testid="stAppViewContainer"], .stApp {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        background-color: #fcfcfd !important;
+        transition: background-color 0.3s ease, opacity 0.3s ease;
     }
 
-    /* Tombol lebih besar dan mudah diklik di HP */
-    .stButton button {
-        font-size: 16px !important;
-        padding: 12px 16px !important;
-        min-height: 48px !important;
-        border-radius: 8px !important;
-        font-weight: 600 !important;
+    /* Transisi Fade In Halus saat memuat halaman */
+    [data-testid="stAppViewContainer"] {
+        animation: fadeIn 0.4s ease-out;
     }
-    
-    /* Tombol primary (biru) */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Mempercantik Judul */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-weight: 700 !important;
+        color: #1e293b !important;
+        letter-spacing: -0.02em !important;
+    }
+
+    /* Perbaikan Tab Streamlit agar Fokus ke Tengah dan Rapi di Mobile */
+    div[data-testid="stTabs"] {
+        background-color: #f8fafc;
+        padding: 6px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 20px;
+    }
+    div[data-testid="stTabs"] button {
+        flex: 1 !important;
+        text-align: center !important;
+        justify-content: center !important;
+        font-weight: 600 !important;
+        font-size: 15px !important;
+        border-radius: 8px !important;
+        color: #64748b !important;
+        transition: all 0.2s ease-in-out !important;
+        border: none !important;
+        background-color: transparent !important;
+    }
+    div[data-testid="stTabs"] button[aria-selected="true"] {
+        background-color: #ffffff !important;
+        color: #4CAF50 !important;
+        box-shadow: 0px 4px 6px -1px rgba(0, 0, 0, 0.05), 0px 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+    }
+
+    /* Kustomisasi Tombol Primary & Hover */
+    .stButton button {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        padding: 10px 20px !important;
+        min-height: 44px !important;
+        border-radius: 10px !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+
+    /* Tombol warna hijau guru */
     .stButton button[data-baseweb="button"] {
         background-color: #4CAF50 !important;
         color: white !important;
+        border: none !important;
     }
-    
-    /* Hover effect */
+
     .stButton button:hover {
-        transform: scale(1.02);
-        transition: 0.2s;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        background-color: #43a047 !important;
     }
-    
+
+    .stButton button:active {
+        transform: translateY(0px) !important;
+    }
+
+    /* Card Box Kustom untuk HP */
+    .custom-card {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 18px;
+        margin: 12px 0;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .custom-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    }
+
+    /* Perbaikan tampilan HP */
+    @media only screen and (max-width: 768px) {
+        .stApp {
+            font-size: 15px !important;
+        }
+        h1 {
+            font-size: 22px !important;
+        }
+        h2 {
+            font-size: 18px !important;
+        }
+        h3 {
+            font-size: 16px !important;
+        }
+        .stButton button {
+            width: 100% !important;
+        }
+        /* Sidebar lebih lebar di HP */
+        .css-1d391kg, [data-testid="stSidebar"] {
+            width: 280px !important;
+        }
+    }
+
+    /* Input & Form Elements */
+    .stTextInput input, .stSelectbox select, .stNumberInput input, .stTextArea textarea {
+        border-radius: 8px !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 10px 14px !important;
+        transition: border-color 0.2s ease !important;
+    }
+    .stTextInput input:focus, .stSelectbox select:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+        border-color: #4CAF50 !important;
+        box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.15) !important;
+    }
+
     /* Checkbox lebih besar */
     .stCheckbox label {
-        font-size: 16px !important;
-        padding: 8px !important;
+        font-size: 15px !important;
+        padding: 6px !important;
     }
     .stCheckbox input {
-        width: 20px !important;
-        height: 20px !important;
+        width: 18px !important;
+        height: 18px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -634,59 +677,132 @@ def tampilan_kartu(data_list, judul="Daftar"):
         
 # ============ HALAMAN: DASHBOARD ============
 def page_dashboard():
-    st.title("🏠 Dashboard Guru")
+    st.markdown("<h1 style='text-align: center; margin-bottom: 25px;'>🏠 Dashboard Guru</h1>", unsafe_allow_html=True)
     
+    # Grid KPI / Metrik Utama dengan card modern
     cols = st.columns(4)
     kelas = get_kelas()
     total_kelas = len(kelas)
     
     total_siswa = 0
+    list_all_siswa = []
     for k in kelas:
-        siswa = get_siswa(k['id'])
-        total_siswa += len(siswa)
+        siswa_kelas = get_siswa(k['id'])
+        total_siswa += len(siswa_kelas)
+        list_all_siswa.extend(siswa_kelas)
     
-    nilai = get_nilai()
-    total_nilai = len(nilai)
+    semua_nilai = get_nilai()
+    total_nilai = len(semua_nilai)
     soal = get_bank_soal()
     total_soal = len(soal)
     
+    # Render KPI Cards
     with cols[0]:
-        st.metric("Total Kelas", total_kelas)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">📚</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Kelas</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_kelas}</div>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[1]:
-        st.metric("Total Siswa", total_siswa)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">👨‍🎓</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Siswa</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_siswa}</div>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[2]:
-        st.metric("Total Nilai", total_nilai)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">📝</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Transaksi Nilai</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_nilai}</div>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[3]:
-        st.metric("Total Soal", total_soal)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">📖</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Soal</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_soal}</div>
+        </div>
+        """, unsafe_allow_html=True)
     
-    st.markdown("---")
-    st.subheader("📅 Jadwal Hari Ini")
-    
-    hari_ini = date.today().strftime("%A")
-    hari_ini_ind = {
-        "Monday": "Senin", "Tuesday": "Selasa", "Wednesday": "Rabu",
-        "Thursday": "Kamis", "Friday": "Jumat", "Saturday": "Sabtu",
-        "Sunday": "Minggu"
-    }.get(hari_ini, hari_ini)
-    
-    jadwal_hari_ini = []
-    for k in kelas:
-        jadwal = get_jadwal(k['id'])
-        for j in jadwal:
-            if j['hari'] == hari_ini_ind:
-                jadwal_hari_ini.append({
-                    "Kelas": k['nama_kelas'],
-                    "Jam": j['jam'],
-                    "Topik": j['topik'],
-                    "Bab": j['bab']
-                })
-    
-    if jadwal_hari_ini:
-        df = pd.DataFrame(jadwal_hari_ini)
-        df = df.sort_values("Jam")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.info(f"Tidak ada jadwal untuk hari {hari_ini_ind}")
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Kolom Kiri: Jadwal Hari Ini | Kolom Kanan: Analitik & Insights Nilai KKM
+    col_kiri, col_kanan = st.columns([1.2, 1.0])
+
+    with col_kiri:
+        st.markdown("<h3 style='margin-bottom: 15px;'>📅 Jadwal Mengajar Hari Ini</h3>", unsafe_allow_html=True)
+
+        hari_ini = date.today().strftime("%A")
+        hari_ini_ind = {
+            "Monday": "Senin", "Tuesday": "Selasa", "Wednesday": "Rabu",
+            "Thursday": "Kamis", "Friday": "Jumat", "Saturday": "Sabtu",
+            "Sunday": "Minggu"
+        }.get(hari_ini, hari_ini)
+
+        jadwal_hari_ini = []
+        for k in kelas:
+            jadwal = get_jadwal(k['id'])
+            for j in jadwal:
+                if j['hari'] == hari_ini_ind:
+                    jadwal_hari_ini.append({
+                        "Kelas": k['nama_kelas'],
+                        "Jam": j['jam'],
+                        "Topik": j['topik'],
+                        "Bab": j['bab']
+                    })
+
+        if jadwal_hari_ini:
+            df = pd.DataFrame(jadwal_hari_ini)
+            df = df.sort_values("Jam")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info(f"Tidak ada jadwal mengajar untuk hari {hari_ini_ind}")
+
+    with col_kanan:
+        st.markdown("<h3 style='margin-bottom: 15px;'>📈 Analitik & Insights KKM</h3>", unsafe_allow_html=True)
+
+        if semua_nilai and kelas:
+            # Hitung rata-rata nilai kelas, % lulus KKM (default 75 jika KKM belum di-set)
+            insights_data = []
+            for k in kelas:
+                nilai_kelas = [n for n in semua_nilai if n['kelas_id'] == k['id']]
+                if nilai_kelas:
+                    list_nilai = [n['nilai'] for n in nilai_kelas]
+                    rerata = sum(list_nilai) / len(list_nilai)
+
+                    # Ambil KKM kelas (jika ada, jika tidak, pakai 75 sebagai fallback)
+                    kkm_data = get_kkm(k['id'])
+                    kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
+
+                    lulus_kkm = sum(1 for n in list_nilai if n >= kkm_val)
+                    persentase_lulus = (lulus_kkm / len(list_nilai)) * 100
+
+                    insights_data.append({
+                        "Kelas": k['nama_kelas'],
+                        "Rata-rata Nilai": round(rerata, 1),
+                        "KKM": kkm_val,
+                        "% Tuntas KKM": round(persentase_lulus, 1)
+                    })
+
+            if insights_data:
+                df_insights = pd.DataFrame(insights_data)
+
+                # Render chart visualisasi tuntas KKM
+                chart_data = df_insights.set_index("Kelas")[["Rata-rata Nilai", "% Tuntas KKM"]]
+                st.bar_chart(chart_data)
+
+                # Tampilkan tabel ringkasan analitik
+                st.dataframe(df_insights, use_container_width=True, hide_index=True)
+            else:
+                st.caption("Belum ada data nilai yang cukup untuk menghasilkan analitik.")
+        else:
+            st.info("Input nilai siswa terlebih dahulu untuk melihat grafik analitik KKM di sini.")
 
 # ============ HALAMAN: INPUT NILAI RAPEL ============
 def page_input_nilai():
@@ -744,141 +860,296 @@ def page_input_nilai():
         if existing_nilai and topik:
             st.warning(f"⚠️ Sudah ada {len(existing_nilai)} nilai untuk '{kategori}' dengan topik '{topik}'. Ini akan menambah data baru (tidak menghapus yang lama).")
         
+        # Reset temp state jika kelas berubah
+        if st.session_state.current_kelas_id != kelas_id:
+            st.session_state.temp_nilai_kartu = {}
+            st.session_state.temp_catatan_kartu = {}
+            st.session_state.current_kelas_id = kelas_id
+
         siswa = get_siswa(kelas_id)
         if not siswa:
             st.warning("Belum ada siswa di kelas ini.")
             st.form_submit_button("Simpan", disabled=True)
             return
-        
+
         st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
         st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
-        
-        # ===== DATA EDITOR RAMAH SENTUHAN =====
-        st.markdown("""
-        <style>
-            .stDataFrame {
-                font-size: 16px !important;
-            }
-            .stDataFrame input {
-                font-size: 18px !important;
-                padding: 12px !important;
-                min-height: 44px !important;
-            }
-            .stDataFrame textarea {
-                font-size: 16px !important;
-                padding: 12px !important;
-                min-height: 44px !important;
-            }
-            @media only screen and (max-width: 768px) {
+
+        # Pilihan Mode Tampilan
+        mode_tampilan = st.radio(
+            "📱 Mode Tampilan Input",
+            ["📋 Tabel (Desktop/Laptop)", "📇 Kartu Touchscreen (Sangat Mudah di HP)"],
+            horizontal=True,
+            key="input_nilai_mode"
+        )
+
+        if mode_tampilan == "📋 Tabel (Desktop/Laptop)":
+            # ===== DATA EDITOR RAMAH SENTUHAN =====
+            st.markdown("""
+            <style>
                 .stDataFrame {
-                    font-size: 14px !important;
+                    font-size: 16px !important;
                 }
                 .stDataFrame input {
+                    font-size: 18px !important;
+                    padding: 12px !important;
+                    min-height: 44px !important;
+                }
+                .stDataFrame textarea {
                     font-size: 16px !important;
-                    padding: 10px !important;
-                    min-height: 40px !important;
+                    padding: 12px !important;
+                    min-height: 44px !important;
                 }
-                .stDataFrame .col-Nilai {
-                    min-width: 80px !important;
-                }
-            }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        data = []
-        for s in siswa:
-            nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
-            data.append({
-                "Nama": s['nama'],
-                "Nilai": 0.0,
-                "Catatan": "",
-                "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
-            })
-        
-        df_input = pd.DataFrame(data)
-        
-        edited_df = st.data_editor(
-            df_input,
-            column_config={
-                "Nama": st.column_config.TextColumn(
-                    "Nama",
-                    disabled=True,
-                    width="medium"
-                ),
-                "Nilai": st.column_config.NumberColumn(
-                    "Nilai",
-                    min_value=0,
-                    max_value=100,
-                    step=1,
-                    format="%.0f",
-                    width="small"
-                ),
-                "Catatan": st.column_config.TextColumn(
-                    "Catatan",
-                    width="large"
-                ),
-                "Nilai Sebelumnya": st.column_config.TextColumn(
-                    "Nilai Sebelumnya",
-                    disabled=True,
-                    width="small"
-                )
-            },
-            hide_index=True,
-            use_container_width=True,
-            num_rows="fixed"
-        )
-        
-        # Panduan HP
-        st.caption("💡 Ketuk kolom Nilai untuk mengisi angka | Geser tabel untuk lihat semua kolom")
-        
-        submit = st.form_submit_button("💾 Simpan Semua Nilai")
-    
-    if submit:
-        if not topik:
-            st.error("❌ Topik wajib diisi!")
+            </style>
+            """, unsafe_allow_html=True)
+
+            data = []
+            for s in siswa:
+                nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
+                data.append({
+                    "Nama": s['nama'],
+                    "Nilai": 0.0,
+                    "Catatan": "",
+                    "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
+                })
+
+            df_input = pd.DataFrame(data)
+
+            edited_df = st.data_editor(
+                df_input,
+                column_config={
+                    "Nama": st.column_config.TextColumn(
+                        "Nama",
+                        disabled=True,
+                        width="medium"
+                    ),
+                    "Nilai": st.column_config.NumberColumn(
+                        "Nilai",
+                        min_value=0,
+                        max_value=100,
+                        step=1,
+                        format="%.0f",
+                        width="small"
+                    ),
+                    "Catatan": st.column_config.TextColumn(
+                        "Catatan",
+                        width="large"
+                    ),
+                    "Nilai Sebelumnya": st.column_config.TextColumn(
+                        "Nilai Sebelumnya",
+                        disabled=True,
+                        width="small"
+                    )
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="fixed"
+            )
+
+            # Panduan HP
+            st.caption("💡 Ketuk kolom Nilai untuk mengisi angka | Geser tabel untuk lihat semua kolom")
+            submit = st.form_submit_button("💾 Simpan Semua Nilai (Tabel)")
+
+            if submit:
+                if not topik:
+                    st.error("❌ Topik wajib diisi!")
+                else:
+                    try:
+                        saved = 0
+                        updated = 0
+                        for idx, row in edited_df.iterrows():
+                            if row['Nilai'] > 0:
+                                # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                                existing = supabase.table("nilai").select("*")\
+                                    .eq("siswa_id", siswa[idx]['id'])\
+                                    .eq("kelas_id", kelas_id)\
+                                    .eq("kategori", kategori)\
+                                    .eq("topik", topik).execute()
+
+                                if existing.data:
+                                    # Update nilai yang sudah ada
+                                    supabase.table("nilai").update({
+                                        "nilai": row['Nilai'],
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": row['Catatan'] if row['Catatan'] else None
+                                    }).eq("id", existing.data[0]['id']).execute()
+                                    updated += 1
+                                else:
+                                    # Insert nilai baru
+                                    supabase.table("nilai").insert({
+                                        "siswa_id": siswa[idx]['id'],
+                                        "kelas_id": kelas_id,
+                                        "kategori": kategori,
+                                        "nilai": row['Nilai'],
+                                        "topik": topik,
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": row['Catatan'] if row['Catatan'] else None
+                                    }).execute()
+                                    saved += 1
+
+                        clear_cache()
+                        st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"❌ Gagal menyimpan: {str(e)}")
+
         else:
-            try:
-                saved = 0
-                updated = 0
-                for idx, row in edited_df.iterrows():
-                    if row['Nilai'] > 0:
-                        # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
-                        existing = supabase.table("nilai").select("*")\
-                            .eq("siswa_id", siswa[idx]['id'])\
-                            .eq("kelas_id", kelas_id)\
-                            .eq("kategori", kategori)\
-                            .eq("topik", topik).execute()
+            # ===== MODE KARTU TOUCHSCREEN (SANGAT MUDAH DI HP) =====
+            st.markdown("""
+            <style>
+                .touch-card {
+                    background: white;
+                    border-radius: 14px;
+                    padding: 16px;
+                    margin-bottom: 16px;
+                    border: 1px solid #e2e8f0;
+                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+                }
+                .touch-nama {
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #1e293b;
+                    margin-bottom: 8px;
+                }
+                .touch-label {
+                    font-size: 13px;
+                    color: #64748b;
+                }
+                .touch-prev {
+                    font-size: 13px;
+                    color: #94a3b8;
+                    font-style: italic;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+
+            # Inisialisasi local temp state jika kosong
+            # Sinkronisasi widget state key langsung ke number_input
+            for s in siswa:
+                key_num = f"num_{s['id']}"
+                if key_num not in st.session_state:
+                    st.session_state[key_num] = 0.0
+                if s['id'] not in st.session_state.temp_catatan_kartu:
+                    st.session_state.temp_catatan_kartu[s['id']] = ""
+
+            for s in siswa:
+                nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
+                prev_text = f"Nilai Sebelumnya: {nilai_sebelumnya:.0f}" if nilai_sebelumnya else "Belum ada nilai sebelumnya"
+
+                # Render dalam custom layout container
+                st.markdown(f"""
+                <div class="touch-card">
+                    <div class="touch-nama">👨‍🎓 {s['nama']}</div>
+                    <div class="touch-prev">📌 {prev_text}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                col_actions = st.columns([1, 1, 1, 2])
+
+                # Callback untuk tombol + & - agar langsung mengubah widget key secara instan
+                def update_grade(s_id, amount):
+                    key_num = f"num_{s_id}"
+                    cur_val = st.session_state.get(key_num, 0.0)
+                    new_val = max(0.0, min(100.0, cur_val + amount))
+                    st.session_state[key_num] = float(new_val)
+
+                # Tombol Minus (-)
+                col_actions[0].button(
+                    "➖ 5",
+                    key=f"minus5_{s['id']}",
+                    on_click=update_grade,
+                    args=(s['id'], -5.0),
+                    use_container_width=True
+                )
+
+                # Tombol Plus (+)
+                col_actions[1].button(
+                    "➕ 5",
+                    key=f"plus5_{s['id']}",
+                    on_click=update_grade,
+                    args=(s['id'], 5.0),
+                    use_container_width=True
+                )
+
+                # Input Angka Langsung (nilai bind ke st.session_state[key_num] via parameter key)
+                nilai_val = col_actions[2].number_input(
+                    "Nilai",
+                    min_value=0.0,
+                    max_value=100.0,
+                    step=1.0,
+                    key=f"num_{s['id']}",
+                    label_visibility="collapsed"
+                )
+
+                # Input Catatan
+                st.session_state.temp_catatan_kartu[s['id']] = col_actions[3].text_input(
+                    "Catatan",
+                    placeholder="Catatan keaktifan/remedial...",
+                    key=f"note_{s['id']}",
+                    label_visibility="collapsed"
+                )
+                st.markdown("<br>", unsafe_allow_html=True)
+
+            # Tombol Simpan Terpisah
+            submit_kartu = st.form_submit_button("💾 Simpan Semua Nilai Kartu")
+
+            if submit_kartu:
+                if not topik:
+                    st.error("❌ Topik wajib diisi!")
+                else:
+                    try:
+                        saved = 0
+                        updated = 0
+                        for s in siswa:
+                            nilai_val = st.session_state.get(f"num_{s['id']}", 0.0)
+                            catatan_val = st.session_state.temp_catatan_kartu[s['id']]
+                            if nilai_val > 0:
+                                # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                                existing = supabase.table("nilai").select("*")\
+                                    .eq("siswa_id", s['id'])\
+                                    .eq("kelas_id", kelas_id)\
+                                    .eq("kategori", kategori)\
+                                    .eq("topik", topik).execute()
+
+                                if existing.data:
+                                    # Update nilai yang sudah ada
+                                    supabase.table("nilai").update({
+                                        "nilai": nilai_val,
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": catatan_val if catatan_val else None
+                                    }).eq("id", existing.data[0]['id']).execute()
+                                    updated += 1
+                                else:
+                                    # Insert nilai baru
+                                    supabase.table("nilai").insert({
+                                        "siswa_id": s['id'],
+                                        "kelas_id": kelas_id,
+                                        "kategori": kategori,
+                                        "nilai": nilai_val,
+                                        "topik": topik,
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": catatan_val if catatan_val else None
+                                    }).execute()
+                                    saved += 1
                         
-                        if existing.data:
-                            # Update nilai yang sudah ada
-                            supabase.table("nilai").update({
-                                "nilai": row['Nilai'],
-                                "bab": bab,
-                                "tanggal": str(tanggal),
-                                "semester": semester,
-                                "catatan": row['Catatan'] if row['Catatan'] else None
-                            }).eq("id", existing.data[0]['id']).execute()
-                            updated += 1
-                        else:
-                            # Insert nilai baru
-                            supabase.table("nilai").insert({
-                                "siswa_id": siswa[idx]['id'],
-                                "kelas_id": kelas_id,
-                                "kategori": kategori,
-                                "nilai": row['Nilai'],
-                                "topik": topik,
-                                "bab": bab,
-                                "tanggal": str(tanggal),
-                                "semester": semester,
-                                "catatan": row['Catatan'] if row['Catatan'] else None
-                            }).execute()
-                            saved += 1
-                
-                clear_cache()
-                st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
-                st.balloons()
-            except Exception as e:
-                st.error(f"❌ Gagal menyimpan: {str(e)}")
+                        clear_cache()
+                        st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                        st.balloons()
+
+                        # Reset temp state
+                        st.session_state.temp_nilai_kartu = {}
+                        st.session_state.temp_catatan_kartu = {}
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Gagal menyimpan: {str(e)}")
                 
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
@@ -930,17 +1201,25 @@ def page_lihat_nilai():
         data.append(row)
     
     df = pd.DataFrame(data)
+
+    # Ambil nilai KKM kelas saat ini (default 75)
+    kkm_data = get_kkm(kelas_id)
+    kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
+
+    st.markdown(f"#### 📋 Rekapitulasi Nilai Siswa (KKM Kelas Saat Ini: **{kkm_val}**)")
     st.dataframe(df, use_container_width=True, hide_index=True)
     
     if show_stats and len(df) > 0:
         st.markdown("---")
-        st.subheader("📊 Statistik Nilai")
+        st.subheader("📊 Analitik Distribusi & Statistik Nilai")
         
         kategori_kolom = ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
         existing_kolom = [k for k in kategori_kolom if k in df.columns]
         
         if existing_kolom:
             stats_data = []
+            distribution_bins = {"< KKM (Tidak Tuntas)": 0, "70 - 79": 0, "80 - 89": 0, "90 - 100": 0}
+
             for kat in existing_kolom:
                 values = df[kat][df[kat] > 0]
                 if len(values) > 0:
@@ -951,15 +1230,35 @@ def page_lihat_nilai():
                         "Terendah": values.min(),
                         "Jumlah Data": len(values)
                     })
+
+                    # Hitung distribusi rentang nilai
+                    for val in values:
+                        if val < kkm_val:
+                            distribution_bins["< KKM (Tidak Tuntas)"] += 1
+                        elif val < 80:
+                            distribution_bins["70 - 79"] += 1
+                        elif val < 90:
+                            distribution_bins["80 - 89"] += 1
+                        else:
+                            distribution_bins["90 - 100"] += 1
             
             if stats_data:
                 df_stats = pd.DataFrame(stats_data)
-                st.dataframe(df_stats, use_container_width=True, hide_index=True)
                 
-                st.markdown("---")
-                st.subheader("📈 Rata-rata per Kategori")
-                chart_data = df_stats[['Kategori', 'Rata-rata']].set_index('Kategori')
-                st.bar_chart(chart_data)
+                # Render metrik statistik utama di atas grafik
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    st.markdown("##### 📈 Rata-rata per Kategori")
+                    chart_data = df_stats[['Kategori', 'Rata-rata']].set_index('Kategori')
+                    st.bar_chart(chart_data)
+
+                with col_m2:
+                    st.markdown("##### 📊 Distribusi Rentang Pencapaian Nilai Siswa")
+                    df_dist = pd.DataFrame(list(distribution_bins.items()), columns=["Rentang Nilai", "Jumlah Siswa"])
+                    st.bar_chart(df_dist.set_index("Rentang Nilai"))
+
+                st.markdown("##### 📝 Ringkasan Statistik Lengkap")
+                st.dataframe(df_stats, use_container_width=True, hide_index=True)
             else:
                 st.info("Belum ada data nilai yang cukup untuk statistik.")
     
