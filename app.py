@@ -4,7 +4,7 @@ from supabase import create_client, Client
 from datetime import datetime, date 
 import openpyxl
 from io import BytesIO
-import re
+import re 
 import io 
 from PIL import Image 
 import PyPDF2 
@@ -1014,9 +1014,13 @@ def page_jadwal():
             # Format jam
             df['jam_format'] = df['jam'].apply(lambda x: x[:5] if isinstance(x, str) else str(x)[:5])
             
-            # ===== TAMPILKAN DENGAN TOMBOL HAPUS =====
+                        # ===== TAMPILKAN DENGAN TOMBOL HAPUS =====
             if mode_hapus:
                 st.warning("🗑️ Mode Hapus AKTIF - Klik tombol 'Hapus' di samping jadwal yang ingin dihapus")
+                
+                # ===== INISIALISASI SESSION STATE UNTUK KONFIRMASI =====
+                if "hapus_id" not in st.session_state:
+                    st.session_state.hapus_id = None
                 
                 # Tampilkan per baris dengan tombol hapus
                 for idx, row in df.iterrows():
@@ -1025,27 +1029,37 @@ def page_jadwal():
                     cols[0].write(row.get('nama_kelas', '-'))
                     cols[1].write(row['hari'])
                     cols[2].write(row['jam_format'])
-                    cols[3].write(row.get('topik', '-')[:30])  # Batasi panjang topik
+                    cols[3].write(row.get('topik', '-')[:30])
                     cols[4].write(row.get('bab', '-'))
                     cols[5].write(f"M{row.get('minggu_ke', '-')}")
                     cols[6].write(f"S{row.get('semester', '-')}")
                     
-                    # [FIX] Tombol hapus dengan konfirmasi langsung
-                    if cols[7].button("🗑️", key=f"del_{row['id']}_{idx}", help="Hapus jadwal ini"):
-                        # Konfirmasi dengan st.warning dan tombol
-                        st.warning(f"⚠️ Yakin hapus jadwal: **{row['hari']} {row['jam_format']} - {row.get('topik', '-')}**?")
-                        
-                        col_confirm = st.columns([1, 1])
-                        if col_confirm[0].button("✅ Ya, Hapus!", key=f"confirm_yes_{row['id']}"):
-                            try:
-                                supabase.table("jadwal").delete().eq("id", row['id']).execute()
-                                clear_cache()
-                                st.success(f"✅ Jadwal berhasil dihapus!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Gagal: {str(e)}")
-                        if col_confirm[1].button("❌ Batal", key=f"confirm_no_{row['id']}"):
+                    # [FIX] Tombol hapus - set session state
+                    if cols[7].button("🗑️", key=f"del_{row['id']}_{idx}"):
+                        st.session_state.hapus_id = row['id']
+                        st.session_state.hapus_text = f"{row['hari']} {row['jam_format']} - {row.get('topik', '-')}"
+                        st.rerun()
+                
+                # ===== TAMPILKAN KONFIRMASI DI BAWAH =====
+                if st.session_state.hapus_id is not None:
+                    st.markdown("---")
+                    st.warning(f"⚠️ Yakin hapus jadwal: **{st.session_state.hapus_text}**?")
+                    
+                    col_confirm = st.columns([1, 1, 2])
+                    if col_confirm[0].button("✅ Ya, Hapus!", key="confirm_yes"):
+                        try:
+                            supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
+                            clear_cache()
+                            st.session_state.hapus_id = None
+                            st.success(f"✅ Jadwal berhasil dihapus!")
                             st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Gagal: {str(e)}")
+                            st.session_state.hapus_id = None
+                    
+                    if col_confirm[1].button("❌ Batal", key="confirm_no"):
+                        st.session_state.hapus_id = None
+                        st.rerun()
             else:
                 # Tampilkan tabel biasa (tanpa tombol hapus)
                 df_display = df[['nama_kelas', 'hari', 'jam_format', 'topik', 'bab', 'minggu_ke', 'semester']].copy()
