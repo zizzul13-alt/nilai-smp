@@ -1076,11 +1076,23 @@ def page_jadwal():
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
     
-                # === TAB 3: GENERATE MANUAL ===
+                    # === TAB 3: GENERATE MANUAL ===
     with tab3:
         st.subheader("⚡ Generate Jadwal Berdasarkan Bab")
         st.info("💡 Tentukan durasi setiap bab (berapa minggu) untuk membuat jadwal fleksibel")
         
+        # ===== INISIALISASI SESSION STATE =====
+        if "daftar_bab" not in st.session_state:
+            st.session_state.daftar_bab = [
+                {"nama": "Bab 1 - Pengenalan", "durasi": 2},
+                {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
+                {"nama": "Bab 3 - Review & UH", "durasi": 1},
+            ]
+        
+        if "hapus_bab_check" not in st.session_state:
+            st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
+        
+        # ===== FORM GENERATE =====
         with st.form("form_generate"):
             cols = st.columns(2)
             kelas_gen = cols[0].selectbox("Kelas", list(kelas_options.keys()))
@@ -1109,73 +1121,16 @@ def page_jadwal():
             st.subheader("📝 Daftar Bab & Durasi")
             st.caption("Tentukan berapa minggu untuk setiap bab. Total minggu akan dihitung otomatis.")
             
-            # ===== INPUT BAB DINAMIS (TANPA ERROR) =====
-            if "daftar_bab" not in st.session_state:
-                st.session_state.daftar_bab = [
-                    {"nama": "Bab 1 - Pengenalan", "durasi": 2},
-                    {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
-                    {"nama": "Bab 3 - Review & UH", "durasi": 1},
-                ]
-            
-            # Tampilkan daftar bab dengan checkbox hapus
-            st.write("**Daftar Bab:**")
-            
-            # Inisialisasi checkbox state
-            if "hapus_bab_check" not in st.session_state:
-                st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
-            
-            # Sesuaikan panjang checkbox
-            while len(st.session_state.hapus_bab_check) < len(st.session_state.daftar_bab):
-                st.session_state.hapus_bab_check.append(False)
-            while len(st.session_state.hapus_bab_check) > len(st.session_state.daftar_bab):
-                st.session_state.hapus_bab_check.pop()
-            
+            # ===== TAMPILAN BAB (HANYA BACA DI DALAM FORM) =====
             for idx, bab in enumerate(st.session_state.daftar_bab):
                 cols_bab = st.columns([3, 1, 1])
                 cols_bab[0].write(f"{idx+1}. {bab['nama']}")
                 cols_bab[1].write(f"{bab['durasi']} minggu")
+                # Checkbox tetap di dalam form
                 st.session_state.hapus_bab_check[idx] = cols_bab[2].checkbox(
                     "Hapus", 
                     key=f"check_del_bab_{idx}"
                 )
-            
-            # Tombol hapus yang dipilih
-            col_btn = st.columns([1, 1])
-            if col_btn[0].button("🗑️ Hapus Bab yang Dipilih", use_container_width=True):
-                for idx in reversed(range(len(st.session_state.daftar_bab))):
-                    if st.session_state.hapus_bab_check[idx]:
-                        st.session_state.daftar_bab.pop(idx)
-                        st.session_state.hapus_bab_check.pop(idx)
-                st.rerun()
-            
-            # Tombol reset
-            if col_btn[1].button("🔄 Reset Daftar Bab", use_container_width=True):
-                st.session_state.daftar_bab = [
-                    {"nama": "Bab 1 - Pengenalan", "durasi": 2},
-                    {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
-                    {"nama": "Bab 3 - Review & UH", "durasi": 1},
-                ]
-                st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
-                st.rerun()
-            
-            # Form tambah bab (di luar form utama agar tidak bentrok)
-            st.markdown("---")
-            st.subheader("➕ Tambah Bab")
-            cols_add = st.columns([2, 1, 1])
-            
-            nama_bab_baru = cols_add[0].text_input("Nama Bab", placeholder="Contoh: Bab 4 - Pengukuran", key="nama_bab_baru")
-            durasi_bab_baru = cols_add[1].number_input("Durasi (minggu)", min_value=1, max_value=6, value=1, key="durasi_bab_baru")
-            
-            if cols_add[2].button("➕ Tambah Bab", use_container_width=True):
-                if nama_bab_baru:
-                    st.session_state.daftar_bab.append({
-                        "nama": nama_bab_baru,
-                        "durasi": durasi_bab_baru
-                    })
-                    st.session_state.hapus_bab_check.append(False)
-                    st.rerun()
-                else:
-                    st.error("❌ Nama bab wajib diisi!")
             
             # ===== TOTAL MINGGU =====
             total_minggu = sum([bab['durasi'] for bab in st.session_state.daftar_bab])
@@ -1221,6 +1176,52 @@ def page_jadwal():
                     
                 except Exception as e:
                     st.error(f"❌ Gagal generate: {str(e)}")
+        
+        # ===== TOMBOL HAPUS & RESET DI LUAR FORM =====
+        st.markdown("---")
+        st.subheader("⚙️ Kelola Bab")
+        
+        col_btn = st.columns([1, 1, 1])
+        
+        # Tombol hapus bab yang dipilih
+        if col_btn[0].button("🗑️ Hapus Bab yang Dipilih", use_container_width=True):
+            # Hapus dari belakang agar index tidak berubah
+            for idx in reversed(range(len(st.session_state.daftar_bab))):
+                if st.session_state.hapus_bab_check[idx]:
+                    st.session_state.daftar_bab.pop(idx)
+                    st.session_state.hapus_bab_check.pop(idx)
+            st.rerun()
+        
+        # Tombol reset daftar bab
+        if col_btn[1].button("🔄 Reset Daftar Bab", use_container_width=True):
+            st.session_state.daftar_bab = [
+                {"nama": "Bab 1 - Pengenalan", "durasi": 2},
+                {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
+                {"nama": "Bab 3 - Review & UH", "durasi": 1},
+            ]
+            st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
+            st.rerun()
+        
+        # ===== FORM TAMBAH BAB (TERPISAH) =====
+        with st.form("form_tambah_bab"):
+            st.subheader("➕ Tambah Bab")
+            cols_add = st.columns([2, 1, 1])
+            
+            nama_bab_baru = cols_add[0].text_input("Nama Bab", placeholder="Contoh: Bab 4 - Pengukuran")
+            durasi_bab_baru = cols_add[1].number_input("Durasi (minggu)", min_value=1, max_value=6, value=1)
+            
+            submit_tambah = cols_add[2].form_submit_button("➕ Tambah Bab", use_container_width=True)
+            
+            if submit_tambah:
+                if nama_bab_baru:
+                    st.session_state.daftar_bab.append({
+                        "nama": nama_bab_baru,
+                        "durasi": durasi_bab_baru
+                    })
+                    st.session_state.hapus_bab_check.append(False)
+                    st.rerun()
+                else:
+                    st.error("❌ Nama bab wajib diisi!")
                     
 # ============ HALAMAN: BANK SOAL & MATERI ============
 def page_bank_soal():
