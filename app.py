@@ -7,7 +7,7 @@ from io import BytesIO
 import re
 import io 
 from PIL import Image 
-import PyPDF2
+import PyPDF2 
 import filetype
 
 # ===== TAMBAHKAN INI UNTUK GROQ =====
@@ -312,29 +312,21 @@ def generate_jadwal_semester(kelas_id, hari, jam, topik_awal, bab_awal, semester
             "Jumat": 4, "Sabtu": 5, "Minggu": 6
         }
         
-        # Daftar topik untuk 16 minggu (sesuaikan dengan mata pelajaran Anda)
-        topik_list = [
-            f"{topik_awal} - Bab {bab_awal}",
-            f"{topik_awal} - Bab {bab_awal + 1}",
-            f"{topik_awal} - Bab {bab_awal + 2}",
-            f"{topik_awal} - Bab {bab_awal + 3}",
-            f"Review & Latihan Soal",
-            f"UH {topik_awal}",
-            f"{topik_awal} - Bab {bab_awal + 4}",
-            f"{topik_awal} - Bab {bab_awal + 5}",
-            f"{topik_awal} - Bab {bab_awal + 6}",
-            f"Review & Latihan Soal",
-            f"UH {topik_awal}",
-            f"UTS {topik_awal}",
-            f"{topik_awal} - Bab {bab_awal + 7}",
-            f"{topik_awal} - Bab {bab_awal + 8}",
-            f"Review & UAS",
-            f"UAS {topik_awal}"
-        ]
-        
-        # Jika hanya 16 minggu, potong
-        if len(topik_list) > jumlah_minggu:
-            topik_list = topik_list[:jumlah_minggu]
+        # [UPDATE] Daftar topik dinamis berdasarkan jumlah minggu
+        topik_list = []
+        for i in range(jumlah_minggu):
+            if i == 4 and jumlah_minggu > 6:  # Minggu ke-5 (jika > 6 minggu)
+                topik_list.append("Review & Latihan Soal")
+            elif i == 5 and jumlah_minggu > 8:  # Minggu ke-6 (jika > 8 minggu)
+                topik_list.append(f"UH {topik_awal}")
+            elif i == 7 and jumlah_minggu > 10:  # Minggu ke-8 (jika > 10 minggu)
+                topik_list.append(f"UTS {topik_awal}")
+            elif i == jumlah_minggu - 1:  # Minggu terakhir
+                topik_list.append(f"UAS {topik_awal}")
+            else:
+                # Topik normal per bab
+                bab_ke = bab_awal + i
+                topik_list.append(f"{topik_awal} - Bab {bab_ke}")
         
         # Generate jadwal
         jadwal_insert = []
@@ -358,7 +350,6 @@ def generate_jadwal_semester(kelas_id, hari, jam, topik_awal, bab_awal, semester
     except Exception as e:
         st.error(f"Error generate jadwal: {str(e)}")
         return None
-
 # ============ FUNGSI UTILITY ============
 def hari_ke_angka(hari):
     hari_map = {
