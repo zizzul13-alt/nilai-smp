@@ -967,23 +967,23 @@ def page_jadwal():
     with tab1:
         st.subheader("📋 Jadwal Mengajar")
         
-        cols = st.columns([2, 2, 2, 1])  # [UPDATE] Tambah kolom untuk aksi
-        kelas_lihat = cols[0].selectbox(
+        # ===== FILTER =====
+        cols_filter = st.columns([2, 2, 2, 1])
+        kelas_lihat = cols_filter[0].selectbox(
             "Pilih Kelas", 
             ["Semua Kelas"] + list(kelas_options.keys())
         )
-        filter_semester = cols[1].selectbox(
+        filter_semester = cols_filter[1].selectbox(
             "Filter Semester",
             ["Semua", 1, 2]
         )
-        filter_minggu = cols[2].selectbox(
+        filter_minggu = cols_filter[2].selectbox(
             "Filter Minggu",
-            ["Semua"] + [f"Minggu {i}" for i in range(1, 21)]  # [UPDATE] sampai 20 minggu
+            ["Semua"] + [f"Minggu {i}" for i in range(1, 21)]
         )
+        mode_hapus = cols_filter[3].checkbox("🗑️ Mode Hapus", value=False, help="Centang untuk menampilkan tombol hapus")
         
-        # [UPDATE] Tombol hapus semua
-        hapus_semua = cols[3].checkbox("🗑️ Mode Hapus", value=False, help="Centang untuk menampilkan tombol hapus")
-        
+        # ===== AMBIL DATA =====
         jadwal = []
         if kelas_lihat == "Semua Kelas":
             for k in kelas:
@@ -996,71 +996,85 @@ def page_jadwal():
             for item in jadwal:
                 item['nama_kelas'] = kelas_lihat
         
-        # Filter
+        # ===== FILTER DATA =====
         if filter_semester != "Semua":
             jadwal = [j for j in jadwal if j.get('semester', 1) == filter_semester]
         if filter_minggu != "Semua":
             minggu_ke = int(filter_minggu.split()[1])
             jadwal = [j for j in jadwal if j.get('minggu_ke', 0) == minggu_ke]
         
+        # ===== TAMPILKAN TABEL =====
         if jadwal:
-            # ===== [UPDATE] Tampilan dengan tombol hapus =====
-            st.markdown("""
-            <style>
-                .hapus-btn {
-                    background-color: #ff4b4b;
-                    color: white;
-                    border: none;
-                    border-radius: 6px;
-                    padding: 4px 12px;
-                    font-size: 13px;
-                    cursor: pointer;
-                }
-                .hapus-btn:hover {
-                    background-color: #d63031;
-                }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Buat dataframe untuk display
+            # Buat dataframe
             df = pd.DataFrame(jadwal)
             df['hari_angka'] = df['hari'].apply(hari_ke_angka)
             df['jam_time'] = pd.to_datetime(df['jam'])
             df = df.sort_values(['hari_angka', 'jam_time'])
             
-            # [UPDATE] Tampilkan dengan tombol hapus di setiap baris
-            for idx, row in df.iterrows():
-                cols = st.columns([1.5, 1, 1, 2, 1.5, 0.8, 0.5])
+            # [FIX] Tampilan tabel yang rapi
+            df_display = df[['nama_kelas', 'hari', 'jam', 'topik', 'bab', 'minggu_ke', 'semester', 'id']].copy()
+            df_display.columns = ['Kelas', 'Hari', 'Jam', 'Topik', 'Bab', 'Minggu', 'Semester', 'id']
+            
+            # Format jam (HH:MM)
+            df_display['Jam'] = df_display['Jam'].apply(lambda x: x[:5] if isinstance(x, str) else str(x)[:5])
+            
+            # Tampilkan tabel utama
+            st.dataframe(
+                df_display.drop(columns=['id']),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Kelas": st.column_config.TextColumn("Kelas", width="small"),
+                    "Hari": st.column_config.TextColumn("Hari", width="small"),
+                    "Jam": st.column_config.TextColumn("Jam", width="small"),
+                    "Topik": st.column_config.TextColumn("Topik", width="large"),
+                    "Bab": st.column_config.TextColumn("Bab", width="medium"),
+                    "Minggu": st.column_config.NumberColumn("Minggu", width="small"),
+                    "Semester": st.column_config.NumberColumn("Semester", width="small"),
+                }
+            )
+            
+            # ===== TAMPILKAN TOMBOL HAPUS DI BAWAH TABEL =====
+            if mode_hapus:
+                st.markdown("---")
+                st.subheader("🗑️ Hapus Jadwal")
+                st.caption("Pilih jadwal yang ingin dihapus dari tabel di atas, lalu klik tombol di bawah")
                 
-                cols[0].write(row.get('nama_kelas', '-'))
-                cols[1].write(row['hari'])
-                cols[2].write(row['jam'][:5] if isinstance(row['jam'], str) else str(row['jam'])[:5])
-                cols[3].write(row.get('topik', '-'))
-                cols[4].write(row.get('bab', '-'))
-                cols[5].write(f"M{row.get('minggu_ke', '-')}")
+                # Pilih jadwal yang akan dihapus
+                pilihan_hapus = st.selectbox(
+                    "Pilih jadwal yang akan dihapus",
+                    [f"{row['Kelas']} - {row['Hari']} {row['Jam']} - {row['Topik']}" for _, row in df_display.iterrows()]
+                )
                 
-                # [UPDATE] Tombol hapus per baris
-                if hapus_semua:
-                    if cols[6].button("🗑️", key=f"del_jadwal_{row['id']}", help="Hapus jadwal ini"):
-                        st.warning(f"⚠️ Yakin hapus jadwal: {row['hari']} {row['jam'][:5]} - {row.get('topik', '-')}?")
-                        if st.button(f"✅ Ya, Hapus!", key=f"confirm_del_jadwal_{row['id']}"):
+                # Cari ID dari pilihan
+                selected_id = None
+                selected_text = ""
+                for _, row in df_display.iterrows():
+                    text = f"{row['Kelas']} - {row['Hari']} {row['Jam']} - {row['Topik']}"
+                    if text == pilihan_hapus:
+                        selected_id = row['id']
+                        selected_text = text
+                        break
+                
+                if st.button("🗑️ Hapus Jadwal Terpilih", type="primary", use_container_width=True):
+                    if selected_id:
+                        st.warning(f"⚠️ Yakin hapus jadwal: {selected_text}?")
+                        if st.button("✅ Ya, Hapus!", key="confirm_hapus_jadwal"):
                             try:
-                                supabase.table("jadwal").delete().eq("id", row['id']).execute()
+                                supabase.table("jadwal").delete().eq("id", selected_id).execute()
                                 clear_cache()
                                 st.success(f"✅ Jadwal dihapus!")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"❌ Gagal: {str(e)}")
-            
-            st.markdown("---")
-            
-            # [UPDATE] Hapus semua jadwal (massal)
-            if hapus_semua:
+                    else:
+                        st.error("❌ Tidak ada jadwal yang dipilih")
+                
+                # Tombol hapus semua (massal)
                 with st.expander("🗑️ Hapus Semua Jadwal (Massal)", expanded=False):
-                    st.warning("⚠️ Tindakan ini akan menghapus SEMUA jadwal yang ditampilkan!")
+                    st.warning("⚠️ Tindakan ini akan menghapus SEMUA jadwal yang sedang ditampilkan!")
                     st.caption(f"Total {len(jadwal)} jadwal akan dihapus")
                     
-                    # Pilihan hapus berdasarkan filter
                     if st.button("🗑️ Hapus Semua Jadwal yang Tampil", type="primary"):
                         try:
                             for j in jadwal:
@@ -1074,7 +1088,7 @@ def page_jadwal():
             # Informasi total
             st.info(f"📊 Total {len(jadwal)} jadwal | 💡 Centang 'Mode Hapus' untuk menghapus")
         else:
-            st.info("Belum ada jadwal untuk kelas ini.")
+            st.info("📭 Belum ada jadwal untuk filter ini.")
     
     # === TAB 2: TAMBAH MANUAL ===
     with tab2:
