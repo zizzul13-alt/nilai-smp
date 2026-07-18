@@ -470,19 +470,14 @@ Format Materi:
 
 Buat materi yang menarik dan mudah dipahami!
 """
-# ============ FUNGSI TAMPILAN KARTU UNTUK HP [UPDATE - TAMBAHKAN FUNGSI BARU] ============
+# ============ FUNGSI TAMPILAN KARTU UNTUK HP ============
 def tampilan_kartu(data_list, judul="Daftar"):
-    """
-    Menampilkan data dalam bentuk kartu (card) yang ramah HP
-    data_list: list of dict dengan key 'Nama', 'Nilai', 'Catatan', dll
-    """
     if not data_list:
         st.info(f"📭 Tidak ada data {judul}")
         return
     
     st.markdown(f"### 📇 {judul}")
     
-    # CSS untuk kartu
     st.markdown("""
     <style>
         .card-hp {
@@ -544,13 +539,10 @@ def tampilan_kartu(data_list, judul="Daftar"):
     </style>
     """, unsafe_allow_html=True)
     
-    # Loop untuk membuat kartu
     for item in data_list:
         nilai = item.get('Nilai', 0)
         nilai_class = "nilai-rendah" if nilai < 70 else ""
         nilai_text = f"{nilai:.0f}" if isinstance(nilai, (int, float)) and nilai > 0 else "—"
-        
-        # Cek apakah ada nilai sebelumnya
         sebelumnya = item.get('Nilai Sebelumnya', '-')
         if sebelumnya != '-' and sebelumnya:
             keterangan = f"Sebelumnya: {previously}"
