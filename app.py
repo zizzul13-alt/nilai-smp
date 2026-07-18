@@ -5,7 +5,7 @@ from datetime import datetime, date
 import openpyxl
 from io import BytesIO
 import re
-import io
+import io 
 from PIL import Image 
 import PyPDF2
 import filetype
@@ -687,7 +687,83 @@ def page_input_nilai():
         
         st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
         st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
+                st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
+        st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
         
+        # [UPDATE] Tambahkan opsi pilihan tampilan
+        view_mode = st.radio(
+            "📱 Pilih tampilan:",
+            ["📊 Tabel", "📇 Kartu (HP)"],
+            horizontal=True,
+            key="view_mode_input"
+        )
+        
+        data = []
+        for s in siswa:
+            # Cek nilai sebelumnya untuk siswa ini (opsional, untuk referensi)
+            nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
+            data.append({
+                "Nama": s['nama'],
+                "Nilai": 0.0,
+                "Catatan": "",
+                "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
+            })
+        
+        df_input = pd.DataFrame(data)
+        
+        # [UPDATE] Tampilkan berdasarkan mode yang dipilih
+        if view_mode == "📇 Kartu (HP)":
+            # Tampilkan kartu (bisa langsung edit? Untuk preview saja)
+            data_kartu = []
+            for idx, s in enumerate(siswa):
+                # Ambil nilai dari session state jika ada
+                nilai_terakhir = st.session_state.get(f"nilai_{s['id']}", 0)
+                data_kartu.append({
+                    "Nama": s['nama'],
+                    "Nilai": nilai_terakhir,
+                    "Catatan": "",
+                    "Nilai Sebelumnya": "-"
+                })
+            tampilan_kartu(data_kartu, f"Siswa Kelas {kelas_terpilih}")
+            st.info("📝 Pilih **Tabel** untuk mengisi nilai, atau gunakan form di bawah untuk input cepat.")
+            
+            # [UPDATE] Input cepat untuk HP
+            st.subheader("⚡ Input Cepat")
+            for s in siswa:
+                cols = st.columns([3, 1])
+                cols[0].write(f"👨‍🎓 {s['nama']}")
+                nilai = cols[1].number_input(
+                    "Nilai",
+                    min_value=0,
+                    max_value=100,
+                    value=0,
+                    step=1,
+                    key=f"nilai_{s['id']}",
+                    label_visibility="collapsed"
+                )
+                if nilai > 0:
+                    st.session_state[f"nilai_{s['id']}"] = nilai
+        else:
+            # Tampilkan tabel (seperti biasa)
+            edited_df = st.data_editor(
+                df_input,
+                column_config={
+                    "Nama": st.column_config.TextColumn("Nama", disabled=True, width="medium"),
+                    "Nilai": st.column_config.NumberColumn(
+                        "Nilai",
+                        min_value=0,
+                        max_value=100,
+                        step=1,
+                        format="%.0f",
+                        width="small"
+                    ),
+                    "Catatan": st.column_config.TextColumn("Catatan", width="large"),
+                    "Nilai Sebelumnya": st.column_config.TextColumn("Nilai Sebelumnya", disabled=True, width="small")
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="fixed"
+            )
         data = []
         for s in siswa:
             # Cek nilai sebelumnya untuk siswa ini (opsional, untuk referensi)
