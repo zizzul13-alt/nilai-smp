@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
-from datetime import datetime, date
+from datetime import datetime, date 
 import openpyxl
 from io import BytesIO
 import re
@@ -104,7 +104,42 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
+# ===== CSS UNTUK TOMBOL DI HP =====
+st.markdown("""
+<style>
+    /* Tombol lebih besar dan mudah diklik di HP */
+    .stButton button {
+        font-size: 16px !important;
+        padding: 12px 16px !important;
+        min-height: 48px !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Tombol primary (biru) */
+    .stButton button[data-baseweb="button"] {
+        background-color: #4CAF50 !important;
+        color: white !important;
+    }
+    
+    /* Hover effect */
+    .stButton button:hover {
+        transform: scale(1.02);
+        transition: 0.2s;
+    }
+    
+    /* Checkbox lebih besar */
+    .stCheckbox label {
+        font-size: 16px !important;
+        padding: 8px !important;
+    }
+    .stCheckbox input {
+        width: 20px !important;
+        height: 20px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+           
 # ============ INISIALISASI SUPABASE ============
 @st.cache_resource
 def init_supabase():
