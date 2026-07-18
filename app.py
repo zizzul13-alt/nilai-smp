@@ -949,6 +949,35 @@ def page_lihat_nilai():
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
     
+    # ===== INISIALISASI SESSION STATE UNTUK JADWAL =====
+    if "hapus_id" not in st.session_state:
+        st.session_state.hapus_id = None
+    if "hapus_text" not in st.session_state:
+        st.session_state.hapus_text = ""
+    if "jadwal_success_msg" not in st.session_state:
+        st.session_state.jadwal_success_msg = None
+    if "jadwal_error_msg" not in st.session_state:
+        st.session_state.jadwal_error_msg = None
+
+    # ===== CALLBACKS JADWAL =====
+    def select_jadwal_to_delete(jadwal_id, text):
+        st.session_state.hapus_id = jadwal_id
+        st.session_state.hapus_text = text
+
+    def confirm_delete_jadwal():
+        try:
+            supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
+            clear_cache()
+            st.session_state.jadwal_success_msg = f"✅ Jadwal '{st.session_state.hapus_text}' berhasil dihapus!"
+        except Exception as e:
+            st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
+        st.session_state.hapus_id = None
+        st.session_state.hapus_text = ""
+
+    def cancel_delete_jadwal():
+        st.session_state.hapus_id = None
+        st.session_state.hapus_text = ""
+
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas.")
@@ -963,10 +992,18 @@ def page_jadwal():
         "⚡ Generate Semester"
     ])
     
-        # === TAB 1: LIHAT JADWAL ===
+    # === TAB 1: LIHAT JADWAL ===
     with tab1:
         st.subheader("📋 Jadwal Mengajar")
         
+        # Display feedback messages if any
+        if st.session_state.jadwal_success_msg:
+            st.success(st.session_state.jadwal_success_msg)
+            st.session_state.jadwal_success_msg = None
+        if st.session_state.jadwal_error_msg:
+            st.error(st.session_state.jadwal_error_msg)
+            st.session_state.jadwal_error_msg = None
+
         # ===== FILTER =====
         cols_filter = st.columns([2, 2, 2, 1])
         kelas_lihat = cols_filter[0].selectbox(
@@ -1014,19 +1051,13 @@ def page_jadwal():
             # Format jam
             df['jam_format'] = df['jam'].apply(lambda x: x[:5] if isinstance(x, str) else str(x)[:5])
             
-            # ===== INISIALISASI SESSION STATE UNTUK KONFIRMASI =====
-            if "hapus_id" not in st.session_state:
-                st.session_state.hapus_id = None
-            if "hapus_text" not in st.session_state:
-                st.session_state.hapus_text = ""
-            
             # ===== TAMPILKAN DENGAN TOMBOL HAPUS =====
             if mode_hapus:
                 st.warning("🗑️ Mode Hapus AKTIF - Klik tombol 'Hapus' di samping jadwal yang ingin dihapus")
                 
                 # Tampilkan per baris dengan tombol hapus
                 for idx, row in df.iterrows():
-                    cols = st.columns([1.5, 1, 1, 2.5, 1.5, 0.8, 0.8, 0.5])
+                    cols = st.columns([1.5, 1, 1, 2.5, 1.5, 0.8, 0.8, 0.8])
                     
                     cols[0].write(row.get('nama_kelas', '-'))
                     cols[1].write(row['hari'])
@@ -1036,37 +1067,31 @@ def page_jadwal():
                     cols[5].write(f"M{row.get('minggu_ke', '-')}")
                     cols[6].write(f"S{row.get('semester', '-')}")
                     
-                    # [FIX] Tombol hapus - set session state lalu rerun
-                    if cols[7].button("🗑️", key=f"del_{row['id']}_{idx}"):
-                        st.session_state.hapus_id = row['id']
-                        st.session_state.hapus_text = f"{row['hari']} {row['jam_format']} - {row.get('topik', '-')}"
-                        st.rerun()
+                    # Menggunakan callback on_click untuk menyimpan state tanpa interupsi rerun instan
+                    row_text = f"{row['hari']} {row['jam_format']} - {row.get('topik', '-')}"
+                    cols[7].button(
+                        "🗑️",
+                        key=f"del_{row['id']}_{idx}",
+                        on_click=select_jadwal_to_delete,
+                        args=(row['id'], row_text)
+                    )
                 
-                # ===== TAMPILKAN KONFIRMASI DI BAWAH SEMUA BARIS =====
+                # ===== TAMPILKAN KONFIRMASI DI BAWAH SEMUA BARIS (Di luar loop dan di luar nesting tombol) =====
                 if st.session_state.hapus_id is not None:
                     st.markdown("---")
                     st.warning(f"⚠️ Yakin hapus jadwal: **{st.session_state.hapus_text}**?")
                     
                     col_confirm = st.columns([1, 1, 2])
-                    if col_confirm[0].button("✅ Ya, Hapus!", key="confirm_yes_fix"):
-                        try:
-                            # Eksekusi hapus
-                            supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
-                            clear_cache()
-                            # Reset session state
-                            st.session_state.hapus_id = None
-                            st.session_state.hapus_text = ""
-                            st.success("✅ Jadwal berhasil dihapus!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Gagal: {str(e)}")
-                            st.session_state.hapus_id = None
-                            st.session_state.hapus_text = ""
-                    
-                    if col_confirm[1].button("❌ Batal", key="confirm_no_fix"):
-                        st.session_state.hapus_id = None
-                        st.session_state.hapus_text = ""
-                        st.rerun()
+                    col_confirm[0].button(
+                        "✅ Ya, Hapus!",
+                        key="confirm_yes_fix",
+                        on_click=confirm_delete_jadwal
+                    )
+                    col_confirm[1].button(
+                        "❌ Batal",
+                        key="confirm_no_fix",
+                        on_click=cancel_delete_jadwal
+                    )
             else:
                 # Tampilkan tabel biasa (tanpa tombol hapus)
                 df_display = df[['nama_kelas', 'hari', 'jam_format', 'topik', 'bab', 'minggu_ke', 'semester']].copy()
@@ -1391,6 +1416,35 @@ def page_bank_soal():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
+    # ===== INISIALISASI SESSION STATE UNTUK DOKUMEN =====
+    if "hapus_doc_id" not in st.session_state:
+        st.session_state.hapus_doc_id = None
+    if "hapus_doc_judul" not in st.session_state:
+        st.session_state.hapus_doc_judul = ""
+    if "doc_success_msg" not in st.session_state:
+        st.session_state.doc_success_msg = None
+    if "doc_error_msg" not in st.session_state:
+        st.session_state.doc_error_msg = None
+
+    # ===== CALLBACKS DOKUMEN =====
+    def select_doc_to_delete(doc_id, judul):
+        st.session_state.hapus_doc_id = doc_id
+        st.session_state.hapus_doc_judul = judul
+
+    def confirm_delete_doc():
+        try:
+            supabase.table("dokumen").delete().eq("id", st.session_state.hapus_doc_id).execute()
+            clear_cache()
+            st.session_state.doc_success_msg = f"✅ Dokumen '{st.session_state.hapus_doc_judul}' berhasil dihapus!"
+        except Exception as e:
+            st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
+        st.session_state.hapus_doc_id = None
+        st.session_state.hapus_doc_judul = ""
+
+    def cancel_delete_doc():
+        st.session_state.hapus_doc_id = None
+        st.session_state.hapus_doc_judul = ""
+
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas. Silahkan tambah kelas di menu Pengaturan.")
@@ -1490,6 +1544,14 @@ def page_dokumen():
     with tab2:
         st.subheader("Daftar Dokumen")
         
+        # Display feedback messages if any
+        if st.session_state.doc_success_msg:
+            st.success(st.session_state.doc_success_msg)
+            st.session_state.doc_success_msg = None
+        if st.session_state.doc_error_msg:
+            st.error(st.session_state.doc_error_msg)
+            st.session_state.doc_error_msg = None
+
         cols = st.columns(3)
         filter_kelas = cols[0].selectbox(
             "Filter Kelas", 
@@ -1540,18 +1602,30 @@ def page_dokumen():
                         except Exception as e:
                             st.error(f"Gagal download: {str(e)}")
                     
-                    if cols[3].button("🗑️", key=f"del_doc_{d['id']}"):
-                        st.warning(f"⚠️ Yakin hapus dokumen '{d['judul']}'?")
-                        if st.button(f"✅ Ya, Hapus!", key=f"confirm_del_doc_{d['id']}"):
-                            try:
-                                supabase.table("dokumen").delete().eq("id", d['id']).execute()
-                                clear_cache()
-                                st.success(f"✅ Dokumen dihapus!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Gagal: {str(e)}")
+                    cols[3].button(
+                        "🗑️",
+                        key=f"del_doc_{d['id']}",
+                        on_click=select_doc_to_delete,
+                        args=(d['id'], d['judul'])
+                    )
                     
                     st.markdown("---")
+
+            # ===== TAMPILKAN KONFIRMASI HAPUS DOKUMEN (Di luar loop) =====
+            if st.session_state.hapus_doc_id is not None:
+                st.markdown("---")
+                st.warning(f"⚠️ Yakin hapus dokumen: **{st.session_state.hapus_doc_judul}**?")
+                col_confirm_doc = st.columns([1, 1, 2])
+                col_confirm_doc[0].button(
+                    "✅ Ya, Hapus!",
+                    key="confirm_yes_doc_fix",
+                    on_click=confirm_delete_doc
+                )
+                col_confirm_doc[1].button(
+                    "❌ Batal",
+                    key="confirm_no_doc_fix",
+                    on_click=cancel_delete_doc
+                )
         else:
             st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
     
@@ -1716,6 +1790,35 @@ def page_dokumen():
 def page_pengaturan():
     st.title("⚙️ Pengaturan Kelas & Siswa")
     
+    # ===== INISIALISASI SESSION STATE UNTUK SISWA =====
+    if "hapus_siswa_id" not in st.session_state:
+        st.session_state.hapus_siswa_id = None
+    if "hapus_siswa_nama" not in st.session_state:
+        st.session_state.hapus_siswa_nama = ""
+    if "siswa_success_msg" not in st.session_state:
+        st.session_state.siswa_success_msg = None
+    if "siswa_error_msg" not in st.session_state:
+        st.session_state.siswa_error_msg = None
+
+    # ===== CALLBACKS SISWA =====
+    def select_siswa_to_delete(siswa_id, nama):
+        st.session_state.hapus_siswa_id = siswa_id
+        st.session_state.hapus_siswa_nama = nama
+
+    def confirm_delete_siswa():
+        try:
+            supabase.table("siswa").delete().eq("id", st.session_state.hapus_siswa_id).execute()
+            clear_cache()
+            st.session_state.siswa_success_msg = f"✅ Siswa '{st.session_state.hapus_siswa_nama}' berhasil dihapus!"
+        except Exception as e:
+            st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
+        st.session_state.hapus_siswa_id = None
+        st.session_state.hapus_siswa_nama = ""
+
+    def cancel_delete_siswa():
+        st.session_state.hapus_siswa_id = None
+        st.session_state.hapus_siswa_nama = ""
+
     tab1, tab2, tab3 = st.tabs(["📚 Kelas", "👨‍🎓 Siswa", "🎯 KKM"])
     
     # TAB 1: Kelas
@@ -1782,6 +1885,14 @@ def page_pengaturan():
     with tab2:
         st.subheader("Kelola Siswa")
         
+        # Display feedback messages if any
+        if st.session_state.siswa_success_msg:
+            st.success(st.session_state.siswa_success_msg)
+            st.session_state.siswa_success_msg = None
+        if st.session_state.siswa_error_msg:
+            st.error(st.session_state.siswa_error_msg)
+            st.session_state.siswa_error_msg = None
+
         kelas = get_kelas()
         if not kelas:
             st.warning("Tambahkan kelas terlebih dahulu.")
@@ -1844,16 +1955,28 @@ def page_pengaturan():
                 for s in siswa:
                     cols = st.columns([3, 1])
                     cols[0].write(f"👨‍🎓 {s['nama']}")
-                    if cols[1].button(f"🗑️", key=f"del_siswa_{s['id']}"):
-                        st.warning(f"⚠️ Yakin ingin menghapus siswa {s['nama']}?")
-                        if st.button(f"✅ Ya, Hapus!", key=f"confirm_del_siswa_{s['id']}"):
-                            try:
-                                supabase.table("siswa").delete().eq("id", s['id']).execute()
-                                clear_cache()
-                                st.success(f"✅ {s['nama']} berhasil dihapus!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Gagal: {str(e)}")
+                    cols[1].button(
+                        "🗑️",
+                        key=f"del_siswa_{s['id']}",
+                        on_click=select_siswa_to_delete,
+                        args=(s['id'], s['nama'])
+                    )
+
+                # ===== TAMPILKAN KONFIRMASI HAPUS SISWA (Di luar loop) =====
+                if st.session_state.hapus_siswa_id is not None:
+                    st.markdown("---")
+                    st.warning(f"⚠️ Yakin ingin menghapus siswa **{st.session_state.hapus_siswa_nama}**?")
+                    col_confirm_siswa = st.columns([1, 1, 2])
+                    col_confirm_siswa[0].button(
+                        "✅ Ya, Hapus!",
+                        key="confirm_yes_siswa_fix",
+                        on_click=confirm_delete_siswa
+                    )
+                    col_confirm_siswa[1].button(
+                        "❌ Batal",
+                        key="confirm_no_siswa_fix",
+                        on_click=cancel_delete_siswa
+                    )
     
     # TAB 3: KKM
     with tab3:
