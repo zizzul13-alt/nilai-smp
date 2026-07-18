@@ -687,7 +687,7 @@ def page_input_nilai():
         
         st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
         st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
-                st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
+        st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
         st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
         
         # [UPDATE] Tambahkan opsi pilihan tampilan
