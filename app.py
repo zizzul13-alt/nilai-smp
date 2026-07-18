@@ -1177,14 +1177,19 @@ def page_jadwal():
                 except Exception as e:
                     st.error(f"❌ Gagal generate: {str(e)}")
         
-        # ===== TOMBOL HAPUS & RESET DI LUAR FORM =====
+                # ===== TOMBOL HAPUS & RESET DI LUAR FORM =====
         st.markdown("---")
         st.subheader("⚙️ Kelola Bab")
         
+        # [FIX] Tombol dengan ukuran lebih besar dan warna jelas
         col_btn = st.columns([1, 1, 1])
         
-        # Tombol hapus bab yang dipilih
-        if col_btn[0].button("🗑️ Hapus Bab yang Dipilih", use_container_width=True):
+        # Tombol hapus bab yang dipilih (DIBUAT BESAR & WARNA MERAH)
+        if col_btn[0].button(
+            "🗑️ Hapus Bab yang Dipilih", 
+            use_container_width=True,
+            type="primary"  # Warna biru mencolok
+        ):
             # Hapus dari belakang agar index tidak berubah
             for idx in reversed(range(len(st.session_state.daftar_bab))):
                 if st.session_state.hapus_bab_check[idx]:
@@ -1192,8 +1197,11 @@ def page_jadwal():
                     st.session_state.hapus_bab_check.pop(idx)
             st.rerun()
         
-        # Tombol reset daftar bab
-        if col_btn[1].button("🔄 Reset Daftar Bab", use_container_width=True):
+        # Tombol reset daftar bab (WARNA KUNING/PERINGATAN)
+        if col_btn[1].button(
+            "🔄 Reset Daftar Bab", 
+            use_container_width=True
+        ):
             st.session_state.daftar_bab = [
                 {"nama": "Bab 1 - Pengenalan", "durasi": 2},
                 {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
@@ -1201,6 +1209,9 @@ def page_jadwal():
             ]
             st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
             st.rerun()
+        
+        # [TAMBAH] Informasi cara pakai
+        st.caption("💡 **Cara pakai:** Centang ☑️ 'Hapus' di bab yang ingin dihapus, lalu klik tombol '🗑️ Hapus Bab yang Dipilih'")
         
         # ===== FORM TAMBAH BAB (TERPISAH) =====
         with st.form("form_tambah_bab"):
