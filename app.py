@@ -1014,13 +1014,15 @@ def page_jadwal():
             # Format jam
             df['jam_format'] = df['jam'].apply(lambda x: x[:5] if isinstance(x, str) else str(x)[:5])
             
-                        # ===== TAMPILKAN DENGAN TOMBOL HAPUS =====
+            # ===== INISIALISASI SESSION STATE UNTUK KONFIRMASI =====
+            if "hapus_id" not in st.session_state:
+                st.session_state.hapus_id = None
+            if "hapus_text" not in st.session_state:
+                st.session_state.hapus_text = ""
+            
+            # ===== TAMPILKAN DENGAN TOMBOL HAPUS =====
             if mode_hapus:
                 st.warning("🗑️ Mode Hapus AKTIF - Klik tombol 'Hapus' di samping jadwal yang ingin dihapus")
-                
-                # ===== INISIALISASI SESSION STATE UNTUK KONFIRMASI =====
-                if "hapus_id" not in st.session_state:
-                    st.session_state.hapus_id = None
                 
                 # Tampilkan per baris dengan tombol hapus
                 for idx, row in df.iterrows():
@@ -1034,31 +1036,36 @@ def page_jadwal():
                     cols[5].write(f"M{row.get('minggu_ke', '-')}")
                     cols[6].write(f"S{row.get('semester', '-')}")
                     
-                    # [FIX] Tombol hapus - set session state
+                    # [FIX] Tombol hapus - set session state lalu rerun
                     if cols[7].button("🗑️", key=f"del_{row['id']}_{idx}"):
                         st.session_state.hapus_id = row['id']
                         st.session_state.hapus_text = f"{row['hari']} {row['jam_format']} - {row.get('topik', '-')}"
                         st.rerun()
                 
-                # ===== TAMPILKAN KONFIRMASI DI BAWAH =====
+                # ===== TAMPILKAN KONFIRMASI DI BAWAH SEMUA BARIS =====
                 if st.session_state.hapus_id is not None:
                     st.markdown("---")
                     st.warning(f"⚠️ Yakin hapus jadwal: **{st.session_state.hapus_text}**?")
                     
                     col_confirm = st.columns([1, 1, 2])
-                    if col_confirm[0].button("✅ Ya, Hapus!", key="confirm_yes"):
+                    if col_confirm[0].button("✅ Ya, Hapus!", key="confirm_yes_fix"):
                         try:
+                            # Eksekusi hapus
                             supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
                             clear_cache()
+                            # Reset session state
                             st.session_state.hapus_id = None
-                            st.success(f"✅ Jadwal berhasil dihapus!")
+                            st.session_state.hapus_text = ""
+                            st.success("✅ Jadwal berhasil dihapus!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ Gagal: {str(e)}")
                             st.session_state.hapus_id = None
+                            st.session_state.hapus_text = ""
                     
-                    if col_confirm[1].button("❌ Batal", key="confirm_no"):
+                    if col_confirm[1].button("❌ Batal", key="confirm_no_fix"):
                         st.session_state.hapus_id = None
+                        st.session_state.hapus_text = ""
                         st.rerun()
             else:
                 # Tampilkan tabel biasa (tanpa tombol hapus)
