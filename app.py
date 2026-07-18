@@ -470,7 +470,104 @@ Format Materi:
 
 Buat materi yang menarik dan mudah dipahami!
 """
-
+# ============ FUNGSI TAMPILAN KARTU UNTUK HP [UPDATE - TAMBAHKAN FUNGSI BARU] ============
+def tampilan_kartu(data_list, judul="Daftar"):
+    """
+    Menampilkan data dalam bentuk kartu (card) yang ramah HP
+    data_list: list of dict dengan key 'Nama', 'Nilai', 'Catatan', dll
+    """
+    if not data_list:
+        st.info(f"📭 Tidak ada data {judul}")
+        return
+    
+    st.markdown(f"### 📇 {judul}")
+    
+    # CSS untuk kartu
+    st.markdown("""
+    <style>
+        .card-hp {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin: 8px 0;
+            border-left: 4px solid #4CAF50;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card-hp .nama {
+            font-weight: 600;
+            font-size: 16px;
+            color: #1a1a2e;
+        }
+        .card-hp .nilai {
+            font-size: 20px;
+            font-weight: 700;
+            color: #4CAF50;
+            background: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            min-width: 50px;
+            text-align: center;
+        }
+        .card-hp .nilai-rendah {
+            color: #f44336;
+        }
+        .card-hp .keterangan {
+            font-size: 12px;
+            color: #888;
+            margin-top: 2px;
+        }
+        .card-hp .kiri {
+            flex: 1;
+        }
+        .card-hp .kanan {
+            text-align: right;
+            min-width: 60px;
+        }
+        @media only screen and (max-width: 480px) {
+            .card-hp {
+                padding: 12px 12px;
+                margin: 6px 0;
+                border-radius: 8px;
+            }
+            .card-hp .nama {
+                font-size: 14px;
+            }
+            .card-hp .nilai {
+                font-size: 18px;
+                padding: 2px 10px;
+                min-width: 40px;
+            }
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Loop untuk membuat kartu
+    for item in data_list:
+        nilai = item.get('Nilai', 0)
+        nilai_class = "nilai-rendah" if nilai < 70 else ""
+        nilai_text = f"{nilai:.0f}" if isinstance(nilai, (int, float)) and nilai > 0 else "—"
+        
+        # Cek apakah ada nilai sebelumnya
+        sebelumnya = item.get('Nilai Sebelumnya', '-')
+        if sebelumnya != '-' and sebelumnya:
+            keterangan = f"Sebelumnya: {previously}"
+        else:
+            keterangan = item.get('Catatan', '') or "Kosong"
+        
+        st.markdown(f"""
+        <div class="card-hp">
+            <div class="kiri">
+                <div class="nama">{item['Nama']}</div>
+                <div class="keterangan">{keterangan}</div>
+            </div>
+            <div class="kanan">
+                <div class="nilai {nilai_class}">{nilai_text}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 # ============ HALAMAN: DASHBOARD ============
 def page_dashboard():
     st.title("🏠 Dashboard Guru")
