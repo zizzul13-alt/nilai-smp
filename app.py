@@ -2422,15 +2422,23 @@ def page_dokumen():
                                     st.warning("⚠️ Kunci API `gemini_api_key` tidak terdeteksi di `secrets.toml`. Otomatis dialihkan (fallback) ke Groq...")
                                     raise ValueError("Kunci API Gemini tidak ada.")
 
-                                from langchain_google_genai import ChatGoogleGenerativeAI
-                                llm = ChatGoogleGenerativeAI(
-                                    model="gemini-1.5-flash",
-                                    temperature=0.7,
-                                    google_api_key=gemini_api_key
+                                import google.generativeai as genai
+                                genai.configure(api_key=gemini_api_key)
+
+                                st.toast("🔮 Memproses pembuatan dokumen menggunakan Google Gemini 1.5 Flash secara Native...")
+
+                                # Menggunakan SDK Resmi Google Generative AI secara langsung untuk mencegah isu versi API
+                                model = genai.GenerativeModel(
+                                    model_name="gemini-1.5-flash",
+                                    generation_config={"temperature": 0.7}
                                 )
-                                st.toast("🔮 Memproses pembuatan dokumen menggunakan Google Gemini 1.5 Flash...")
-                                chain = prompt_template | llm | StrOutputParser()
-                                hasil = chain.invoke({"input": prompt_text})
+
+                                # Menggabungkan instruksi sistem (system prompt) dan user input
+                                system_instruction = f"Anda adalah guru profesional yang membuat {jenis_dokumen} berkualitas tinggi."
+                                full_prompt = f"{system_instruction}\n\n{prompt_text}"
+
+                                response = model.generate_content(full_prompt)
+                                hasil = response.text
                             except Exception as gemini_err:
                                 # Fallback ke Groq jika Gemini error/limit
                                 st.warning(f"⚠️ Terjadi kendala pada Gemini ({str(gemini_err)}). Melakukan fallback otomatis menggunakan Groq LLaMA...")
