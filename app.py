@@ -23,119 +23,202 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ============ CSS KHUSUS HP ============
+# ============ INISIALISASI SESSION STATE ============
+def init_session_states():
+    # Temporary nilai state untuk input kartu touchscreen
+    if "temp_nilai_kartu" not in st.session_state:
+        st.session_state.temp_nilai_kartu = {}
+    if "temp_catatan_kartu" not in st.session_state:
+        st.session_state.temp_catatan_kartu = {}
+    if "current_kelas_id" not in st.session_state:
+        st.session_state.current_kelas_id = None
+
+    # State untuk Jadwal
+    if "hapus_id" not in st.session_state:
+        st.session_state.hapus_id = None
+    if "hapus_text" not in st.session_state:
+        st.session_state.hapus_text = ""
+    if "jadwal_success_msg" not in st.session_state:
+        st.session_state.jadwal_success_msg = None
+    if "jadwal_error_msg" not in st.session_state:
+        st.session_state.jadwal_error_msg = None
+
+    # State untuk Dokumen
+    if "hapus_doc_id" not in st.session_state:
+        st.session_state.hapus_doc_id = None
+    if "hapus_doc_judul" not in st.session_state:
+        st.session_state.hapus_doc_judul = ""
+    if "doc_success_msg" not in st.session_state:
+        st.session_state.doc_success_msg = None
+    if "doc_error_msg" not in st.session_state:
+        st.session_state.doc_error_msg = None
+
+    # State untuk Siswa
+    if "hapus_siswa_id" not in st.session_state:
+        st.session_state.hapus_siswa_id = None
+    if "hapus_siswa_nama" not in st.session_state:
+        st.session_state.hapus_siswa_nama = ""
+    if "siswa_success_msg" not in st.session_state:
+        st.session_state.siswa_success_msg = None
+    if "siswa_error_msg" not in st.session_state:
+        st.session_state.siswa_error_msg = None
+
+    # State untuk Bab/Generate
+    if "daftar_bab" not in st.session_state:
+        st.session_state.daftar_bab = [
+            {"nama": "Bab 1 - Pengenalan", "durasi": 2},
+            {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
+            {"nama": "Bab 3 - Review & UH", "durasi": 1},
+        ]
+    if "hapus_bab_check" not in st.session_state:
+        st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
+
+init_session_states()
+
+# ============ CSS KHUSUS HP & KUSTOMISASI GLOBAL ============
+# Mengimpor Font Google "Plus Jakarta Sans" dan memberikan styling modern, transisi halus, serta perbaikan responsivitas HP.
 st.markdown("""
 <style>
-    /* Perbaikan tampilan HP */
-    @media only screen and (max-width: 768px) {
-        .stApp {
-            font-size: 16px !important;
-        }
-        h1 {
-            font-size: 24px !important;
-        }
-        h2 {
-            font-size: 20px !important;
-        }
-        h3 {
-            font-size: 18px !important;
-        }
-        .stButton button {
-            font-size: 16px !important;
-            padding: 12px 24px !important;
-            width: 100% !important;
-        }
-        .stTextInput input, 
-        .stSelectbox select,
-        .stNumberInput input {
-            font-size: 16px !important;
-            padding: 12px !important;
-        }
-        .stTextArea textarea {
-            font-size: 16px !important;
-            padding: 12px !important;
-        }
-        .stDataFrame {
-            font-size: 14px !important;
-        }
-        .stDataFrame table {
-            font-size: 14px !important;
-        }
-        .stMetric {
-            font-size: 18px !important;
-        }
-        .stRadio label {
-            font-size: 16px !important;
-            padding: 8px !important;
-        }
-        .stTabs button {
-            font-size: 14px !important;
-            padding: 10px 16px !important;
-        }
-        /* Sidebar lebih lebar di HP */
-        .css-1d391kg {
-            width: 280px !important;
-        }
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+    /* Font Global & Transisi Halus */
+    html, body, [data-testid="stAppViewContainer"], .stApp {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+        background-color: #fcfcfd !important;
+        transition: background-color 0.3s ease, opacity 0.3s ease;
     }
-    @media only screen and (max-width: 480px) {
-        .stApp {
-            font-size: 14px !important;
-        }
-        h1 {
-            font-size: 20px !important;
-        }
-        h2 {
-            font-size: 17px !important;
-        }
-        .stButton button {
-            font-size: 14px !important;
-            padding: 10px 16px !important;
-        }
-        .stDataFrame {
-            font-size: 12px !important;
-        }
+
+    /* Transisi Fade In Halus saat memuat halaman */
+    [data-testid="stAppViewContainer"] {
+        animation: fadeIn 0.4s ease-out;
     }
-    /* Tampilan lebih rapi */
-    .stAlert {
-        font-size: 14px !important;
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(4px); }
+        to { opacity: 1; transform: translateY(0); }
     }
-    .stSuccess {
-        font-size: 14px !important;
+
+    /* Mempercantik Judul */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-weight: 700 !important;
+        color: #1e293b !important;
+        letter-spacing: -0.02em !important;
     }
-</style>
-""", unsafe_allow_html=True)
-# ===== CSS UNTUK TOMBOL DI HP =====
-st.markdown("""
-<style>
-    /* Tombol lebih besar dan mudah diklik di HP */
-    .stButton button {
-        font-size: 16px !important;
-        padding: 12px 16px !important;
-        min-height: 48px !important;
-        border-radius: 8px !important;
+
+    /* Perbaikan Tab Streamlit agar Fokus ke Tengah dan Rapi di Mobile */
+    div[data-testid="stTabs"] {
+        background-color: #f8fafc;
+        padding: 6px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        margin-bottom: 20px;
+    }
+    div[data-testid="stTabs"] button {
+        flex: 1 !important;
+        text-align: center !important;
+        justify-content: center !important;
         font-weight: 600 !important;
+        font-size: 15px !important;
+        border-radius: 8px !important;
+        color: #64748b !important;
+        transition: all 0.2s ease-in-out !important;
+        border: none !important;
+        background-color: transparent !important;
     }
-    
-    /* Tombol primary (biru) */
+    div[data-testid="stTabs"] button[aria-selected="true"] {
+        background-color: #ffffff !important;
+        color: #4CAF50 !important;
+        box-shadow: 0px 4px 6px -1px rgba(0, 0, 0, 0.05), 0px 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+    }
+
+    /* Kustomisasi Tombol Primary & Hover */
+    .stButton button {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
+        font-size: 15px !important;
+        font-weight: 600 !important;
+        padding: 10px 20px !important;
+        min-height: 44px !important;
+        border-radius: 10px !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+
+    /* Tombol warna hijau guru */
     .stButton button[data-baseweb="button"] {
         background-color: #4CAF50 !important;
         color: white !important;
+        border: none !important;
     }
-    
-    /* Hover effect */
+
     .stButton button:hover {
-        transform: scale(1.02);
-        transition: 0.2s;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        background-color: #43a047 !important;
     }
-    
+
+    .stButton button:active {
+        transform: translateY(0px) !important;
+    }
+
+    /* Card Box Kustom untuk HP */
+    .custom-card {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 18px;
+        margin: 12px 0;
+        border: 1px solid #f1f5f9;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .custom-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    }
+
+    /* Perbaikan tampilan HP */
+    @media only screen and (max-width: 768px) {
+        .stApp {
+            font-size: 15px !important;
+        }
+        h1 {
+            font-size: 22px !important;
+        }
+        h2 {
+            font-size: 18px !important;
+        }
+        h3 {
+            font-size: 16px !important;
+        }
+        .stButton button {
+            width: 100% !important;
+        }
+        /* Sidebar lebih lebar di HP */
+        .css-1d391kg, [data-testid="stSidebar"] {
+            width: 280px !important;
+        }
+    }
+
+    /* Input & Form Elements */
+    .stTextInput input, .stSelectbox select, .stNumberInput input, .stTextArea textarea {
+        border-radius: 8px !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 10px 14px !important;
+        transition: border-color 0.2s ease !important;
+    }
+    .stTextInput input:focus, .stSelectbox select:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
+        border-color: #4CAF50 !important;
+        box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.15) !important;
+    }
+
     /* Checkbox lebih besar */
     .stCheckbox label {
-        font-size: 16px !important;
-        padding: 8px !important;
+        font-size: 15px !important;
+        padding: 6px !important;
     }
     .stCheckbox input {
-        width: 20px !important;
-        height: 20px !important;
+        width: 18px !important;
+        height: 18px !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -143,11 +226,24 @@ st.markdown("""
 # ============ INISIALISASI SUPABASE ============
 @st.cache_resource
 def init_supabase():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+    try:
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        return create_client(url, key)
+    except Exception as e:
+        return None
 
 supabase = init_supabase()
+
+if supabase is None:
+    st.error("⚠️ **Kredensial database (Supabase) belum diatur dengan benar!**")
+    st.info("Silakan buat atau lengkapi file konfigurasi `.streamlit/secrets.toml` Anda dengan format berikut:")
+    st.code("""
+[supabase]
+url = "https://your-project-url.supabase.co"
+key = "your-supabase-anon-key"
+    """, language="toml")
+    st.stop()
 
 # ============ FUNGSI DATABASE DENGAN CACHE ============
 @st.cache_data(ttl=300)
@@ -581,59 +677,132 @@ def tampilan_kartu(data_list, judul="Daftar"):
         
 # ============ HALAMAN: DASHBOARD ============
 def page_dashboard():
-    st.title("🏠 Dashboard Guru")
+    st.markdown("<h1 style='text-align: center; margin-bottom: 25px;'>🏠 Dashboard Guru</h1>", unsafe_allow_html=True)
     
+    # Grid KPI / Metrik Utama dengan card modern
     cols = st.columns(4)
     kelas = get_kelas()
     total_kelas = len(kelas)
     
     total_siswa = 0
+    list_all_siswa = []
     for k in kelas:
-        siswa = get_siswa(k['id'])
-        total_siswa += len(siswa)
+        siswa_kelas = get_siswa(k['id'])
+        total_siswa += len(siswa_kelas)
+        list_all_siswa.extend(siswa_kelas)
     
-    nilai = get_nilai()
-    total_nilai = len(nilai)
+    semua_nilai = get_nilai()
+    total_nilai = len(semua_nilai)
     soal = get_bank_soal()
     total_soal = len(soal)
     
+    # Render KPI Cards
     with cols[0]:
-        st.metric("Total Kelas", total_kelas)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">📚</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Kelas</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_kelas}</div>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[1]:
-        st.metric("Total Siswa", total_siswa)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">👨‍🎓</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Siswa</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_siswa}</div>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[2]:
-        st.metric("Total Nilai", total_nilai)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">📝</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Transaksi Nilai</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_nilai}</div>
+        </div>
+        """, unsafe_allow_html=True)
     with cols[3]:
-        st.metric("Total Soal", total_soal)
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center;">
+            <div style="font-size: 32px; margin-bottom: 5px;">📖</div>
+            <div style="font-size: 14px; color: #64748b; font-weight: 600;">Total Soal</div>
+            <div style="font-size: 28px; font-weight: 800; color: #1e293b;">{total_soal}</div>
+        </div>
+        """, unsafe_allow_html=True)
     
-    st.markdown("---")
-    st.subheader("📅 Jadwal Hari Ini")
-    
-    hari_ini = date.today().strftime("%A")
-    hari_ini_ind = {
-        "Monday": "Senin", "Tuesday": "Selasa", "Wednesday": "Rabu",
-        "Thursday": "Kamis", "Friday": "Jumat", "Saturday": "Sabtu",
-        "Sunday": "Minggu"
-    }.get(hari_ini, hari_ini)
-    
-    jadwal_hari_ini = []
-    for k in kelas:
-        jadwal = get_jadwal(k['id'])
-        for j in jadwal:
-            if j['hari'] == hari_ini_ind:
-                jadwal_hari_ini.append({
-                    "Kelas": k['nama_kelas'],
-                    "Jam": j['jam'],
-                    "Topik": j['topik'],
-                    "Bab": j['bab']
-                })
-    
-    if jadwal_hari_ini:
-        df = pd.DataFrame(jadwal_hari_ini)
-        df = df.sort_values("Jam")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.info(f"Tidak ada jadwal untuk hari {hari_ini_ind}")
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Kolom Kiri: Jadwal Hari Ini | Kolom Kanan: Analitik & Insights Nilai KKM
+    col_kiri, col_kanan = st.columns([1.2, 1.0])
+
+    with col_kiri:
+        st.markdown("<h3 style='margin-bottom: 15px;'>📅 Jadwal Mengajar Hari Ini</h3>", unsafe_allow_html=True)
+
+        hari_ini = date.today().strftime("%A")
+        hari_ini_ind = {
+            "Monday": "Senin", "Tuesday": "Selasa", "Wednesday": "Rabu",
+            "Thursday": "Kamis", "Friday": "Jumat", "Saturday": "Sabtu",
+            "Sunday": "Minggu"
+        }.get(hari_ini, hari_ini)
+
+        jadwal_hari_ini = []
+        for k in kelas:
+            jadwal = get_jadwal(k['id'])
+            for j in jadwal:
+                if j['hari'] == hari_ini_ind:
+                    jadwal_hari_ini.append({
+                        "Kelas": k['nama_kelas'],
+                        "Jam": j['jam'],
+                        "Topik": j['topik'],
+                        "Bab": j['bab']
+                    })
+
+        if jadwal_hari_ini:
+            df = pd.DataFrame(jadwal_hari_ini)
+            df = df.sort_values("Jam")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info(f"Tidak ada jadwal mengajar untuk hari {hari_ini_ind}")
+
+    with col_kanan:
+        st.markdown("<h3 style='margin-bottom: 15px;'>📈 Analitik & Insights KKM</h3>", unsafe_allow_html=True)
+
+        if semua_nilai and kelas:
+            # Hitung rata-rata nilai kelas, % lulus KKM (default 75 jika KKM belum di-set)
+            insights_data = []
+            for k in kelas:
+                nilai_kelas = [n for n in semua_nilai if n['kelas_id'] == k['id']]
+                if nilai_kelas:
+                    list_nilai = [n['nilai'] for n in nilai_kelas]
+                    rerata = sum(list_nilai) / len(list_nilai)
+
+                    # Ambil KKM kelas (jika ada, jika tidak, pakai 75 sebagai fallback)
+                    kkm_data = get_kkm(k['id'])
+                    kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
+
+                    lulus_kkm = sum(1 for n in list_nilai if n >= kkm_val)
+                    persentase_lulus = (lulus_kkm / len(list_nilai)) * 100
+
+                    insights_data.append({
+                        "Kelas": k['nama_kelas'],
+                        "Rata-rata Nilai": round(rerata, 1),
+                        "KKM": kkm_val,
+                        "% Tuntas KKM": round(persentase_lulus, 1)
+                    })
+
+            if insights_data:
+                df_insights = pd.DataFrame(insights_data)
+
+                # Render chart visualisasi tuntas KKM
+                chart_data = df_insights.set_index("Kelas")[["Rata-rata Nilai", "% Tuntas KKM"]]
+                st.bar_chart(chart_data)
+
+                # Tampilkan tabel ringkasan analitik
+                st.dataframe(df_insights, use_container_width=True, hide_index=True)
+            else:
+                st.caption("Belum ada data nilai yang cukup untuk menghasilkan analitik.")
+        else:
+            st.info("Input nilai siswa terlebih dahulu untuk melihat grafik analitik KKM di sini.")
 
 # ============ HALAMAN: INPUT NILAI RAPEL ============
 def page_input_nilai():
@@ -653,179 +822,341 @@ def page_input_nilai():
     topik_list = list(set([n.get('topik', '') for n in semua_nilai if n.get('topik')]))
     topik_list.sort()
     
-    with st.form("form_nilai"):
-        cols = st.columns(4)
-        kategori = cols[0].selectbox(
-            "Kategori", 
-            ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
+    cols = st.columns(4)
+    kategori = cols[0].selectbox(
+        "Kategori",
+        ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
+    )
+
+    # ===== PILIH TOPIK (Baru atau Existing) =====
+    if topik_list:
+        topik_option = cols[1].selectbox(
+            "Pilih Topik",
+            ["+ Topik Baru"] + topik_list,
+            help="Pilih topik yang sudah pernah digunakan, atau pilih '+ Topik Baru' untuk membuat baru"
         )
         
-        # ===== PILIH TOPIK (Baru atau Existing) =====
-        if topik_list:
-            topik_option = cols[1].selectbox(
-                "Pilih Topik",
-                ["+ Topik Baru"] + topik_list,
-                help="Pilih topik yang sudah pernah digunakan, atau pilih '+ Topik Baru' untuk membuat baru"
-            )
-            
-            if topik_option == "+ Topik Baru":
-                topik = cols[1].text_input("Topik (Baru)", key="topik_baru")
-            else:
-                topik = topik_option
-                # Ambil bab dari topik yang sama jika ada
-                existing = next((n for n in semua_nilai if n.get('topik') == topik), None)
-                bab_auto = existing.get('bab', '') if existing else ''
-                if bab_auto:
-                    cols[2].info(f"📌 Bab sebelumnya: {bab_auto}")
+        if topik_option == "+ Topik Baru":
+            topik = cols[1].text_input("Topik (Baru)", key="topik_baru")
         else:
-            topik = cols[1].text_input("Topik")
-        
-        bab = cols[2].text_input("Bab")
-        semester = cols[3].selectbox("Semester", [1, 2])
-        tanggal = st.date_input("Tanggal", value=date.today())
-        
-        st.markdown("---")
-        
-        # Cek apakah sudah ada nilai untuk topik ini di kategori ini
-        existing_nilai = [n for n in semua_nilai if n.get('topik') == topik and n['kategori'] == kategori]
-        if existing_nilai and topik:
-            st.warning(f"⚠️ Sudah ada {len(existing_nilai)} nilai untuk '{kategori}' dengan topik '{topik}'. Ini akan menambah data baru (tidak menghapus yang lama).")
-        
-        siswa = get_siswa(kelas_id)
-        if not siswa:
-            st.warning("Belum ada siswa di kelas ini.")
-            st.form_submit_button("Simpan", disabled=True)
-            return
-        
-        st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
-        st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
-        
-        # ===== DATA EDITOR RAMAH SENTUHAN =====
-        st.markdown("""
-        <style>
-            .stDataFrame {
-                font-size: 16px !important;
-            }
-            .stDataFrame input {
-                font-size: 18px !important;
-                padding: 12px !important;
-                min-height: 44px !important;
-            }
-            .stDataFrame textarea {
-                font-size: 16px !important;
-                padding: 12px !important;
-                min-height: 44px !important;
-            }
-            @media only screen and (max-width: 768px) {
+            topik = topik_option
+            # Ambil bab dari topik yang sama jika ada
+            existing = next((n for n in semua_nilai if n.get('topik') == topik), None)
+            bab_auto = existing.get('bab', '') if existing else ''
+            if bab_auto:
+                cols[2].info(f"📌 Bab sebelumnya: {bab_auto}")
+    else:
+        topik = cols[1].text_input("Topik")
+
+    bab = cols[2].text_input("Bab")
+    semester = cols[3].selectbox("Semester", [1, 2])
+    tanggal = st.date_input("Tanggal", value=date.today())
+
+    st.markdown("---")
+
+    # Cek apakah sudah ada nilai untuk topik ini di kategori ini
+    existing_nilai = [n for n in semua_nilai if n.get('topik') == topik and n['kategori'] == kategori]
+    if existing_nilai and topik:
+        st.warning(f"⚠️ Sudah ada {len(existing_nilai)} nilai untuk '{kategori}' dengan topik '{topik}'. Ini akan menambah data baru (tidak menghapus yang lama).")
+
+    # Reset temp state jika kelas berubah
+    if st.session_state.current_kelas_id != kelas_id:
+        st.session_state.temp_nilai_kartu = {}
+        st.session_state.temp_catatan_kartu = {}
+        st.session_state.current_kelas_id = kelas_id
+
+    siswa = get_siswa(kelas_id)
+    if not siswa:
+        st.warning("Belum ada siswa di kelas ini.")
+        return
+
+    st.subheader(f"📋 Daftar Siswa Kelas {kelas_terpilih}")
+    st.caption(f"📝 Topik: **{topik}** | Kategori: **{kategori}** | Bab: **{bab if bab else '-'}**")
+
+    # Pilihan Mode Tampilan
+    mode_tampilan = st.radio(
+        "📱 Mode Tampilan Input",
+        ["📋 Tabel (Desktop/Laptop)", "📇 Kartu Touchscreen (Sangat Mudah di HP)"],
+        horizontal=True,
+        key="input_nilai_mode"
+    )
+
+    if mode_tampilan == "📋 Tabel (Desktop/Laptop)":
+        with st.form("form_tabel_nilai"):
+            # ===== DATA EDITOR RAMAH SENTUHAN =====
+            st.markdown("""
+            <style>
                 .stDataFrame {
-                    font-size: 14px !important;
+                    font-size: 16px !important;
                 }
                 .stDataFrame input {
+                    font-size: 18px !important;
+                    padding: 12px !important;
+                    min-height: 44px !important;
+                }
+                .stDataFrame textarea {
                     font-size: 16px !important;
-                    padding: 10px !important;
-                    min-height: 40px !important;
+                    padding: 12px !important;
+                    min-height: 44px !important;
                 }
-                .stDataFrame .col-Nilai {
-                    min-width: 80px !important;
-                }
+            </style>
+            """, unsafe_allow_html=True)
+
+            data = []
+            for s in siswa:
+                key_num = f"num_{s['id']}"
+                val = st.session_state.get(key_num, 0.0)
+                nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
+                data.append({
+                    "Nama": s['nama'],
+                    "Nilai": float(val) if val > 0 else 0.0,
+                    "Catatan": st.session_state.temp_catatan_kartu.get(s['id'], ""),
+                    "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
+                })
+
+            df_input = pd.DataFrame(data)
+
+            edited_df = st.data_editor(
+                df_input,
+                column_config={
+                    "Nama": st.column_config.TextColumn(
+                        "Nama",
+                        disabled=True,
+                        width="medium"
+                    ),
+                    "Nilai": st.column_config.NumberColumn(
+                        "Nilai",
+                        min_value=-50,  # Diubah agar mendukung nilai minus sampai -50 (khusus sikap & harian)
+                        max_value=100,
+                        step=1,
+                        format="%.0f",
+                        width="small"
+                    ),
+                    "Catatan": st.column_config.TextColumn(
+                        "Catatan",
+                        width="large"
+                    ),
+                    "Nilai Sebelumnya": st.column_config.TextColumn(
+                        "Nilai Sebelumnya",
+                        disabled=True,
+                        width="small"
+                    )
+                },
+                hide_index=True,
+                use_container_width=True,
+                num_rows="fixed"
+            )
+
+            # Panduan HP
+            st.caption("💡 Ketuk kolom Nilai untuk mengisi angka | Geser tabel untuk lihat semua kolom")
+            submit = st.form_submit_button("💾 Simpan Semua Nilai (Tabel)")
+
+            if submit:
+                if not topik:
+                    st.error("❌ Topik wajib diisi!")
+                else:
+                    try:
+                        saved = 0
+                        updated = 0
+                        for idx, row in edited_df.iterrows():
+                            s_id = siswa[idx]['id']
+                            st.session_state[f"num_{s_id}"] = float(row['Nilai'])
+                            st.session_state.temp_catatan_kartu[s_id] = row['Catatan']
+
+                            if row['Nilai'] != 0:  # Diubah dari > 0 agar nilai minus (negatif) bisa ikut disimpan
+                                # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                                existing = supabase.table("nilai").select("*")\
+                                    .eq("siswa_id", s_id)\
+                                    .eq("kelas_id", kelas_id)\
+                                    .eq("kategori", kategori)\
+                                    .eq("topik", topik).execute()
+
+                                if existing.data:
+                                    # Update nilai yang sudah ada
+                                    supabase.table("nilai").update({
+                                        "nilai": row['Nilai'],
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": row['Catatan'] if row['Catatan'] else None
+                                    }).eq("id", existing.data[0]['id']).execute()
+                                    updated += 1
+                                else:
+                                    # Insert nilai baru
+                                    supabase.table("nilai").insert({
+                                        "siswa_id": s_id,
+                                        "kelas_id": kelas_id,
+                                        "kategori": kategori,
+                                        "nilai": row['Nilai'],
+                                        "topik": topik,
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": row['Catatan'] if row['Catatan'] else None
+                                    }).execute()
+                                    saved += 1
+
+                        clear_cache()
+                        st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"❌ Gagal menyimpan: {str(e)}")
+
+    else:
+        # ===== MODE KARTU TOUCHSCREEN (SANGAT MUDAH DI HP) =====
+        st.markdown("""
+        <style>
+            .touch-card {
+                background: white;
+                border-radius: 14px;
+                padding: 16px;
+                margin-bottom: 16px;
+                border: 1px solid #e2e8f0;
+                box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            }
+            .touch-nama {
+                font-size: 18px;
+                font-weight: 700;
+                color: #1e293b;
+                margin-bottom: 8px;
+            }
+            .touch-label {
+                font-size: 13px;
+                color: #64748b;
+            }
+            .touch-prev {
+                font-size: 13px;
+                color: #94a3b8;
+                font-style: italic;
             }
         </style>
         """, unsafe_allow_html=True)
-        
-        data = []
+
+        # Inisialisasi local temp state jika kosong
+        # Sinkronisasi widget state key langsung ke number_input
+        for s in siswa:
+            key_num = f"num_{s['id']}"
+            if key_num not in st.session_state:
+                st.session_state[key_num] = 0.0
+            if s['id'] not in st.session_state.temp_catatan_kartu:
+                st.session_state.temp_catatan_kartu[s['id']] = ""
+
         for s in siswa:
             nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
-            data.append({
-                "Nama": s['nama'],
-                "Nilai": 0.0,
-                "Catatan": "",
-                "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
-            })
-        
-        df_input = pd.DataFrame(data)
-        
-        edited_df = st.data_editor(
-            df_input,
-            column_config={
-                "Nama": st.column_config.TextColumn(
-                    "Nama",
-                    disabled=True,
-                    width="medium"
-                ),
-                "Nilai": st.column_config.NumberColumn(
-                    "Nilai",
-                    min_value=0,
-                    max_value=100,
-                    step=1,
-                    format="%.0f",
-                    width="small"
-                ),
-                "Catatan": st.column_config.TextColumn(
-                    "Catatan",
-                    width="large"
-                ),
-                "Nilai Sebelumnya": st.column_config.TextColumn(
-                    "Nilai Sebelumnya",
-                    disabled=True,
-                    width="small"
-                )
-            },
-            hide_index=True,
-            use_container_width=True,
-            num_rows="fixed"
-        )
-        
-        # Panduan HP
-        st.caption("💡 Ketuk kolom Nilai untuk mengisi angka | Geser tabel untuk lihat semua kolom")
-        
-        submit = st.form_submit_button("💾 Simpan Semua Nilai")
-    
-    if submit:
-        if not topik:
-            st.error("❌ Topik wajib diisi!")
-        else:
-            try:
-                saved = 0
-                updated = 0
-                for idx, row in edited_df.iterrows():
-                    if row['Nilai'] > 0:
-                        # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
-                        existing = supabase.table("nilai").select("*")\
-                            .eq("siswa_id", siswa[idx]['id'])\
-                            .eq("kelas_id", kelas_id)\
-                            .eq("kategori", kategori)\
-                            .eq("topik", topik).execute()
-                        
-                        if existing.data:
-                            # Update nilai yang sudah ada
-                            supabase.table("nilai").update({
-                                "nilai": row['Nilai'],
-                                "bab": bab,
-                                "tanggal": str(tanggal),
-                                "semester": semester,
-                                "catatan": row['Catatan'] if row['Catatan'] else None
-                            }).eq("id", existing.data[0]['id']).execute()
-                            updated += 1
-                        else:
-                            # Insert nilai baru
-                            supabase.table("nilai").insert({
-                                "siswa_id": siswa[idx]['id'],
-                                "kelas_id": kelas_id,
-                                "kategori": kategori,
-                                "nilai": row['Nilai'],
-                                "topik": topik,
-                                "bab": bab,
-                                "tanggal": str(tanggal),
-                                "semester": semester,
-                                "catatan": row['Catatan'] if row['Catatan'] else None
-                            }).execute()
-                            saved += 1
-                
-                clear_cache()
-                st.success(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
-                st.balloons()
-            except Exception as e:
-                st.error(f"❌ Gagal menyimpan: {str(e)}")
+            prev_text = f"Nilai Sebelumnya: {nilai_sebelumnya:.0f}" if nilai_sebelumnya else "Belum ada nilai sebelumnya"
+
+            # Render dalam custom layout container
+            st.markdown(f"""
+            <div class="touch-card">
+                <div class="touch-nama">👨‍🎓 {s['nama']}</div>
+                <div class="touch-prev">📌 {prev_text}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            col_actions = st.columns([1, 1, 1, 2])
+
+            # Callback untuk tombol + & - agar langsung mengubah widget key secara instan
+            def update_grade(s_id, amount):
+                key_num = f"num_{s_id}"
+                cur_val = st.session_state.get(key_num, 0.0)
+                new_val = max(-50.0, min(100.0, cur_val + amount))  # Diubah batas bawahnya agar bisa sampai -50.0
+                st.session_state[key_num] = float(new_val)
+
+            # Tombol Minus (-)
+            col_actions[0].button(
+                "➖ 5",
+                key=f"minus5_{s['id']}",
+                on_click=update_grade,
+                args=(s['id'], -5.0),
+                use_container_width=True
+            )
+
+            # Tombol Plus (+)
+            col_actions[1].button(
+                "➕ 5",
+                key=f"plus5_{s['id']}",
+                on_click=update_grade,
+                args=(s['id'], 5.0),
+                use_container_width=True
+            )
+
+            # Input Angka Langsung (nilai bind ke st.session_state[key_num] via parameter key)
+            nilai_val = col_actions[2].number_input(
+                "Nilai",
+                min_value=-50.0,  # Diubah batas bawahnya agar mendukung nilai minus sampai -50.0
+                max_value=100.0,
+                step=1.0,
+                key=f"num_{s['id']}",
+                label_visibility="collapsed"
+            )
+
+            # Input Catatan
+            st.session_state.temp_catatan_kartu[s['id']] = col_actions[3].text_input(
+                "Catatan",
+                placeholder="Catatan keaktifan/remedial...",
+                key=f"note_{s['id']}",
+                value=st.session_state.temp_catatan_kartu[s['id']],
+                label_visibility="collapsed"
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+
+        # Tombol Simpan Terpisah (tidak di dalam form)
+        submit_kartu = st.button("💾 Simpan Semua Nilai Kartu", type="primary", use_container_width=True)
+
+        if submit_kartu:
+            if not topik:
+                st.error("❌ Topik wajib diisi!")
+            else:
+                try:
+                    saved = 0
+                    updated = 0
+                    for s in siswa:
+                        nilai_val = st.session_state.get(f"num_{s['id']}", 0.0)
+                        catatan_val = st.session_state.temp_catatan_kartu[s['id']]
+                        if nilai_val != 0:  # Diubah dari > 0 agar nilai minus (negatif) bisa ikut disimpan
+                            # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                            existing = supabase.table("nilai").select("*")\
+                                .eq("siswa_id", s['id'])\
+                                .eq("kelas_id", kelas_id)\
+                                .eq("kategori", kategori)\
+                                .eq("topik", topik).execute()
+
+                            if existing.data:
+                                # Update nilai yang sudah ada
+                                supabase.table("nilai").update({
+                                    "nilai": nilai_val,
+                                    "bab": bab,
+                                    "tanggal": str(tanggal),
+                                    "semester": semester,
+                                    "catatan": catatan_val if catatan_val else None
+                                }).eq("id", existing.data[0]['id']).execute()
+                                updated += 1
+                            else:
+                                # Insert nilai baru
+                                supabase.table("nilai").insert({
+                                    "siswa_id": s['id'],
+                                    "kelas_id": kelas_id,
+                                    "kategori": kategori,
+                                    "nilai": nilai_val,
+                                    "topik": topik,
+                                    "bab": bab,
+                                    "tanggal": str(tanggal),
+                                    "semester": semester,
+                                    "catatan": catatan_val if catatan_val else None
+                                }).execute()
+                                saved += 1
+
+                    clear_cache()
+                    st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                    st.balloons()
+
+                    # Reset temp state
+                    for s in siswa:
+                        st.session_state[f"num_{s['id']}"] = 0.0
+                        st.session_state.temp_catatan_kartu[s['id']] = ""
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Gagal menyimpan: {str(e)}")
                 
 # ============ HALAMAN: LIHAT & EXPORT NILAI ============
 def page_lihat_nilai():
@@ -877,19 +1208,28 @@ def page_lihat_nilai():
         data.append(row)
     
     df = pd.DataFrame(data)
+
+    # Ambil nilai KKM kelas saat ini (default 75)
+    kkm_data = get_kkm(kelas_id)
+    kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
+
+    st.markdown(f"#### 📋 Rekapitulasi Nilai Siswa (KKM Kelas Saat Ini: **{kkm_val}**)")
     st.dataframe(df, use_container_width=True, hide_index=True)
     
     if show_stats and len(df) > 0:
         st.markdown("---")
-        st.subheader("📊 Statistik Nilai")
+        st.subheader("📊 Analitik Distribusi & Statistik Nilai")
         
         kategori_kolom = ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
         existing_kolom = [k for k in kategori_kolom if k in df.columns]
         
         if existing_kolom:
             stats_data = []
+            distribution_bins = {"< KKM (Tidak Tuntas)": 0, "70 - 79": 0, "80 - 89": 0, "90 - 100": 0}
+
             for kat in existing_kolom:
-                values = df[kat][df[kat] > 0]
+                # Mengubah filter df[kat] > 0 menjadi df[kat] != 0 agar nilai negatif (minus) ikut masuk dalam statistik analitik
+                values = df[kat][df[kat] != 0]
                 if len(values) > 0:
                     stats_data.append({
                         "Kategori": kat,
@@ -898,15 +1238,35 @@ def page_lihat_nilai():
                         "Terendah": values.min(),
                         "Jumlah Data": len(values)
                     })
+
+                    # Hitung distribusi rentang nilai
+                    for val in values:
+                        if val < kkm_val:
+                            distribution_bins["< KKM (Tidak Tuntas)"] += 1
+                        elif val < 80:
+                            distribution_bins["70 - 79"] += 1
+                        elif val < 90:
+                            distribution_bins["80 - 89"] += 1
+                        else:
+                            distribution_bins["90 - 100"] += 1
             
             if stats_data:
                 df_stats = pd.DataFrame(stats_data)
-                st.dataframe(df_stats, use_container_width=True, hide_index=True)
                 
-                st.markdown("---")
-                st.subheader("📈 Rata-rata per Kategori")
-                chart_data = df_stats[['Kategori', 'Rata-rata']].set_index('Kategori')
-                st.bar_chart(chart_data)
+                # Render metrik statistik utama di atas grafik
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    st.markdown("##### 📈 Rata-rata per Kategori")
+                    chart_data = df_stats[['Kategori', 'Rata-rata']].set_index('Kategori')
+                    st.bar_chart(chart_data)
+
+                with col_m2:
+                    st.markdown("##### 📊 Distribusi Rentang Pencapaian Nilai Siswa")
+                    df_dist = pd.DataFrame(list(distribution_bins.items()), columns=["Rentang Nilai", "Jumlah Siswa"])
+                    st.bar_chart(df_dist.set_index("Rentang Nilai"))
+
+                st.markdown("##### 📝 Ringkasan Statistik Lengkap")
+                st.dataframe(df_stats, use_container_width=True, hide_index=True)
             else:
                 st.info("Belum ada data nilai yang cukup untuk statistik.")
     
@@ -949,6 +1309,25 @@ def page_lihat_nilai():
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
     
+    # ===== CALLBACK JADWAL =====
+    def select_jadwal_to_delete(jadwal_id, text):
+        st.session_state.hapus_id = jadwal_id
+        st.session_state.hapus_text = text
+
+    def confirm_delete_jadwal():
+        try:
+            supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
+            clear_cache()
+            st.session_state.jadwal_success_msg = f"✅ Jadwal '{st.session_state.hapus_text}' berhasil dihapus!"
+        except Exception as e:
+            st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
+        st.session_state.hapus_id = None
+        st.session_state.hapus_text = ""
+
+    def cancel_delete_jadwal():
+        st.session_state.hapus_id = None
+        st.session_state.hapus_text = ""
+
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas.")
@@ -963,10 +1342,18 @@ def page_jadwal():
         "⚡ Generate Semester"
     ])
     
-        # === TAB 1: LIHAT JADWAL ===
+    # === TAB 1: LIHAT JADWAL ===
     with tab1:
         st.subheader("📋 Jadwal Mengajar")
         
+        # Tampilkan pesan umpan balik jika ada
+        if st.session_state.jadwal_success_msg:
+            st.success(st.session_state.jadwal_success_msg)
+            st.session_state.jadwal_success_msg = None
+        if st.session_state.jadwal_error_msg:
+            st.error(st.session_state.jadwal_error_msg)
+            st.session_state.jadwal_error_msg = None
+
         # ===== FILTER =====
         cols_filter = st.columns([2, 2, 2, 1])
         kelas_lihat = cols_filter[0].selectbox(
@@ -1014,19 +1401,13 @@ def page_jadwal():
             # Format jam
             df['jam_format'] = df['jam'].apply(lambda x: x[:5] if isinstance(x, str) else str(x)[:5])
             
-            # ===== INISIALISASI SESSION STATE UNTUK KONFIRMASI =====
-            if "hapus_id" not in st.session_state:
-                st.session_state.hapus_id = None
-            if "hapus_text" not in st.session_state:
-                st.session_state.hapus_text = ""
-            
             # ===== TAMPILKAN DENGAN TOMBOL HAPUS =====
             if mode_hapus:
                 st.warning("🗑️ Mode Hapus AKTIF - Klik tombol 'Hapus' di samping jadwal yang ingin dihapus")
                 
                 # Tampilkan per baris dengan tombol hapus
                 for idx, row in df.iterrows():
-                    cols = st.columns([1.5, 1, 1, 2.5, 1.5, 0.8, 0.8, 0.5])
+                    cols = st.columns([1.5, 1, 1, 2.5, 1.5, 0.8, 0.8, 0.8])
                     
                     cols[0].write(row.get('nama_kelas', '-'))
                     cols[1].write(row['hari'])
@@ -1036,37 +1417,31 @@ def page_jadwal():
                     cols[5].write(f"M{row.get('minggu_ke', '-')}")
                     cols[6].write(f"S{row.get('semester', '-')}")
                     
-                    # [FIX] Tombol hapus - set session state lalu rerun
-                    if cols[7].button("🗑️", key=f"del_{row['id']}_{idx}"):
-                        st.session_state.hapus_id = row['id']
-                        st.session_state.hapus_text = f"{row['hari']} {row['jam_format']} - {row.get('topik', '-')}"
-                        st.rerun()
+                    # Menggunakan callback on_click untuk menyimpan state tanpa interupsi rerun instan
+                    row_text = f"{row['hari']} {row['jam_format']} - {row.get('topik', '-')}"
+                    cols[7].button(
+                        "🗑️",
+                        key=f"del_{row['id']}_{idx}",
+                        on_click=select_jadwal_to_delete,
+                        args=(row['id'], row_text)
+                    )
                 
-                # ===== TAMPILKAN KONFIRMASI DI BAWAH SEMUA BARIS =====
+                # ===== TAMPILKAN KONFIRMASI DI BAWAH SEMUA BARIS (Di luar loop dan di luar nesting tombol) =====
                 if st.session_state.hapus_id is not None:
                     st.markdown("---")
                     st.warning(f"⚠️ Yakin hapus jadwal: **{st.session_state.hapus_text}**?")
                     
                     col_confirm = st.columns([1, 1, 2])
-                    if col_confirm[0].button("✅ Ya, Hapus!", key="confirm_yes_fix"):
-                        try:
-                            # Eksekusi hapus
-                            supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
-                            clear_cache()
-                            # Reset session state
-                            st.session_state.hapus_id = None
-                            st.session_state.hapus_text = ""
-                            st.success("✅ Jadwal berhasil dihapus!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Gagal: {str(e)}")
-                            st.session_state.hapus_id = None
-                            st.session_state.hapus_text = ""
-                    
-                    if col_confirm[1].button("❌ Batal", key="confirm_no_fix"):
-                        st.session_state.hapus_id = None
-                        st.session_state.hapus_text = ""
-                        st.rerun()
+                    col_confirm[0].button(
+                        "✅ Ya, Hapus!",
+                        key="confirm_yes_fix",
+                        on_click=confirm_delete_jadwal
+                    )
+                    col_confirm[1].button(
+                        "❌ Batal",
+                        key="confirm_no_fix",
+                        on_click=cancel_delete_jadwal
+                    )
             else:
                 # Tampilkan tabel biasa (tanpa tombol hapus)
                 df_display = df[['nama_kelas', 'hari', 'jam_format', 'topik', 'bab', 'minggu_ke', 'semester']].copy()
@@ -1144,7 +1519,7 @@ def page_jadwal():
                         "is_generated": False
                     }).execute()
                     clear_cache()
-                    st.success("✅ Jadwal berhasil ditambahkan!")
+                    st.toast("✅ Jadwal berhasil ditambahkan!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Gagal: {str(e)}")
@@ -1154,17 +1529,10 @@ def page_jadwal():
         st.subheader("⚡ Generate Jadwal Berdasarkan Bab")
         st.info("💡 Tentukan durasi setiap bab (berapa minggu) untuk membuat jadwal fleksibel")
         
-        # ===== INISIALISASI SESSION STATE =====
-        if "daftar_bab" not in st.session_state:
-            st.session_state.daftar_bab = [
-                {"nama": "Bab 1 - Pengenalan", "durasi": 2},
-                {"nama": "Bab 2 - Operasi Dasar", "durasi": 2},
-                {"nama": "Bab 3 - Review & UH", "durasi": 1},
-            ]
-        
-        if "hapus_bab_check" not in st.session_state:
+        # Pastikan ukuran hapus_bab_check sesuai dengan daftar_bab
+        if len(st.session_state.hapus_bab_check) != len(st.session_state.daftar_bab):
             st.session_state.hapus_bab_check = [False] * len(st.session_state.daftar_bab)
-        
+
         # ===== FORM UTAMA (SEMUA DALAM SATU FORM) =====
         with st.form("form_generate"):
             cols = st.columns(2)
@@ -1281,8 +1649,7 @@ def page_jadwal():
                             supabase.table("jadwal").insert(j).execute()
                         
                         clear_cache()
-                        st.success(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
-                        st.info(f"📚 {len(st.session_state.daftar_bab)} bab | 📅 {total_minggu} minggu | ⏰ {jam_pilihan} WIB")
+                        st.toast(f"✅ Berhasil generate {len(jadwal_baru)} jadwal untuk {kelas_gen}!")
                         st.balloons()
                         st.rerun()
                     
@@ -1347,7 +1714,7 @@ def page_bank_soal():
                             "tag": tag
                         }).execute()
                         clear_cache()
-                        st.success("✅ Soal berhasil disimpan!")
+                        st.toast("✅ Soal berhasil disimpan!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Gagal: {str(e)}")
@@ -1391,6 +1758,25 @@ def page_bank_soal():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
+    # ===== CALLBACK DOKUMEN =====
+    def select_doc_to_delete(doc_id, judul):
+        st.session_state.hapus_doc_id = doc_id
+        st.session_state.hapus_doc_judul = judul
+
+    def confirm_delete_doc():
+        try:
+            supabase.table("dokumen").delete().eq("id", st.session_state.hapus_doc_id).execute()
+            clear_cache()
+            st.session_state.doc_success_msg = f"✅ Dokumen '{st.session_state.hapus_doc_judul}' berhasil dihapus!"
+        except Exception as e:
+            st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
+        st.session_state.hapus_doc_id = None
+        st.session_state.hapus_doc_judul = ""
+
+    def cancel_delete_doc():
+        st.session_state.hapus_doc_id = None
+        st.session_state.hapus_doc_judul = ""
+
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas. Silahkan tambah kelas di menu Pengaturan.")
@@ -1479,8 +1865,7 @@ def page_dokumen():
                             compressed_size = len(compressed_bytes) / 1024 / 1024
                             saving = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0
                             
-                            st.success(f"✅ Dokumen '{judul}' berhasil diupload!")
-                            st.info(f"📊 Ukuran: {original_size:.1f} MB → {compressed_size:.1f} MB (hemat {saving:.0f}%)")
+                            st.toast(f"✅ Dokumen '{judul}' berhasil diupload! (hemat {saving:.0f}%)")
                             st.balloons()
                             
                     except Exception as e:
@@ -1490,6 +1875,14 @@ def page_dokumen():
     with tab2:
         st.subheader("Daftar Dokumen")
         
+        # Tampilkan pesan umpan balik jika ada
+        if st.session_state.doc_success_msg:
+            st.success(st.session_state.doc_success_msg)
+            st.session_state.doc_success_msg = None
+        if st.session_state.doc_error_msg:
+            st.error(st.session_state.doc_error_msg)
+            st.session_state.doc_error_msg = None
+
         cols = st.columns(3)
         filter_kelas = cols[0].selectbox(
             "Filter Kelas", 
@@ -1540,18 +1933,30 @@ def page_dokumen():
                         except Exception as e:
                             st.error(f"Gagal download: {str(e)}")
                     
-                    if cols[3].button("🗑️", key=f"del_doc_{d['id']}"):
-                        st.warning(f"⚠️ Yakin hapus dokumen '{d['judul']}'?")
-                        if st.button(f"✅ Ya, Hapus!", key=f"confirm_del_doc_{d['id']}"):
-                            try:
-                                supabase.table("dokumen").delete().eq("id", d['id']).execute()
-                                clear_cache()
-                                st.success(f"✅ Dokumen dihapus!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Gagal: {str(e)}")
+                    cols[3].button(
+                        "🗑️",
+                        key=f"del_doc_{d['id']}",
+                        on_click=select_doc_to_delete,
+                        args=(d['id'], d['judul'])
+                    )
                     
                     st.markdown("---")
+
+            # ===== TAMPILKAN KONFIRMASI HAPUS DOKUMEN (Di luar loop) =====
+            if st.session_state.hapus_doc_id is not None:
+                st.markdown("---")
+                st.warning(f"⚠️ Yakin hapus dokumen: **{st.session_state.hapus_doc_judul}**?")
+                col_confirm_doc = st.columns([1, 1, 2])
+                col_confirm_doc[0].button(
+                    "✅ Ya, Hapus!",
+                    key="confirm_yes_doc_fix",
+                    on_click=confirm_delete_doc
+                )
+                col_confirm_doc[1].button(
+                    "❌ Batal",
+                    key="confirm_no_doc_fix",
+                    on_click=cancel_delete_doc
+                )
         else:
             st.info("Belum ada dokumen. Upload dokumen pertama Anda!")
     
@@ -1690,7 +2095,7 @@ def page_dokumen():
                                 }).execute()
                                 
                                 clear_cache()
-                                st.success("✅ Dokumen berhasil disimpan ke database!")
+                                st.toast("✅ Dokumen berhasil disimpan ke database!")
                                 st.balloons()
                             except Exception as e:
                                 st.error(f"❌ Gagal simpan: {str(e)}")
@@ -1716,6 +2121,25 @@ def page_dokumen():
 def page_pengaturan():
     st.title("⚙️ Pengaturan Kelas & Siswa")
     
+    # ===== CALLBACK SISWA =====
+    def select_siswa_to_delete(siswa_id, nama):
+        st.session_state.hapus_siswa_id = siswa_id
+        st.session_state.hapus_siswa_nama = nama
+
+    def confirm_delete_siswa():
+        try:
+            supabase.table("siswa").delete().eq("id", st.session_state.hapus_siswa_id).execute()
+            clear_cache()
+            st.session_state.siswa_success_msg = f"✅ Siswa '{st.session_state.hapus_siswa_nama}' berhasil dihapus!"
+        except Exception as e:
+            st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
+        st.session_state.hapus_siswa_id = None
+        st.session_state.hapus_siswa_nama = ""
+
+    def cancel_delete_siswa():
+        st.session_state.hapus_siswa_id = None
+        st.session_state.hapus_siswa_nama = ""
+
     tab1, tab2, tab3 = st.tabs(["📚 Kelas", "👨‍🎓 Siswa", "🎯 KKM"])
     
     # TAB 1: Kelas
@@ -1728,13 +2152,19 @@ def page_pengaturan():
             submit = cols_form[1].form_submit_button("➕ Tambah", use_container_width=True)
             
             if submit and nama_kelas:
-                try:
-                    supabase.table("kelas").insert({"nama_kelas": nama_kelas.upper()}).execute()
-                    clear_cache()
-                    st.success(f"✅ Kelas {nama_kelas.upper()} berhasil ditambahkan!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Gagal: {str(e)}")
+                nama_kelas_upper = nama_kelas.upper().strip()
+                kelas_existing = [k['nama_kelas'].upper().strip() for k in get_kelas()]
+
+                if nama_kelas_upper in kelas_existing:
+                    st.error(f"❌ Kelas {nama_kelas_upper} sudah ada!")
+                else:
+                    try:
+                        supabase.table("kelas").insert({"nama_kelas": nama_kelas_upper}).execute()
+                        clear_cache()
+                        st.toast(f"✅ Kelas {nama_kelas_upper} berhasil ditambahkan!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Gagal: {str(e)}")
         
         # Tampilan kelas grid
         kelas = get_kelas()
@@ -1782,6 +2212,14 @@ def page_pengaturan():
     with tab2:
         st.subheader("Kelola Siswa")
         
+        # Tampilkan pesan umpan balik jika ada
+        if st.session_state.siswa_success_msg:
+            st.success(st.session_state.siswa_success_msg)
+            st.session_state.siswa_success_msg = None
+        if st.session_state.siswa_error_msg:
+            st.error(st.session_state.siswa_error_msg)
+            st.session_state.siswa_error_msg = None
+
         kelas = get_kelas()
         if not kelas:
             st.warning("Tambahkan kelas terlebih dahulu.")
@@ -1803,16 +2241,22 @@ def page_pengaturan():
                     submit = st.form_submit_button("➕ Tambah Siswa")
                     
                     if submit and nama:
-                        try:
-                            supabase.table("siswa").insert({
-                                "nama": nama,
-                                "kelas_id": kelas_id
-                            }).execute()
-                            clear_cache()
-                            st.success(f"✅ {nama} berhasil ditambahkan!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Gagal: {str(e)}")
+                        nama_siswa_strip = nama.strip()
+                        siswa_existing = [s['nama'].lower().strip() for s in get_siswa(kelas_id)]
+
+                        if nama_siswa_strip.lower() in siswa_existing:
+                            st.error(f"❌ Siswa bernama '{nama_siswa_strip}' sudah ada di kelas {kelas_terpilih}!")
+                        else:
+                            try:
+                                supabase.table("siswa").insert({
+                                    "nama": nama_siswa_strip,
+                                    "kelas_id": kelas_id
+                                }).execute()
+                                clear_cache()
+                                st.toast(f"✅ {nama_siswa_strip} berhasil ditambahkan!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Gagal: {str(e)}")
                 else:
                     daftar_nama = st.text_area(
                         "Copy-paste daftar nama (satu per baris)",
@@ -1823,17 +2267,34 @@ def page_pengaturan():
                     
                     if submit and daftar_nama:
                         nama_list = [n.strip() for n in daftar_nama.split('\n') if n.strip()]
-                        try:
-                            for nama in nama_list:
-                                supabase.table("siswa").insert({
-                                    "nama": nama,
-                                    "kelas_id": kelas_id
-                                }).execute()
-                            clear_cache()
-                            st.success(f"✅ Berhasil menambahkan {len(nama_list)} siswa!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Gagal: {str(e)}")
+                        siswa_existing = [s['nama'].lower().strip() for s in get_siswa(kelas_id)]
+
+                        # Filter out existing names
+                        nama_to_insert = []
+                        duplikat_count = 0
+                        for n in nama_list:
+                            if n.lower() in siswa_existing:
+                                duplikat_count += 1
+                            else:
+                                nama_to_insert.append(n)
+
+                        if duplikat_count > 0:
+                            st.warning(f"⚠️ {duplikat_count} nama diabaikan karena sudah terdaftar di kelas ini.")
+
+                        if not nama_to_insert:
+                            st.error("❌ Tidak ada nama baru yang ditambahkan!")
+                        else:
+                            try:
+                                for nama in nama_to_insert:
+                                    supabase.table("siswa").insert({
+                                        "nama": nama,
+                                        "kelas_id": kelas_id
+                                    }).execute()
+                                clear_cache()
+                                st.toast(f"✅ Berhasil menambahkan {len(nama_to_insert)} siswa!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Gagal: {str(e)}")
             
             # Daftar siswa
             siswa = get_siswa(kelas_id)
@@ -1844,16 +2305,28 @@ def page_pengaturan():
                 for s in siswa:
                     cols = st.columns([3, 1])
                     cols[0].write(f"👨‍🎓 {s['nama']}")
-                    if cols[1].button(f"🗑️", key=f"del_siswa_{s['id']}"):
-                        st.warning(f"⚠️ Yakin ingin menghapus siswa {s['nama']}?")
-                        if st.button(f"✅ Ya, Hapus!", key=f"confirm_del_siswa_{s['id']}"):
-                            try:
-                                supabase.table("siswa").delete().eq("id", s['id']).execute()
-                                clear_cache()
-                                st.success(f"✅ {s['nama']} berhasil dihapus!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Gagal: {str(e)}")
+                    cols[1].button(
+                        "🗑️",
+                        key=f"del_siswa_{s['id']}",
+                        on_click=select_siswa_to_delete,
+                        args=(s['id'], s['nama'])
+                    )
+
+                # ===== TAMPILKAN KONFIRMASI HAPUS SISWA (Di luar loop) =====
+                if st.session_state.hapus_siswa_id is not None:
+                    st.markdown("---")
+                    st.warning(f"⚠️ Yakin ingin menghapus siswa **{st.session_state.hapus_siswa_nama}**?")
+                    col_confirm_siswa = st.columns([1, 1, 2])
+                    col_confirm_siswa[0].button(
+                        "✅ Ya, Hapus!",
+                        key="confirm_yes_siswa_fix",
+                        on_click=confirm_delete_siswa
+                    )
+                    col_confirm_siswa[1].button(
+                        "❌ Batal",
+                        key="confirm_no_siswa_fix",
+                        on_click=cancel_delete_siswa
+                    )
     
     # TAB 3: KKM
     with tab3:
@@ -1907,7 +2380,7 @@ def page_pengaturan():
                                     "kkm": nilai
                                 }).execute()
                         clear_cache()
-                        st.success("✅ KKM berhasil disimpan!")
+                        st.toast("✅ KKM berhasil disimpan!")
                     except Exception as e:
                         st.error(f"❌ Gagal: {str(e)}")
 
