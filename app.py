@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
-from datetime import datetime, date 
+from datetime import datetime, date, timedelta
 import openpyxl
 from io import BytesIO
 import re 
@@ -1345,10 +1345,10 @@ def page_lihat_nilai():
     # Ambil nilai KKM kelas saat ini (default 75)
     kkm_data = get_kkm(kelas_id)
     kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
-    
+
     # Filter Rentang Tanggal
-    tanggal_mulai = cols_filt2[1].date_input("Tanggal Mulai", value=date.today() - pd.Timedelta(days=90))
-    tanggal_akhir = cols_filt2[2].date_input("Tanggal Akhir", value=date.today() + pd.Timedelta(days=1))
+    tanggal_mulai = cols_filt2[1].date_input("Tanggal Mulai", value=date.today() - timedelta(days=90))
+    tanggal_akhir = cols_filt2[2].date_input("Tanggal Akhir", value=date.today() + timedelta(days=1))
 
     # Ambil data siswa & nilai
     if search_nama_lintas:
@@ -2370,8 +2370,9 @@ def page_dokumen():
             alokasi_waktu = st.number_input("⏱️ Alokasi Waktu (JP)", min_value=1, max_value=10, value=2)
             
             model_groq = st.selectbox(
-                "🧠 Model AI",
+                "🧠 Model AI / Mesin AI",
                 [
+                    "✨ Gemini 1.5 Flash (Sangat Direkomendasikan - Google AI)",
                     "llama-3.3-70b-versatile",
                     "llama-3.1-8b-instant",
                     "gemma2-9b-it",
@@ -2379,7 +2380,7 @@ def page_dokumen():
                     "llama-4-scout-17b-16e-instruct"
                 ],
                 index=0,
-                help="Pilih model AI yang tersedia - 70B untuk kualitas terbaik"
+                help="Gunakan Gemini 1.5 Flash untuk dokumen panjang, rapi, dan komprehensif tanpa takut terpotong."
             )
             
             st.caption("📊 Estimasi token: ~500-1500 tokens per dokumen")
@@ -2392,16 +2393,10 @@ def page_dokumen():
             else:
                 with st.spinner("⏳ AI sedang menulis dokumen..."):
                     try:
-                        from langchain_groq import ChatGroq
                         from langchain_core.prompts import ChatPromptTemplate
                         from langchain_core.output_parsers import StrOutputParser
                         
-                        llm = ChatGroq(
-                            model=model_groq,
-                            temperature=0.7,
-                            groq_api_key=groq_api_key
-                        )
-                        
+                        # Definisikan template prompt terlebih dahulu
                         prompt_text = create_prompt_ai(
                             jenis_dokumen=jenis_dokumen,
                             mata_pelajaran=mata_pelajaran,
@@ -2417,8 +2412,46 @@ def page_dokumen():
                             ("user", "{input}")
                         ])
                         
-                        chain = prompt_template | llm | StrOutputParser()
-                        hasil = chain.invoke({"input": prompt_text})
+                        # ===== LOGIKA SISTEM PINTAR & FALLBACK (GEMINI VS GROQ) =====
+                        if "Gemini" in model_groq:
+                            try:
+                                # Ambil gemini_api_key dari secrets Streamlit
+                                gemini_api_key = st.secrets.get("gemini_api_key", None)
+
+                                if not gemini_api_key:
+                                    st.warning("⚠️ Kunci API `gemini_api_key` tidak terdeteksi di `secrets.toml`. Otomatis dialihkan (fallback) ke Groq...")
+                                    raise ValueError("Kunci API Gemini tidak ada.")
+
+                                from langchain_google_genai import ChatGoogleGenerativeAI
+                                llm = ChatGoogleGenerativeAI(
+                                    model="gemini-1.5-flash",
+                                    temperature=0.7,
+                                    google_api_key=gemini_api_key
+                                )
+                                st.toast("🔮 Memproses pembuatan dokumen menggunakan Google Gemini 1.5 Flash...")
+                                chain = prompt_template | llm | StrOutputParser()
+                                hasil = chain.invoke({"input": prompt_text})
+                            except Exception as gemini_err:
+                                # Fallback ke Groq jika Gemini error/limit
+                                st.warning(f"⚠️ Terjadi kendala pada Gemini ({str(gemini_err)}). Melakukan fallback otomatis menggunakan Groq LLaMA...")
+                                from langchain_groq import ChatGroq
+                                llm = ChatGroq(
+                                    model="llama-3.3-70b-versatile",
+                                    temperature=0.7,
+                                    groq_api_key=groq_api_key
+                                )
+                                chain = prompt_template | llm | StrOutputParser()
+                                hasil = chain.invoke({"input": prompt_text})
+                        else:
+                            # Menggunakan Groq biasa
+                            from langchain_groq import ChatGroq
+                            llm = ChatGroq(
+                                model=model_groq,
+                                temperature=0.7,
+                                groq_api_key=groq_api_key
+                            )
+                            chain = prompt_template | llm | StrOutputParser()
+                            hasil = chain.invoke({"input": prompt_text})
                         
                         st.markdown("---")
                         st.subheader(f"📄 {jenis_dokumen} - {topik}")
