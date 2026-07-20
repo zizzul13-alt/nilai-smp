@@ -876,12 +876,159 @@ def page_input_nilai():
     # Pilihan Mode Tampilan
     mode_tampilan = st.radio(
         "📱 Mode Tampilan Input",
-        ["📋 Tabel (Desktop/Laptop)", "📇 Kartu Touchscreen (Sangat Mudah di HP)"],
+        ["📋 Tabel (Desktop/Laptop)", "📇 Kartu Touchscreen (Sangat Mudah di HP)", "📥 Import via Excel Template"],
         horizontal=True,
         key="input_nilai_mode"
     )
 
-    if mode_tampilan == "📋 Tabel (Desktop/Laptop)":
+    if mode_tampilan == "📥 Import via Excel Template":
+        st.subheader("📥 Import Nilai dari File Excel")
+        st.write("Silahkan download template Excel di bawah ini, isi data nilai siswa Anda, lalu unggah kembali untuk disimpan secara massal.")
+
+        # 1. Download Template Excel
+        try:
+            template_io = BytesIO()
+            with pd.ExcelWriter(template_io, engine="openpyxl") as template_writer:
+                # Membuat data siswa template dari data kelas ini jika ada, jika tidak kosong
+                template_data = []
+                for s in siswa:
+                    template_data.append({
+                        "Nama Siswa": s['nama'],
+                        "Nilai": 0,
+                        "Catatan": ""
+                    })
+                if not template_data:
+                    template_data.append({
+                        "Nama Siswa": "Contoh Nama Siswa Baru",
+                        "Nilai": 85,
+                        "Catatan": "Sangat Aktif"
+                    })
+                df_template = pd.DataFrame(template_data)
+                df_template.to_excel(template_writer, index=False, sheet_name="Template Nilai")
+
+            st.download_button(
+                label="⬇️ Download Template Excel (.xlsx)",
+                data=template_io.getvalue(),
+                file_name=f"Template_Nilai_{kelas_terpilih}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        except Exception as e:
+            st.error(f"Gagal menyiapkan file template: {str(e)}")
+
+        st.markdown("---")
+
+        # 2. Upload File Excel
+        uploaded_excel = st.file_uploader("Pilih File Excel yang Sudah Diisi", type=["xlsx", "xls"])
+
+        if uploaded_excel:
+            try:
+                df_uploaded = pd.read_excel(uploaded_excel)
+                if "Nama Siswa" not in df_uploaded.columns or "Nilai" not in df_uploaded.columns:
+                    st.error("❌ Format file tidak sesuai! Kolom wajib memiliki 'Nama Siswa' dan 'Nilai'.")
+                    return
+
+                st.markdown("#### 🔍 Verifikasi Data Nilai Unggahan")
+                st.dataframe(df_uploaded, use_container_width=True, hide_index=True)
+
+                # Identifikasi siswa yang belum terdaftar di kelas (secara Case-Insensitive)
+                siswa_db_names = [s['nama'].lower().strip() for s in siswa]
+                unregistered_siswa = []
+
+                for idx, row in df_uploaded.iterrows():
+                    nama_input = str(row["Nama Siswa"]).strip()
+                    if nama_input.lower() not in siswa_db_names and nama_input != "nan" and nama_input:
+                        unregistered_siswa.append(nama_input)
+
+                unregistered_siswa = list(set(unregistered_siswa)) # Hapus duplikat
+
+                # Form Konfirmasi Registrasi Siswa Baru
+                registrasi_diizinkan = True
+                siswa_baru_yang_didaftarkan = []
+
+                if unregistered_siswa:
+                    st.warning(f"⚠️ Ditemukan {len(unregistered_siswa)} siswa baru di file Excel yang belum terdaftar di Kelas {kelas_terpilih}:")
+                    for s_baru in unregistered_siswa:
+                        st.markdown(f"- **{s_baru}**")
+
+                    st.write("Apakah Anda ingin mendaftarkan siswa-siswa baru di atas ke dalam kelas ini secara otomatis?")
+                    daftar_otomatis = st.checkbox("✅ Ya, daftarkan siswa baru tersebut langsung", value=True)
+                    if not daftar_otomatis:
+                        registrasi_diizinkan = False
+                        st.error("❌ Silahkan centang konfirmasi pendaftaran di atas, atau edit file Excel Anda agar hanya berisi nama siswa yang terdaftar.")
+                    else:
+                        siswa_baru_yang_didaftarkan = unregistered_siswa
+
+                submit_import = st.button("💾 Simpan Semua Nilai dari Excel", type="primary", use_container_width=True, disabled=not registrasi_diizinkan)
+
+                if submit_import:
+                    if not topik:
+                        st.error("❌ Mohon isi kolom 'Topik' di bagian atas sebelum mengimpor nilai!")
+                        return
+
+                    try:
+                        # 1. Daftarkan siswa baru jika ada persetujuan
+                        for nama_baru in siswa_baru_yang_didaftarkan:
+                            supabase.table("siswa").insert({
+                                "nama": nama_baru,
+                                "kelas_id": kelas_id
+                            }).execute()
+
+                        # Refresh cache & siswa list setelah penambahan siswa baru
+                        clear_cache()
+                        siswa_terbaru = get_siswa(kelas_id)
+                        siswa_map_terbaru = {s['nama'].lower().strip(): s['id'] for s in siswa_terbaru}
+
+                        saved = 0
+                        updated = 0
+
+                        for idx, row in df_uploaded.iterrows():
+                            nama_key = str(row["Nama Siswa"]).strip().lower()
+                            nilai_val = row["Nilai"]
+                            catatan_val = row["Catatan"] if "Catatan" in df_uploaded.columns and pd.notna(row["Catatan"]) else None
+
+                            if nama_key in siswa_map_terbaru and pd.notna(nilai_val) and nilai_val != 0:
+                                s_id = siswa_map_terbaru[nama_key]
+
+                                # Cek data ganda di db
+                                existing = supabase.table("nilai").select("*")\
+                                    .eq("siswa_id", s_id)\
+                                    .eq("kelas_id", kelas_id)\
+                                    .eq("kategori", kategori)\
+                                    .eq("topik", topik).execute()
+
+                                if existing.data:
+                                    supabase.table("nilai").update({
+                                        "nilai": float(nilai_val),
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": catatan_val if catatan_val else None
+                                    }).eq("id", existing.data[0]['id']).execute()
+                                    updated += 1
+                                else:
+                                    supabase.table("nilai").insert({
+                                        "siswa_id": s_id,
+                                        "kelas_id": kelas_id,
+                                        "kategori": kategori,
+                                        "nilai": float(nilai_val),
+                                        "topik": topik,
+                                        "bab": bab,
+                                        "tanggal": str(tanggal),
+                                        "semester": semester,
+                                        "catatan": catatan_val if catatan_val else None
+                                    }).execute()
+                                    saved += 1
+
+                        clear_cache()
+                        st.toast(f"✅ Berhasil import! {len(siswa_baru_yang_didaftarkan)} siswa baru terdaftar. {saved} nilai baru disimpan, {updated} nilai diperbarui.")
+                        st.balloons()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Gagal memproses penyimpanan database: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Gagal membaca file Excel: {str(e)}")
+
+    elif mode_tampilan == "📋 Tabel (Desktop/Laptop)":
         with st.form("form_tabel_nilai"):
             # ===== DATA EDITOR RAMAH SENTUHAN =====
             st.markdown("""
@@ -1168,53 +1315,160 @@ def page_lihat_nilai():
         return
     
     kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
-    kelas_terpilih = st.selectbox("Pilih Kelas", list(kelas_options.keys()))
+
+    # ===== SEARCH LINTAS KELAS / FILTER KELAS UTAMA =====
+    col_search_kelas = st.columns([1, 1])
+    search_nama_lintas = col_search_kelas[0].text_input("🔍 Cari Siswa Lintas Kelas (Ketik Nama)", placeholder="Masukkan nama siswa...")
+
+    kelas_terpilih = col_search_kelas[1].selectbox("Pilih Kelas", list(kelas_options.keys()))
     kelas_id = kelas_options[kelas_terpilih]
     
-    cols = st.columns(4)
-    kategori_filter = cols[0].selectbox(
+    st.markdown("### 🔍 Filter Pencarian & KKM")
+    cols_filt = st.columns(4)
+    kategori_filter = cols_filt[0].selectbox(
         "Filter Kategori", 
         ["Semua", "Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]
     )
-    semester_filter = cols[1].selectbox(
+    semester_filter = cols_filt[1].selectbox(
         "Filter Semester",
         ["Semua", 1, 2]
     )
-    topik_filter = cols[2].text_input("Filter Topik")
-    show_stats = cols[3].checkbox("Tampilkan Statistik", value=True)
+    topik_filter = cols_filt[2].text_input("Filter Topik")
+    show_stats = cols_filt[3].checkbox("Tampilkan Statistik", value=True)
     
-    siswa = get_siswa(kelas_id)
-    nilai = get_nilai(kelas_id)
+    cols_filt2 = st.columns(3)
+    filter_kkm = cols_filt2[0].selectbox(
+        "Filter Pencapaian KKM",
+        ["Semua", "Lulus (>= KKM)", "Tidak Lulus (< KKM)"]
+    )
+
+    # Ambil nilai KKM kelas saat ini (default 75)
+    kkm_data = get_kkm(kelas_id)
+    kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
     
+    # Filter Rentang Tanggal
+    tanggal_mulai = cols_filt2[1].date_input("Tanggal Mulai", value=date.today() - pd.Timedelta(days=90))
+    tanggal_akhir = cols_filt2[2].date_input("Tanggal Akhir", value=date.today() + pd.Timedelta(days=1))
+
+    # Ambil data siswa & nilai
+    if search_nama_lintas:
+        # Lintas kelas: cari semua siswa yang namanya cocok
+        semua_siswa_db = supabase.table("siswa").select("*").execute().data
+        siswa_match = [s for s in semua_siswa_db if search_nama_lintas.lower() in s['nama'].lower()]
+        if not siswa_match:
+            st.warning(f"Siswa dengan nama '{search_nama_lintas}' tidak ditemukan.")
+            return
+        siswa = siswa_match
+        # Ambil semua data nilai untuk para siswa ini
+        siswa_ids = [s['id'] for s in siswa]
+        nilai = []
+        for s_id in siswa_ids:
+            nilai.extend(supabase.table("nilai").select("*").eq("siswa_id", s_id).execute().data)
+    else:
+        siswa = get_siswa(kelas_id)
+        nilai = get_nilai(kelas_id)
+
     if not nilai:
-        st.info("Belum ada data nilai untuk kelas ini.")
+        st.info("Belum ada data nilai untuk filter ini.")
         return
-    
+
+    # Saring nilai berdasarkan filter input
     if kategori_filter != "Semua":
         nilai = [n for n in nilai if n['kategori'] == kategori_filter]
     if semester_filter != "Semua":
         nilai = [n for n in nilai if n.get('semester', 1) == semester_filter]
     if topik_filter:
         nilai = [n for n in nilai if topik_filter.lower() in n.get('topik', '').lower()]
+
+    # Saring berdasarkan tanggal
+    def parse_tgl(t):
+        if not t:
+            return None
+        if isinstance(t, str):
+            return datetime.strptime(t, "%Y-%m-%d").date()
+        return t
+
+    nilai = [n for n in nilai if n.get('tanggal') and tanggal_mulai <= parse_tgl(n['tanggal']) <= tanggal_akhir]
     
+    # Rekonstruksi data tabel
     data = []
     for s in siswa:
         row = {"Nama": s['nama']}
+        # Hubungkan ke kelas asalnya jika lintas kelas
+        if search_nama_lintas:
+            kelas_match = next((k['nama_kelas'] for k in kelas if k['id'] == s['kelas_id']), "Unknown")
+            row["Kelas"] = kelas_match
+
         for kat in ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]:
-            row[kat] = 0
-        for n in nilai:
-            if n['siswa_id'] == s['id']:
-                row[n['kategori']] = n['nilai']
+            row[kat] = 0.0
+
+        nilai_s = [n for n in nilai if n['siswa_id'] == s['id']]
+        for kat in ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"]:
+            nilai_kat = [n['nilai'] for n in nilai_s if n['kategori'] == kat]
+            if nilai_kat:
+                # Ambil rata-rata nilai siswa pada kategori ini
+                row[kat] = round(sum(nilai_kat) / len(nilai_kat), 1)
+
+        # Filter pencapaian KKM
+        # Tentukan nilai patokan rata-rata (misal dari seluruh kategori yang diisi)
+        nilai_rata_rata = [row[kat] for kat in ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"] if row[kat] > 0 or row[kat] < 0]
+        rata_akhir = sum(nilai_rata_rata) / len(nilai_rata_rata) if nilai_rata_rata else 0
+
+        row["Rata-Rata Akhir"] = round(rata_akhir, 1)
+
+        if filter_kkm == "Lulus (>= KKM)" and rata_akhir < kkm_val:
+            continue
+        elif filter_kkm == "Tidak Lulus (< KKM)" and (rata_akhir >= kkm_val or rata_akhir == 0):
+            continue
+
         data.append(row)
-    
+
+    if not data:
+        st.warning("Tidak ada data siswa yang cocok dengan kriteria pencapaian KKM ini.")
+        return
+
     df = pd.DataFrame(data)
 
-    # Ambil nilai KKM kelas saat ini (default 75)
-    kkm_data = get_kkm(kelas_id)
-    kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
+    # Atur kolom berdasarkan pencarian lintas kelas
+    kolom_tampil = ["Nama"]
+    if search_nama_lintas:
+        kolom_tampil.append("Kelas")
+    kolom_tampil.extend(["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran", "Rata-Rata Akhir"])
 
     st.markdown(f"#### 📋 Rekapitulasi Nilai Siswa (KKM Kelas Saat Ini: **{kkm_val}**)")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df[kolom_tampil], use_container_width=True, hide_index=True)
+
+    # ===== GRAFIK PERKEMBANGAN NILAI (LINE CHART) =====
+    st.markdown("### 📈 Grafik Perkembangan Nilai Siswa (Tren Belajar)")
+    st.caption("Pilih nama siswa untuk memantau grafik perkembangan nilai dari tanggal ke tanggal secara dinamis.")
+
+    siswa_nama_list = df["Nama"].tolist()
+    siswa_grafik_terpilih = st.selectbox("Pilih Siswa untuk Grafik Perkembangan", siswa_nama_list)
+
+    if siswa_grafik_terpilih:
+        s_id_match = next((s['id'] for s in siswa if s['nama'] == siswa_grafik_terpilih), None)
+        if s_id_match:
+            nilai_perkembangan = [n for n in nilai if n['siswa_id'] == s_id_match and n.get('tanggal')]
+            if nilai_perkembangan:
+                # Urutkan berdasarkan tanggal
+                nilai_perkembangan = sorted(nilai_perkembangan, key=lambda x: parse_tgl(x['tanggal']))
+
+                chart_rows = []
+                for n in nilai_perkembangan:
+                    chart_rows.append({
+                        "Tanggal": str(parse_tgl(n['tanggal'])),
+                        "Nilai": n['nilai'],
+                        "Kategori-Topik": f"{n['kategori']} ({n.get('topik', 'Umum')})"
+                    })
+                df_chart = pd.DataFrame(chart_rows)
+
+                # Tampilkan grafik garis perkembangan nilai
+                st.line_chart(df_chart.set_index("Tanggal")["Nilai"])
+
+                with st.expander("🔍 Detail Riwayat Penilaian Siswa", expanded=False):
+                    st.dataframe(df_chart, use_container_width=True, hide_index=True)
+            else:
+                st.info(f"Belum ada riwayat penilaian bertanggal untuk {siswa_grafik_terpilih}.")
     
     if show_stats and len(df) > 0:
         st.markdown("---")
@@ -1271,19 +1525,70 @@ def page_lihat_nilai():
                 st.info("Belum ada data nilai yang cukup untuk statistik.")
     
     st.markdown("---")
-    if st.button("📥 Download Excel"):
-        try:
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_ringkasan = df.copy()
-                df_ringkasan.to_excel(writer, sheet_name="Ringkasan", index=False)
+    st.subheader("📥 Ekspor Laporan Nilai Lebih Kaya (.xlsx)")
+
+    col_eks = st.columns(3)
+
+    # Opsi 1: Ekspor Ringkasan Saat Ini
+    with col_eks[0]:
+        st.markdown("**1. Rekap Kelas Saat Ini**")
+        st.caption("Mengekspor seluruh tabel ringkasan beserta rincian nilai sesuai filter aktif.")
+        if st.button("📥 Ekspor Rekap Kelas"):
+            try:
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_ringkasan = df[kolom_tampil].copy()
+                    df_ringkasan.to_excel(writer, sheet_name="Ringkasan Kelas", index=False)
+
+                    detail_data = []
+                    for s in siswa:
+                        for n in nilai:
+                            if n['siswa_id'] == s['id']:
+                                detail_data.append({
+                                    "Nama": s['nama'],
+                                    "Kategori": n['kategori'],
+                                    "Nilai": n['nilai'],
+                                    "Topik": n.get('topik', ''),
+                                    "Bab": n.get('bab', ''),
+                                    "Tanggal": n.get('tanggal', ''),
+                                    "Semester": n.get('semester', 1),
+                                    "Catatan": n.get('catatan', '')
+                                })
+                    df_detail = pd.DataFrame(detail_data)
+                    df_detail.to_excel(writer, sheet_name="Detail Nilai", index=False)
                 
-                detail_data = []
-                for s in siswa:
-                    for n in nilai:
-                        if n['siswa_id'] == s['id']:
-                            detail_data.append({
-                                "Nama": s['nama'],
+                st.download_button(
+                    label="⬇️ Download Excel Rekap",
+                    data=output.getvalue(),
+                    file_name=f"Rekap_Nilai_{kelas_terpilih}_{date.today()}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_rekap_kelas"
+                )
+                st.success("File Rekap Kelas siap didownload!")
+            except Exception as e:
+                st.error(f"❌ Gagal export: {str(e)}")
+
+    # Opsi 2: Ekspor Per Siswa (Semua nilai 1 siswa dalam file khusus)
+    with col_eks[1]:
+        st.markdown("**2. Laporan Per Siswa**")
+        st.caption("Mengekspor semua riwayat nilai milik 1 siswa pilihan Anda ke dalam satu file Excel.")
+        siswa_eks_pilihan = st.selectbox("Pilih Siswa untuk Diekspor", df["Nama"].tolist(), key="select_siswa_eks")
+
+        if st.button("📥 Ekspor Laporan Siswa"):
+            try:
+                s_match = next((s for s in siswa if s['nama'] == siswa_eks_pilihan), None)
+                if s_match:
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        # Tab 1: Ringkasan Rata-rata Kategori
+                        row_s = df[df["Nama"] == siswa_eks_pilihan].copy()
+                        row_s.to_excel(writer, sheet_name="Ringkasan Kompetensi", index=False)
+
+                        # Tab 2: Rincian Lengkap Riwayat
+                        nilai_s = [n for n in nilai if n['siswa_id'] == s_match['id']]
+                        detail_rows = []
+                        for n in nilai_s:
+                            detail_rows.append({
                                 "Kategori": n['kategori'],
                                 "Nilai": n['nilai'],
                                 "Topik": n.get('topik', ''),
@@ -1292,18 +1597,61 @@ def page_lihat_nilai():
                                 "Semester": n.get('semester', 1),
                                 "Catatan": n.get('catatan', '')
                             })
-                df_detail = pd.DataFrame(detail_data)
-                df_detail.to_excel(writer, sheet_name="Detail", index=False)
-            
-            st.download_button(
-                label="⬇️ Download File Excel",
-                data=output.getvalue(),
-                file_name=f"Nilai_{kelas_terpilih}_Semester_{semester_filter if semester_filter != 'Semua' else '1'}_{date.today()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-            st.success("File Excel siap didownload!")
-        except Exception as e:
-            st.error(f"❌ Gagal export: {str(e)}")
+                        df_s_detail = pd.DataFrame(detail_rows)
+                        df_s_detail.to_excel(writer, sheet_name="Rincian Riwayat Belajar", index=False)
+
+                    st.download_button(
+                        label="⬇️ Download Excel Siswa",
+                        data=output.getvalue(),
+                        file_name=f"Laporan_Nilai_{siswa_eks_pilihan.replace(' ', '_')}_{date.today()}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_laporan_siswa"
+                    )
+                    st.success(f"Laporan nilai {siswa_eks_pilihan} siap didownload!")
+            except Exception as e:
+                st.error(f"❌ Gagal: {str(e)}")
+
+    # Opsi 3: Ekspor Per Kategori (Seluruh siswa, khusus 1 kategori)
+    with col_eks[2]:
+        st.markdown("**3. Laporan Per Kategori**")
+        st.caption("Mengekspor riwayat nilai seluruh siswa pada satu kategori kompetensi spesifik.")
+        kat_eks_pilihan = st.selectbox("Pilih Kategori untuk Diekspor", ["Harian", "Sikap", "UH", "UTS", "UAS", "Tugas", "Quiz", "Kehadiran"], key="select_kat_eks")
+
+        if st.button("📥 Ekspor Laporan Kategori"):
+            try:
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    # Filter data rekap untuk kategori ini saja
+                    df_kat = df[["Nama", kat_eks_pilihan, "Rata-Rata Akhir"]].copy()
+                    df_kat.to_excel(writer, sheet_name=f"Nilai {kat_eks_pilihan}", index=False)
+
+                    # Rincian per materi/topik pada kategori ini
+                    detail_rows = []
+                    for s in siswa:
+                        nilai_s_kat = [n for n in nilai if n['siswa_id'] == s['id'] and n['kategori'] == kat_eks_pilihan]
+                        for n in nilai_s_kat:
+                            detail_rows.append({
+                                "Nama Siswa": s['nama'],
+                                "Nilai": n['nilai'],
+                                "Topik": n.get('topik', ''),
+                                "Bab": n.get('bab', ''),
+                                "Tanggal": n.get('tanggal', ''),
+                                "Semester": n.get('semester', 1),
+                                "Catatan": n.get('catatan', '')
+                            })
+                    df_kat_detail = pd.DataFrame(detail_rows)
+                    df_kat_detail.to_excel(writer, sheet_name="Rincian per Topik", index=False)
+
+                st.download_button(
+                    label="⬇️ Download Excel Kategori",
+                    data=output.getvalue(),
+                    file_name=f"Laporan_Kategori_{kat_eks_pilihan}_{date.today()}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_laporan_kategori"
+                )
+                st.success(f"Laporan kategori {kat_eks_pilihan} siap didownload!")
+            except Exception as e:
+                st.error(f"❌ Gagal: {str(e)}")
 
 # ============ HALAMAN: KALENDER & JADWAL ============
 def page_jadwal():
@@ -2384,6 +2732,224 @@ def page_pengaturan():
                     except Exception as e:
                         st.error(f"❌ Gagal: {str(e)}")
 
+# ============ HALAMAN: DASHBOARD DETAIL PER SISWA (GAMIFIKASI & AI REKOMENDASI) ============
+def page_dashboard_siswa():
+    st.title("👤 Dashboard Detail & Profil Siswa")
+    st.caption("Analisis menyeluruh tentang profil siswa, tren belajar, catatan khusus, rekomendasi AI, serta visualisasi gamifikasi berprestasi.")
+
+    kelas = get_kelas()
+    if not kelas:
+        st.warning("Belum ada kelas.")
+        return
+
+    kelas_options = {k['nama_kelas']: k['id'] for k in kelas}
+
+    col_sel = st.columns(2)
+    kelas_terpilih = col_sel[0].selectbox("Pilih Kelas", list(kelas_options.keys()), key="siswa_db_kelas")
+    kelas_id = kelas_options[kelas_terpilih]
+
+    siswa = get_siswa(kelas_id)
+    if not siswa:
+        st.info("Belum ada data siswa di kelas ini.")
+        return
+
+    siswa_options = {s['nama']: s['id'] for s in siswa}
+    siswa_terpilih = col_sel[1].selectbox("Pilih Profil Siswa", list(siswa_options.keys()))
+    siswa_id = siswa_options[siswa_terpilih]
+
+    # Ambil KKM Kelas
+    kkm_data = get_kkm(kelas_id)
+    kkm_val = kkm_data[0]['kkm'] if kkm_data else 75
+
+    # Ambil semua nilai siswa
+    nilai_semua = get_nilai(kelas_id)
+    nilai_siswa = [n for n in nilai_semua if n['siswa_id'] == siswa_id]
+
+    # ------------------ SEKTOR GAMIFIKASI & BADGES ------------------
+    st.markdown("---")
+    st.markdown("### 🏆 Sektor Gamifikasi & Pencapaian Siswa")
+
+    # Kalkulasi Rata-rata Nilai seluruh siswa di kelas untuk Leaderboard
+    leaderboard_data = []
+    for s in siswa:
+        n_s = [n['nilai'] for n in nilai_semua if n['siswa_id'] == s['id']]
+        avg_s = sum(n_s) / len(n_s) if n_s else 0.0
+        leaderboard_data.append({
+            "Nama": s['nama'],
+            "Rata-Rata": round(avg_s, 1)
+        })
+    df_leaderboard = pd.DataFrame(leaderboard_data).sort_values(by="Rata-Rata", ascending=False).reset_index(drop=True)
+    df_leaderboard["Peringkat"] = df_leaderboard.index + 1
+
+    # Temukan peringkat siswa saat ini
+    posisi_siswa = df_leaderboard[df_leaderboard["Nama"] == siswa_terpilih]
+    peringkat = posisi_siswa["Peringkat"].values[0] if len(posisi_siswa) > 0 else "-"
+    rerata_s = posisi_siswa["Rata-Rata"].values[0] if len(posisi_siswa) > 0 else 0.0
+
+    # Perhitungan pemicu Badge Gamifikasi
+    badges = []
+    if peringkat == 1 and rerata_s > 0:
+        badges.append(("👑 Bintang Kelas (Peringkat 1)", "Siswa ini memiliki rata-rata tertinggi di kelas."))
+    elif peringkat in [2, 3] and rerata_s > 0:
+        badges.append(("🥈 Juara Kelas (Peringkat 2 & 3)", "Siswa ini masuk dalam jajaran 3 besar kelas."))
+
+    if rerata_s >= kkm_val and rerata_s > 0:
+        badges.append(("✅ Master KKM", "Rata-rata kompetensi siswa berada di atas standar KKM."))
+
+    nilai_sempurna_count = sum(1 for n in nilai_siswa if n['nilai'] == 100)
+    if nilai_sempurna_count > 0:
+        badges.append((f"💯 Sang Penakluk 100 ({nilai_sempurna_count}x)", "Siswa berhasil mendapatkan nilai sempurna 100 pada beberapa ujian/tugas."))
+
+    # Tampilkan Badge dalam Layout Kolom
+    col_b = st.columns(4)
+    with col_b[0]:
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center; border-left: 5px solid #FFD700;">
+            <div style="font-size: 28px;">🏆</div>
+            <div style="font-size: 13px; color: #64748b;">Peringkat Kelas</div>
+            <div style="font-size: 22px; font-weight: 800; color: #1e293b;">Ke-{peringkat}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_b[1]:
+        st.markdown(f"""
+        <div class="custom-card" style="text-align: center; border-left: 5px solid #4CAF50;">
+            <div style="font-size: 28px;">📈</div>
+            <div style="font-size: 13px; color: #64748b;">Rata-rata Nilai</div>
+            <div style="font-size: 22px; font-weight: 800; color: #1e293b;">{rerata_s}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Render sisa kolom dengan badges
+    for i, (badge_title, badge_desc) in enumerate(badges[:2]):
+        with col_b[2 + i]:
+            st.markdown(f"""
+            <div class="custom-card" style="text-align: center; border-left: 5px solid #00c0f2;">
+                <div style="font-size: 13px; font-weight:700; color: #0087a3;">🏅 Lencana Didapat</div>
+                <div style="font-size: 14px; font-weight: 800; color: #1e293b; margin-top:4px;">{badge_title}</div>
+                <div style="font-size: 11px; color: #64748b; margin-top:2px;">{badge_desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Tampilkan Leaderboard Kelas (Expander)
+    with st.expander("📊 Lihat Leaderboard Seluruh Kelas", expanded=False):
+        st.dataframe(df_leaderboard, use_container_width=True, hide_index=True)
+
+    # ------------------ RIWAYAT NILAI & TREN ------------------
+    st.markdown("---")
+    st.markdown("### 📊 Riwayat Nilai & Grafik Perkembangan")
+
+    if nilai_siswa:
+        # Konversi ke dataframe
+        df_ns = pd.DataFrame(nilai_siswa)
+
+        def parse_tgl(t):
+            if not t: return None
+            if isinstance(t, str): return datetime.strptime(t, "%Y-%m-%d").date()
+            return t
+
+        df_ns['tgl_parsed'] = df_ns['tanggal'].apply(parse_tgl)
+        df_ns = df_ns.sort_values(by="tgl_parsed").reset_index(drop=True)
+
+        # Line Chart Perkembangan
+        df_chart = pd.DataFrame({
+            "Tanggal": df_ns["tgl_parsed"].apply(str),
+            "Nilai": df_ns["nilai"]
+        })
+        st.line_chart(df_chart.set_index("Tanggal")["Nilai"])
+
+        # Tabel Riwayat
+        df_display = df_ns[["kategori", "nilai", "topik", "bab", "tanggal", "catatan"]].copy()
+        df_display.columns = ["Kategori", "Nilai", "Topik", "Bab", "Tanggal", "Catatan"]
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+    else:
+        st.info("Belum ada riwayat nilai untuk siswa ini.")
+
+    # ------------------ CATATAN GURU & AI REKOMENDASI (KOLABORASI) ------------------
+    st.markdown("---")
+    st.markdown("### ✍️ Catatan Guru & Rekomendasi AI")
+
+    # Ambil catatan siswa saat ini dari tabel siswa (bisa disimpan di catatan siswa, kita simpan di session_state sementara atau metadata)
+    # Gunakan session state untuk menyimpan catatan per siswa agar persisten
+    if "catatan_siswa_persisten" not in st.session_state:
+        st.session_state.catatan_siswa_persisten = {}
+
+    current_teacher_note = st.session_state.catatan_siswa_persisten.get(siswa_id, "")
+
+    col_rec = st.columns([1, 1])
+
+    with col_rec[0]:
+        st.markdown("**📝 Catatan Guru (Manual)**")
+        st.caption("Tulis pengamatan Anda mengenai sikap belajar, kedisiplinan, atau catatan personal siswa.")
+        new_note = st.text_area(
+            "Masukkan Catatan Guru",
+            value=current_teacher_note,
+            placeholder="Tulis di sini...",
+            key=f"textarea_note_{siswa_id}"
+        )
+        if st.button("💾 Simpan Catatan Guru", key=f"btn_save_note_{siswa_id}"):
+            st.session_state.catatan_siswa_persisten[siswa_id] = new_note
+            st.toast("✅ Catatan guru berhasil disimpan!")
+
+    with col_rec[1]:
+        st.markdown("**🧠 Analisis & Rekomendasi Belajar (Otomatis AI)**")
+        st.caption("AI akan menganalisis riwayat nilai siswa (terutama yang di bawah KKM) dan catatan Anda untuk membuat panduan belajar personal.")
+
+        # Tombol Generate AI Rekomendasi
+        generate_ai_rec = st.button("🚀 Generate Rekomendasi AI", key=f"btn_ai_rec_{siswa_id}")
+
+        if generate_ai_rec:
+            # Ambil api key
+            try:
+                groq_api_key = st.secrets["groq_api_key"]
+            except:
+                groq_api_key = st.session_state.get("groq_dokumen_key", "")
+
+            if not groq_api_key:
+                st.warning("⚠️ Masukkan Groq API Key terlebih dahulu di menu '📁 Dokumen Pembelajaran' -> 'Generate AI'!")
+                return
+
+            with st.spinner("⏳ AI sedang menganalisis performa belajar..."):
+                try:
+                    # Buat ringkasan nilai untuk dikirim ke LLM
+                    ringkasan_nilai_teks = ""
+                    for n in nilai_siswa:
+                        ringkasan_nilai_teks += f"- Kategori: {n['kategori']}, Topik: {n.get('topik', '')}, Nilai: {n['nilai']} (KKM: {kkm_val})\n"
+
+                    prompt_ai = f"""
+Siswa: {siswa_terpilih}
+Kelas: {kelas_terpilih}
+Rata-rata Nilai: {rerata_s} (Standar KKM: {kkm_val})
+Riwayat Nilai:
+{ringkasan_nilai_teks if ringkasan_nilai_teks else "Belum ada riwayat nilai."}
+
+Catatan Pengamatan Guru:
+"{new_note if new_note else "Tidak ada catatan pengamatan khusus dari guru."}"
+
+Berdasarkan data di atas, tolong berikan rekomendasi belajar yang personal, taktis, dan ramah bagi siswa ini agar dapat meningkatkan prestasinya (terutama untuk topik-topik di bawah standar KKM). Tulis dalam bahasa Indonesia yang memotivasi dan terstruktur rapi!
+"""
+                    from langchain_groq import ChatGroq
+                    from langchain_core.prompts import ChatPromptTemplate
+                    from langchain_core.output_parsers import StrOutputParser
+
+                    llm = ChatGroq(
+                        model="llama-3.1-8b-instant",
+                        temperature=0.6,
+                        groq_api_key=groq_api_key
+                    )
+
+                    prompt_template = ChatPromptTemplate.from_messages([
+                        ("system", "Anda adalah konselor akademis sekolah dan asisten AI guru yang sangat berempati, analitis, dan solutif."),
+                        ("user", "{input}")
+                    ])
+
+                    chain = prompt_template | llm | StrOutputParser()
+                    rekomendasi_hasil = chain.invoke({"input": prompt_ai})
+
+                    st.info("💡 **Hasil Analisis AI:**")
+                    st.markdown(rekomendasi_hasil)
+                except Exception as e:
+                    st.error(f"Gagal generate rekomendasi: {str(e)}")
+
 # ============ SIDEBAR NAVIGASI & ROUTING ============
 st.sidebar.title("📚 Menu Guru")
 st.sidebar.markdown("---")
@@ -2392,6 +2958,7 @@ menu = st.sidebar.radio(
     "Pilih Fitur",
     [
         "🏠 Dashboard",
+        "👤 Dashboard per Siswa",
         "📝 Input Nilai Rapel",
         "📊 Lihat & Export Nilai",
         "📅 Kalender & Jadwal",
@@ -2404,6 +2971,8 @@ menu = st.sidebar.radio(
 # ============ ROUTING - ROUTING PAGES BERDASARKAN MENU ============
 if menu == "🏠 Dashboard":
     page_dashboard()
+elif menu == "👤 Dashboard per Siswa":
+    page_dashboard_siswa()
 elif menu == "📝 Input Nilai Rapel":
     page_input_nilai()
 elif menu == "📊 Lihat & Export Nilai":
