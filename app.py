@@ -926,7 +926,7 @@ def page_input_nilai():
                     ),
                     "Nilai": st.column_config.NumberColumn(
                         "Nilai",
-                        min_value=0,
+                        min_value=-50,  # Diubah agar mendukung nilai minus sampai -50 (khusus sikap & harian)
                         max_value=100,
                         step=1,
                         format="%.0f",
@@ -963,7 +963,7 @@ def page_input_nilai():
                             st.session_state[f"num_{s_id}"] = float(row['Nilai'])
                             st.session_state.temp_catatan_kartu[s_id] = row['Catatan']
 
-                            if row['Nilai'] > 0:
+                            if row['Nilai'] != 0:  # Diubah dari > 0 agar nilai minus (negatif) bisa ikut disimpan
                                 # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
                                 existing = supabase.table("nilai").select("*")\
                                     .eq("siswa_id", s_id)\
@@ -1059,7 +1059,7 @@ def page_input_nilai():
             def update_grade(s_id, amount):
                 key_num = f"num_{s_id}"
                 cur_val = st.session_state.get(key_num, 0.0)
-                new_val = max(0.0, min(100.0, cur_val + amount))
+                new_val = max(-50.0, min(100.0, cur_val + amount))  # Diubah batas bawahnya agar bisa sampai -50.0
                 st.session_state[key_num] = float(new_val)
 
             # Tombol Minus (-)
@@ -1083,7 +1083,7 @@ def page_input_nilai():
             # Input Angka Langsung (nilai bind ke st.session_state[key_num] via parameter key)
             nilai_val = col_actions[2].number_input(
                 "Nilai",
-                min_value=0.0,
+                min_value=-50.0,  # Diubah batas bawahnya agar mendukung nilai minus sampai -50.0
                 max_value=100.0,
                 step=1.0,
                 key=f"num_{s['id']}",
@@ -1113,7 +1113,7 @@ def page_input_nilai():
                     for s in siswa:
                         nilai_val = st.session_state.get(f"num_{s['id']}", 0.0)
                         catatan_val = st.session_state.temp_catatan_kartu[s['id']]
-                        if nilai_val > 0:
+                        if nilai_val != 0:  # Diubah dari > 0 agar nilai minus (negatif) bisa ikut disimpan
                             # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
                             existing = supabase.table("nilai").select("*")\
                                 .eq("siswa_id", s['id'])\
@@ -1228,7 +1228,8 @@ def page_lihat_nilai():
             distribution_bins = {"< KKM (Tidak Tuntas)": 0, "70 - 79": 0, "80 - 89": 0, "90 - 100": 0}
 
             for kat in existing_kolom:
-                values = df[kat][df[kat] > 0]
+                # Mengubah filter df[kat] > 0 menjadi df[kat] != 0 agar nilai negatif (minus) ikut masuk dalam statistik analitik
+                values = df[kat][df[kat] != 0]
                 if len(values) > 0:
                     stats_data.append({
                         "Kategori": kat,
