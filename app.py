@@ -81,111 +81,157 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
-    /* Font Global & Transisi Halus */
+    /* Font Global & Estetika Premium Latar Belakang */
     html, body, [data-testid="stAppViewContainer"], .stApp {
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
-        background-color: #fcfcfd !important;
+        background-color: #f8fafc !important; /* Latar belakang abu-abu hangat yang bersih, adem, dan luas */
+        color: #334155 !important;
         transition: background-color 0.3s ease, opacity 0.3s ease;
     }
 
-    /* Transisi Fade In Halus saat memuat halaman */
+    /* Transisi Fade In & Slide Up Lembut khas Aplikasi Modern saat memuat halaman */
     [data-testid="stAppViewContainer"] {
-        animation: fadeIn 0.4s ease-out;
+        animation: smoothSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(4px); }
+    @keyframes smoothSlideUp {
+        from { opacity: 0; transform: translateY(8px); }
         to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Mempercantik Judul */
+    /* Mempercantik Judul (Typography Lebih Manusiawi & Modern) */
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Plus Jakarta Sans', sans-serif !important;
         font-weight: 700 !important;
         color: #1e293b !important;
-        letter-spacing: -0.02em !important;
+        letter-spacing: -0.03em !important;
+        line-height: 1.3 !important;
     }
 
-    /* Perbaikan Tab Streamlit agar Fokus ke Tengah dan Rapi di Mobile */
+    h1 { font-size: 32px !important; margin-bottom: 12px !important; }
+    h2 { font-size: 24px !important; margin-top: 24px !important; margin-bottom: 12px !important; }
+    h3 { font-size: 19px !important; margin-top: 18px !important; margin-bottom: 8px !important; }
+
+    /* Perbaikan Tab Streamlit agar seperti Tab Bar premium (Centered, Membulat, Transisi Lembut) */
     div[data-testid="stTabs"] {
-        background-color: #f8fafc;
-        padding: 6px;
-        border-radius: 12px;
+        background-color: #f1f5f9;
+        padding: 4px;
+        border-radius: 14px;
         border: 1px solid #e2e8f0;
-        margin-bottom: 20px;
+        margin-bottom: 24px;
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);
     }
     div[data-testid="stTabs"] button {
         flex: 1 !important;
         text-align: center !important;
         justify-content: center !important;
         font-weight: 600 !important;
-        font-size: 15px !important;
-        border-radius: 8px !important;
+        font-size: 14px !important;
+        border-radius: 10px !important;
         color: #64748b !important;
-        transition: all 0.2s ease-in-out !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
         border: none !important;
+        padding: 8px 16px !important;
         background-color: transparent !important;
     }
     div[data-testid="stTabs"] button[aria-selected="true"] {
         background-color: #ffffff !important;
-        color: #4CAF50 !important;
-        box-shadow: 0px 4px 6px -1px rgba(0, 0, 0, 0.05), 0px 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
+        color: #10b981 !important; /* Hijau Emerald Modern yang teduh */
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.04), 0px 2px 4px rgba(0, 0, 0, 0.02) !important;
+    }
+    div[data-testid="stTabs"] button:hover {
+        color: #10b981 !important;
     }
 
-    /* Kustomisasi Tombol Primary & Hover */
+    /* Kustomisasi Tombol Agar Premium (Emerald Green & Hover Lift Lembut) */
     .stButton button {
         font-family: 'Plus Jakarta Sans', sans-serif !important;
-        font-size: 15px !important;
+        font-size: 14px !important;
         font-weight: 600 !important;
-        padding: 10px 20px !important;
-        min-height: 44px !important;
+        padding: 8px 18px !important;
+        min-height: 40px !important;
         border-radius: 10px !important;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
-        border: 1px solid #e2e8f0 !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+        border: 1px solid #cbd5e1 !important;
+        background-color: #ffffff !important;
+        color: #334155 !important;
     }
 
-    /* Tombol warna hijau guru */
+    /* Tombol warna hijau emerald guru */
     .stButton button[data-baseweb="button"] {
-        background-color: #4CAF50 !important;
+        background-color: #10b981 !important;
         color: white !important;
         border: none !important;
     }
 
     .stButton button:hover {
-        transform: translateY(-1px) !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
-        background-color: #43a047 !important;
+        transform: translateY(-1.5px) !important;
+        box-shadow: 0 8px 16px -2px rgba(16, 185, 129, 0.15), 0 4px 6px -2px rgba(16, 185, 129, 0.05) !important;
+        background-color: #059669 !important; /* Hover Emerald sedikit lebih gelap */
     }
 
     .stButton button:active {
         transform: translateY(0px) !important;
     }
 
-    /* Card Box Kustom untuk HP */
+    /* Card Box Kustom (Notion & Clean-Style dengan bayangan sangat tipis) */
     .custom-card {
         background: #ffffff;
         border-radius: 16px;
-        padding: 18px;
-        margin: 12px 0;
-        border: 1px solid #f1f5f9;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        padding: 20px;
+        margin: 16px 0;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.01);
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .custom-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+        box-shadow: 0 12px 24px -4px rgba(0, 0, 0, 0.03), 0 4px 12px -2px rgba(0, 0, 0, 0.01);
     }
 
-    /* Perbaikan tampilan HP */
+    /* Kustomisasi Sidebar Radio agar tampak seperti Menu Tombol Vertikal Modern */
+    [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {
+        font-weight: 700 !important;
+        color: #475569 !important;
+        text-transform: uppercase;
+        font-size: 11px !important;
+        letter-spacing: 0.05em;
+        margin-bottom: 12px;
+    }
+
+    /* Ganti tampilan menu radio agar modern */
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+        gap: 6px !important;
+    }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+        background-color: transparent !important;
+        padding: 8px 12px !important;
+        border-radius: 10px !important;
+        border: 1px solid transparent !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
+    }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
+        background-color: #f1f5f9 !important;
+        color: #10b981 !important;
+    }
+    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label[data-checked="true"] {
+        background-color: #e6f4ea !important;
+        color: #10b981 !important;
+        font-weight: 600 !important;
+        border: 1px solid #a7f3d0 !important;
+    }
+
+    /* Perbaikan tampilan HP (Mobile-Responsive Optimal) */
     @media only screen and (max-width: 768px) {
         .stApp {
-            font-size: 15px !important;
+            font-size: 14px !important;
         }
         h1 {
-            font-size: 22px !important;
+            font-size: 24px !important;
         }
         h2 {
-            font-size: 18px !important;
+            font-size: 19px !important;
         }
         h3 {
             font-size: 16px !important;
@@ -193,32 +239,39 @@ st.markdown("""
         .stButton button {
             width: 100% !important;
         }
-        /* Sidebar lebih lebar di HP */
-        .css-1d391kg, [data-testid="stSidebar"] {
-            width: 280px !important;
+        /* Jarak luas di ponsel */
+        .custom-card {
+            padding: 16px;
+            margin: 10px 0;
         }
     }
 
-    /* Input & Form Elements */
+    /* Input & Form Elements yang Membulat dan Elegan */
     .stTextInput input, .stSelectbox select, .stNumberInput input, .stTextArea textarea {
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         border: 1px solid #cbd5e1 !important;
         padding: 10px 14px !important;
-        transition: border-color 0.2s ease !important;
+        font-size: 14px !important;
+        background-color: #ffffff !important;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
     }
     .stTextInput input:focus, .stSelectbox select:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
-        border-color: #4CAF50 !important;
-        box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.15) !important;
+        border-color: #10b981 !important;
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12) !important;
+        outline: none !important;
     }
 
-    /* Checkbox lebih besar */
+    /* Checkbox & Radio */
     .stCheckbox label {
-        font-size: 15px !important;
-        padding: 6px !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
     }
-    .stCheckbox input {
-        width: 18px !important;
-        height: 18px !important;
+
+    /* Pengaturan Spasi Tulisan RPP AI (Notion-Style) */
+    .stMarkdown p, .stMarkdown li {
+        line-height: 1.625 !important;
+        font-size: 14.5px !important;
+        color: #334155 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -473,6 +526,65 @@ def generate_jadwal_semester(kelas_id, hari, jam, daftar_bab, semester, tahun_aj
         st.error(f"Error generate jadwal: {str(e)}")
         return None
         
+# ============ CALLBACK GLOBAL UNTUK MENCEGAH RE-RUN FAIL (STREAMLIT BEST PRACTICE) ============
+def select_jadwal_to_delete(jadwal_id, text):
+    st.session_state.hapus_id = jadwal_id
+    st.session_state.hapus_text = text
+
+def confirm_delete_jadwal():
+    try:
+        supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
+        clear_cache()
+        st.session_state.jadwal_success_msg = f"✅ Jadwal '{st.session_state.hapus_text}' berhasil dihapus!"
+    except Exception as e:
+        st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
+    st.session_state.hapus_id = None
+    st.session_state.hapus_text = ""
+
+def cancel_delete_jadwal():
+    st.session_state.hapus_id = None
+    st.session_state.hapus_text = ""
+
+def select_doc_to_delete(doc_id, judul):
+    st.session_state.hapus_doc_id = doc_id
+    st.session_state.hapus_doc_judul = judul
+
+def confirm_delete_doc():
+    try:
+        supabase.table("dokumen").delete().eq("id", st.session_state.hapus_doc_id).execute()
+        clear_cache()
+        st.session_state.doc_success_msg = f"✅ Dokumen '{st.session_state.hapus_doc_judul}' berhasil dihapus!"
+    except Exception as e:
+        st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
+    st.session_state.hapus_doc_id = None
+    st.session_state.hapus_doc_judul = ""
+
+def cancel_delete_doc():
+    st.session_state.hapus_doc_id = None
+    st.session_state.hapus_doc_judul = ""
+
+def select_siswa_to_delete(siswa_id, nama):
+    st.session_state.hapus_siswa_id = siswa_id
+    st.session_state.hapus_siswa_nama = nama
+
+def confirm_delete_siswa():
+    try:
+        supabase.table("siswa").delete().eq("id", st.session_state.hapus_siswa_id).execute()
+        clear_cache()
+        st.session_state.siswa_success_msg = f"✅ Siswa '{st.session_state.hapus_siswa_nama}' berhasil dihapus!"
+    except Exception as e:
+        st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
+    st.session_state.hapus_siswa_id = None
+    st.session_state.hapus_siswa_nama = ""
+
+def cancel_delete_siswa():
+    st.session_state.hapus_siswa_id = None
+    st.session_state.hapus_siswa_nama = ""
+
+def trigger_edit_siswa(s_id, s_nama):
+    st.session_state.edit_siswa_id = s_id
+    st.session_state.edit_siswa_nama = s_nama
+
 # ============ FUNGSI UTILITY ============
 def hari_ke_angka(hari):
     hari_map = {
@@ -1657,25 +1769,6 @@ def page_lihat_nilai():
 def page_jadwal():
     st.title("📅 Kalender & Jadwal")
     
-    # ===== CALLBACK JADWAL =====
-    def select_jadwal_to_delete(jadwal_id, text):
-        st.session_state.hapus_id = jadwal_id
-        st.session_state.hapus_text = text
-
-    def confirm_delete_jadwal():
-        try:
-            supabase.table("jadwal").delete().eq("id", st.session_state.hapus_id).execute()
-            clear_cache()
-            st.session_state.jadwal_success_msg = f"✅ Jadwal '{st.session_state.hapus_text}' berhasil dihapus!"
-        except Exception as e:
-            st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
-        st.session_state.hapus_id = None
-        st.session_state.hapus_text = ""
-
-    def cancel_delete_jadwal():
-        st.session_state.hapus_id = None
-        st.session_state.hapus_text = ""
-
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas.")
@@ -2106,25 +2199,6 @@ def page_bank_soal():
 def page_dokumen():
     st.title("📁 Dokumen Pembelajaran")
     
-    # ===== CALLBACK DOKUMEN =====
-    def select_doc_to_delete(doc_id, judul):
-        st.session_state.hapus_doc_id = doc_id
-        st.session_state.hapus_doc_judul = judul
-
-    def confirm_delete_doc():
-        try:
-            supabase.table("dokumen").delete().eq("id", st.session_state.hapus_doc_id).execute()
-            clear_cache()
-            st.session_state.doc_success_msg = f"✅ Dokumen '{st.session_state.hapus_doc_judul}' berhasil dihapus!"
-        except Exception as e:
-            st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
-        st.session_state.hapus_doc_id = None
-        st.session_state.hapus_doc_judul = ""
-
-    def cancel_delete_doc():
-        st.session_state.hapus_doc_id = None
-        st.session_state.hapus_doc_judul = ""
-
     kelas = get_kelas()
     if not kelas:
         st.warning("Belum ada kelas. Silahkan tambah kelas di menu Pengaturan.")
@@ -2510,25 +2584,6 @@ def page_dokumen():
 def page_pengaturan():
     st.title("⚙️ Pengaturan Kelas & Siswa")
     
-    # ===== CALLBACK SISWA =====
-    def select_siswa_to_delete(siswa_id, nama):
-        st.session_state.hapus_siswa_id = siswa_id
-        st.session_state.hapus_siswa_nama = nama
-
-    def confirm_delete_siswa():
-        try:
-            supabase.table("siswa").delete().eq("id", st.session_state.hapus_siswa_id).execute()
-            clear_cache()
-            st.session_state.siswa_success_msg = f"✅ Siswa '{st.session_state.hapus_siswa_nama}' berhasil dihapus!"
-        except Exception as e:
-            st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
-        st.session_state.hapus_siswa_id = None
-        st.session_state.hapus_siswa_nama = ""
-
-    def cancel_delete_siswa():
-        st.session_state.hapus_siswa_id = None
-        st.session_state.hapus_siswa_nama = ""
-
     tab1, tab2, tab3 = st.tabs(["📚 Kelas", "👨‍🎓 Siswa", "🎯 KKM"])
     
     # TAB 1: Kelas
@@ -2621,6 +2676,37 @@ def page_pengaturan():
             )
             kelas_id = kelas_options[kelas_terpilih]
             
+            # Form Edit Nama Siswa (Jika Terpilih)
+            if st.session_state.edit_siswa_id is not None:
+                st.markdown("### ✏️ Edit Nama Siswa")
+                with st.form("form_edit_siswa"):
+                    new_nama_edit = st.text_input("Nama Baru Siswa", value=st.session_state.edit_siswa_nama)
+
+                    col_edit_btn = st.columns([1, 1, 2])
+                    submit_edit = col_edit_btn[0].form_submit_button("💾 Simpan Perubahan", type="primary")
+                    batal_edit = col_edit_btn[1].form_submit_button("❌ Batal")
+
+                    if submit_edit:
+                        new_nama_strip = new_nama_edit.strip()
+                        if not new_nama_strip:
+                            st.error("❌ Nama siswa tidak boleh kosong!")
+                        else:
+                            try:
+                                supabase.table("siswa").update({"nama": new_nama_strip}).eq("id", st.session_state.edit_siswa_id).execute()
+                                clear_cache()
+                                st.session_state.siswa_success_msg = f"✅ Nama siswa berhasil diubah menjadi '{new_nama_strip}'!"
+                                st.session_state.edit_siswa_id = None
+                                st.session_state.edit_siswa_nama = ""
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Gagal memperbarui nama: {str(e)}")
+
+                    if batal_edit:
+                        st.session_state.edit_siswa_id = None
+                        st.session_state.edit_siswa_nama = ""
+                        st.rerun()
+                st.markdown("---")
+
             # Tambah siswa
             with st.form("form_siswa"):
                 metode = st.radio("Metode Tambah", ["Satuan", "Massal"], key="radio_siswa")
@@ -2692,9 +2778,19 @@ def page_pengaturan():
                 st.subheader(f"Daftar Siswa Kelas {kelas_terpilih}")
                 
                 for s in siswa:
-                    cols = st.columns([3, 1])
+                    cols = st.columns([3, 0.5, 0.5])
                     cols[0].write(f"👨‍🎓 {s['nama']}")
+
+                    # Tombol Edit
                     cols[1].button(
+                        "✏️",
+                        key=f"edit_siswa_btn_{s['id']}",
+                        on_click=trigger_edit_siswa,
+                        args=(s['id'], s['nama'])
+                    )
+
+                    # Tombol Hapus
+                    cols[2].button(
                         "🗑️",
                         key=f"del_siswa_{s['id']}",
                         on_click=select_siswa_to_delete,
