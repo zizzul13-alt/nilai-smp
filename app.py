@@ -298,13 +298,61 @@ key = "your-supabase-anon-key"
     """, language="toml")
     st.stop()
 
+import httpx
+from functools import wraps
+
+def handle_db_connection(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (httpx.ConnectError, httpx.RequestError, httpx.HTTPStatusError, Exception) as e:
+            err_str = str(e)
+            is_conn_error = (
+                isinstance(e, (httpx.ConnectError, httpx.RequestError, httpx.HTTPStatusError)) or
+                "connect" in err_str.lower() or
+                "network" in err_str.lower() or
+                "paused" in err_str.lower() or
+                "connection" in err_str.lower()
+            )
+
+            if is_conn_error:
+                st.error("⚠️ **Database tidak dapat dihubungi. Silakan coba lagi.**")
+
+                # Check for debug mode in Streamlit secrets
+                debug_mode = False
+                try:
+                    debug_mode = st.secrets.get("DEBUG_MODE", False)
+                except:
+                    pass
+
+                if debug_mode:
+                    sanitized_err = err_str
+                    try:
+                        supabase_url = st.secrets["supabase"]["url"]
+                        supabase_key = st.secrets["supabase"]["key"]
+                        if supabase_url in sanitized_err:
+                            sanitized_err = sanitized_err.replace(supabase_url, "REDACTED_SUPABASE_URL")
+                        if supabase_key in sanitized_err:
+                            sanitized_err = sanitized_err.replace(supabase_key, "REDACTED_SUPABASE_KEY")
+                    except:
+                        pass
+                    st.info(f"🔍 **[DEBUG] Detail Kendala Koneksi:** {sanitized_err}")
+
+                st.stop()
+            else:
+                raise e
+    return wrapper
+
 # ============ FUNGSI DATABASE DENGAN CACHE ============
 @st.cache_data(ttl=300)
+@handle_db_connection
 def get_kelas():
     response = supabase.table("kelas").select("*").order("nama_kelas").execute()
     return response.data
 
 @st.cache_data(ttl=300)
+@handle_db_connection
 def get_siswa(kelas_id=None):
     query = supabase.table("siswa").select("*")
     if kelas_id:
@@ -312,6 +360,7 @@ def get_siswa(kelas_id=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
+@handle_db_connection
 def get_jadwal(kelas_id=None):
     query = supabase.table("jadwal").select("*")
     if kelas_id:
@@ -319,6 +368,7 @@ def get_jadwal(kelas_id=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
+@handle_db_connection
 def get_bank_soal(kelas_id=None, keyword=None):
     query = supabase.table("bank_soal").select("*")
     if kelas_id:
@@ -328,6 +378,7 @@ def get_bank_soal(kelas_id=None, keyword=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
+@handle_db_connection
 def get_kkm(kelas_id=None, kategori=None):
     query = supabase.table("kkm").select("*")
     if kelas_id:
@@ -337,6 +388,7 @@ def get_kkm(kelas_id=None, kategori=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
+@handle_db_connection
 def get_dokumen(kelas_id=None, jenis=None):
     query = supabase.table("dokumen").select("*")
     if kelas_id:
@@ -346,6 +398,7 @@ def get_dokumen(kelas_id=None, jenis=None):
     return query.execute().data
 
 @st.cache_data(ttl=60)
+@handle_db_connection
 def get_nilai(kelas_id=None, kategori=None, topik=None):
     query = supabase.table("nilai").select("*")
     if kelas_id:
