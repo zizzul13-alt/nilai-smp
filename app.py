@@ -602,8 +602,11 @@ def confirm_delete_doc():
             file_url = doc_data.get("file_url")
 
             # Fail-closed storage object determination and deletion
-            if file_url:
-                if file_url.startswith("http://") or file_url.startswith("https://"):
+            if file_url and file_url.strip() != "":
+                if file_url.startswith("generated_"):
+                    # Explicitly bypass storage deletion for local AI-generated document placeholders
+                    pass
+                elif file_url.startswith("http://") or file_url.startswith("https://"):
                     object_name = extract_storage_object_name(file_url)
                     if not object_name:
                         # STOP: has file_url but object path cannot be safely determined
@@ -615,9 +618,8 @@ def confirm_delete_doc():
                     except Exception as storage_err:
                         raise RuntimeError(f"Gagal menghapus file dari Storage: {str(storage_err)}")
                 else:
-                    # Document has no real file URL in Storage (e.g. generated local text file)
-                    # Explicitly bypass storage deletion
-                    pass
+                    # Non-empty, non-HTTP, non-generated placeholder URL is invalid. STOP deletion.
+                    raise ValueError(f"URL berkas tidak valid untuk penghapusan Storage: {file_url}")
 
         # Delete database record
         supabase.table("dokumen").delete().eq("id", st.session_state.hapus_doc_id).execute()
@@ -2719,7 +2721,7 @@ def page_dokumen():
                                 except Exception as groq_err:
                                     groq_friendly = handle_ai_exception(groq_err, provider="Groq")
                                     st.error(f"❌ Pembuatan dokumen gagal.\n\n- Gemini: {gemini_friendly}\n- Groq (Fallback): {groq_friendly}")
-                                    st.info("💡 Solusi: Periksa koneksi internet Anda, hubungi admin, atau coba ubah model AI di atas ke model Groq yang lain.")
+                                    st.info("💡 Solusi: Periksa koneksi internet Anda, periksa ketersediaan kuota API Key Groq Anda, atau silakan coba lagi beberapa saat.")
                                     return
                         else:
                             # Menggunakan Groq biasa
@@ -2735,6 +2737,7 @@ def page_dokumen():
                             except Exception as groq_err:
                                 groq_friendly = handle_ai_exception(groq_err, provider="Groq")
                                 st.error(f"❌ Layanan Groq gagal memproses dokumen.\n\nDetail: {groq_friendly}")
+                                st.info("💡 Solusi: Periksa koneksi internet Anda, hubungi admin, atau coba ubah model AI di atas ke model Groq yang lain.")
                                 return
                         
                         st.markdown("---")
