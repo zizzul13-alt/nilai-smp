@@ -545,12 +545,70 @@ def cancel_delete_jadwal():
     st.session_state.hapus_id = None
     st.session_state.hapus_text = ""
 
+from urllib.parse import urlparse, unquote
+
+def extract_storage_object_name(file_url, bucket_name="dokumen"):
+    if not file_url:
+        return None
+    if not (file_url.startswith("http://") or file_url.startswith("https://")):
+        return None
+    try:
+        decoded_url = unquote(file_url)
+        parsed = urlparse(decoded_url)
+        path = parsed.path
+        search_str = f"/{bucket_name}/"
+        if search_str in path:
+            return path.split(search_str, 1)[-1]
+    except Exception as e:
+        pass
+    return None
+
+def handle_ai_exception(e, provider="Gemini"):
+    err_str = str(e)
+    # Logging for debugging
+    print(f"[{provider} Error]: {err_str}")
+
+    # 401: Unauthorized / Invalid Key
+    if "401" in err_str or "unauthorized" in err_str.lower() or "api_key_invalid" in err_str.lower() or "invalid api key" in err_str.lower() or "api key not valid" in err_str.lower():
+        return f"🔑 Kunci API {provider} tidak valid atau tidak terotorisasi. Silakan periksa kembali konfigurasi API Key Anda."
+
+    # 429: Rate Limit
+    if "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower() or "exceeded" in err_str.lower():
+        return f"⏳ Batas penggunaan (Rate Limit/Kuota) {provider} telah tercapai atau habis harian. Silakan tunggu beberapa saat."
+
+    # 404: Not Found
+    if "404" in err_str or "model_not_found" in err_str.lower() or "not found" in err_str.lower():
+        return f"❌ Model AI {provider} yang dipilih tidak ditemukan atau sedang tidak didukung saat ini."
+
+    # Timeout
+    if "timeout" in err_str.lower() or "deadline exceeded" in err_str.lower() or "time out" in err_str.lower():
+        return f"⏱️ Waktu koneksi habis (Timeout) saat menghubungi server {provider}. Silakan coba lagi."
+
+    # Other specific errors
+    return f"⚠️ Terjadi kendala teknis pada layanan {provider}. Detail: {err_str}"
+
 def select_doc_to_delete(doc_id, judul):
     st.session_state.hapus_doc_id = doc_id
     st.session_state.hapus_doc_judul = judul
 
 def confirm_delete_doc():
     try:
+        # Retrieve the file_url before deleting
+        doc_res = supabase.table("dokumen").select("file_url, file_name").eq("id", st.session_state.hapus_doc_id).execute()
+        if doc_res.data:
+            doc_data = doc_res.data[0]
+            file_url = doc_data.get("file_url")
+
+            # Extract storage object name
+            object_name = extract_storage_object_name(file_url)
+            if object_name:
+                try:
+                    # Remove from storage bucket "dokumen"
+                    supabase.storage.from_("dokumen").remove([object_name])
+                except Exception as storage_err:
+                    raise RuntimeError(f"Gagal menghapus file dari Storage: {str(storage_err)}")
+
+        # Delete database record
         supabase.table("dokumen").delete().eq("id", st.session_state.hapus_doc_id).execute()
         clear_cache()
         st.session_state.doc_success_msg = f"✅ Dokumen '{st.session_state.hapus_doc_judul}' berhasil dihapus!"
@@ -771,7 +829,7 @@ def tampilan_kartu(data_list, judul="Daftar"):
         nilai_text = f"{nilai:.0f}" if isinstance(nilai, (int, float)) and nilai > 0 else "—"
         sebelumnya = item.get('Nilai Sebelumnya', '-')
         if sebelumnya != '-' and sebelumnya:
-            keterangan = f"Sebelumnya: {previously}"
+            keterangan = f"Sebelumnya: {sebelumnya}"
         else:
             keterangan = item.get('Catatan', '') or "Kosong"
         
@@ -1098,7 +1156,8 @@ def page_input_nilai():
                             nilai_val = row["Nilai"]
                             catatan_val = row["Catatan"] if "Catatan" in df_uploaded.columns and pd.notna(row["Catatan"]) else None
 
-                            if nama_key in siswa_map_terbaru and pd.notna(nilai_val) and nilai_val != 0:
+                            # pd.notna(nilai_val) ensures value is not empty, can be 0 or negative
+                            if nama_key in siswa_map_terbaru and pd.notna(nilai_val) and str(nilai_val).strip() != "":
                                 s_id = siswa_map_terbaru[nama_key]
 
                                 # Cek data ganda di db
@@ -1163,14 +1222,19 @@ def page_input_nilai():
 
             data = []
             for s in siswa:
-                key_num = f"num_{s['id']}"
-                val = st.session_state.get(key_num, 0.0)
                 nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
+                key_num = f"num_{s['id']}"
+                # Jika tidak ada di session_state, gunakan nilai_sebelumnya sebagai initial state.
+                # Jika tidak ada nilai_sebelumnya, maka gunakan None (kosong/belum diisi).
+                if key_num not in st.session_state:
+                    st.session_state[key_num] = float(nilai_sebelumnya) if nilai_sebelumnya is not None else None
+
+                val = st.session_state.get(key_num, None)
                 data.append({
                     "Nama": s['nama'],
-                    "Nilai": float(val) if val > 0 else 0.0,
+                    "Nilai": float(val) if val is not None else None,
                     "Catatan": st.session_state.temp_catatan_kartu.get(s['id'], ""),
-                    "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya else "-"
+                    "Nilai Sebelumnya": nilai_sebelumnya if nilai_sebelumnya is not None else "-"
                 })
 
             df_input = pd.DataFrame(data)
@@ -1207,7 +1271,7 @@ def page_input_nilai():
             )
 
             # Panduan HP
-            st.caption("💡 Ketuk kolom Nilai untuk mengisi angka | Geser tabel untuk lihat semua kolom")
+            st.caption("💡 Ketuk kolom Nilai untuk mengisi angka | Kosongkan kolom Nilai untuk menghapus data nilai")
             submit = st.form_submit_button("💾 Simpan Semua Nilai (Tabel)")
 
             if submit:
@@ -1217,23 +1281,30 @@ def page_input_nilai():
                     try:
                         saved = 0
                         updated = 0
+                        deleted = 0
                         for idx, row in edited_df.iterrows():
                             s_id = siswa[idx]['id']
-                            st.session_state[f"num_{s_id}"] = float(row['Nilai'])
+                            row_nilai = row['Nilai']
+                            st.session_state[f"num_{s_id}"] = float(row_nilai) if pd.notna(row_nilai) else None
                             st.session_state.temp_catatan_kartu[s_id] = row['Catatan']
 
-                            if row['Nilai'] != 0:  # Diubah dari > 0 agar nilai minus (negatif) bisa ikut disimpan
-                                # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
-                                existing = supabase.table("nilai").select("*")\
-                                    .eq("siswa_id", s_id)\
-                                    .eq("kelas_id", kelas_id)\
-                                    .eq("kategori", kategori)\
-                                    .eq("topik", topik).execute()
+                            # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                            existing = supabase.table("nilai").select("*")\
+                                .eq("siswa_id", s_id)\
+                                .eq("kelas_id", kelas_id)\
+                                .eq("kategori", kategori)\
+                                .eq("topik", topik).execute()
 
+                            if pd.isna(row_nilai) or row_nilai is None:
+                                # Jika baris dikosongkan (None/Blank), dan sebelumnya ada record di DB, maka HAPUS record tersebut
+                                if existing.data:
+                                    supabase.table("nilai").delete().eq("id", existing.data[0]['id']).execute()
+                                    deleted += 1
+                            else:
                                 if existing.data:
                                     # Update nilai yang sudah ada
                                     supabase.table("nilai").update({
-                                        "nilai": row['Nilai'],
+                                        "nilai": float(row_nilai),
                                         "bab": bab,
                                         "tanggal": str(tanggal),
                                         "semester": semester,
@@ -1246,7 +1317,7 @@ def page_input_nilai():
                                         "siswa_id": s_id,
                                         "kelas_id": kelas_id,
                                         "kategori": kategori,
-                                        "nilai": row['Nilai'],
+                                        "nilai": float(row_nilai),
                                         "topik": topik,
                                         "bab": bab,
                                         "tanggal": str(tanggal),
@@ -1256,7 +1327,10 @@ def page_input_nilai():
                                     saved += 1
 
                         clear_cache()
-                        st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                        msg = f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui."
+                        if deleted > 0:
+                            msg += f" {deleted} data nilai dihapus/dikosongkan."
+                        st.toast(msg)
                         st.balloons()
                     except Exception as e:
                         st.error(f"❌ Gagal menyimpan: {str(e)}")
@@ -1295,14 +1369,15 @@ def page_input_nilai():
         # Sinkronisasi widget state key langsung ke number_input
         for s in siswa:
             key_num = f"num_{s['id']}"
+            nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
             if key_num not in st.session_state:
-                st.session_state[key_num] = 0.0
+                st.session_state[key_num] = float(nilai_sebelumnya) if nilai_sebelumnya is not None else None
             if s['id'] not in st.session_state.temp_catatan_kartu:
                 st.session_state.temp_catatan_kartu[s['id']] = ""
 
         for s in siswa:
             nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
-            prev_text = f"Nilai Sebelumnya: {nilai_sebelumnya:.0f}" if nilai_sebelumnya else "Belum ada nilai sebelumnya"
+            prev_text = f"Nilai Sebelumnya: {nilai_sebelumnya:.0f}" if nilai_sebelumnya is not None else "Belum ada nilai sebelumnya"
 
             # Render dalam custom layout container
             st.markdown(f"""
@@ -1317,7 +1392,9 @@ def page_input_nilai():
             # Callback untuk tombol + & - agar langsung mengubah widget key secara instan
             def update_grade(s_id, amount):
                 key_num = f"num_{s_id}"
-                cur_val = st.session_state.get(key_num, 0.0)
+                cur_val = st.session_state.get(key_num, None)
+                if cur_val is None:
+                    cur_val = 0.0
                 new_val = max(-50.0, min(100.0, cur_val + amount))  # Diubah batas bawahnya agar bisa sampai -50.0
                 st.session_state[key_num] = float(new_val)
 
@@ -1369,21 +1446,28 @@ def page_input_nilai():
                 try:
                     saved = 0
                     updated = 0
+                    deleted = 0
                     for s in siswa:
-                        nilai_val = st.session_state.get(f"num_{s['id']}", 0.0)
+                        nilai_val = st.session_state.get(f"num_{s['id']}", None)
                         catatan_val = st.session_state.temp_catatan_kartu[s['id']]
-                        if nilai_val != 0:  # Diubah dari > 0 agar nilai minus (negatif) bisa ikut disimpan
-                            # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
-                            existing = supabase.table("nilai").select("*")\
-                                .eq("siswa_id", s['id'])\
-                                .eq("kelas_id", kelas_id)\
-                                .eq("kategori", kategori)\
-                                .eq("topik", topik).execute()
 
+                        # Cek apakah sudah ada nilai untuk siswa + topik + kategori ini
+                        existing = supabase.table("nilai").select("*")\
+                            .eq("siswa_id", s['id'])\
+                            .eq("kelas_id", kelas_id)\
+                            .eq("kategori", kategori)\
+                            .eq("topik", topik).execute()
+
+                        if nilai_val is None:
+                            # Jika nilainya None/dikosongkan, hapus dari DB jika sebelumnya ada
+                            if existing.data:
+                                supabase.table("nilai").delete().eq("id", existing.data[0]['id']).execute()
+                                deleted += 1
+                        else:
                             if existing.data:
                                 # Update nilai yang sudah ada
                                 supabase.table("nilai").update({
-                                    "nilai": nilai_val,
+                                    "nilai": float(nilai_val),
                                     "bab": bab,
                                     "tanggal": str(tanggal),
                                     "semester": semester,
@@ -1396,7 +1480,7 @@ def page_input_nilai():
                                     "siswa_id": s['id'],
                                     "kelas_id": kelas_id,
                                     "kategori": kategori,
-                                    "nilai": nilai_val,
+                                    "nilai": float(nilai_val),
                                     "topik": topik,
                                     "bab": bab,
                                     "tanggal": str(tanggal),
@@ -1406,12 +1490,15 @@ def page_input_nilai():
                                 saved += 1
 
                     clear_cache()
-                    st.toast(f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui.")
+                    msg = f"✅ Berhasil menyimpan! {saved} data baru, {updated} data diperbarui."
+                    if deleted > 0:
+                        msg += f" {deleted} data nilai dihapus/dikosongkan."
+                    st.toast(msg)
                     st.balloons()
 
                     # Reset temp state
                     for s in siswa:
-                        st.session_state[f"num_{s['id']}"] = 0.0
+                        st.session_state[f"num_{s['id']}"] = None
                         st.session_state.temp_catatan_kartu[s['id']] = ""
                     st.rerun()
                 except Exception as e:
@@ -2496,44 +2583,59 @@ def page_dokumen():
                                     st.warning("⚠️ Kunci API `gemini_api_key` tidak terdeteksi di `secrets.toml`. Otomatis dialihkan (fallback) ke Groq...")
                                     raise ValueError("Kunci API Gemini tidak ada.")
 
-                                import google.generativeai as genai
-                                genai.configure(api_key=gemini_api_key)
+                                from google import genai
+                                from google.genai import types
+                                from google.genai import errors
 
-                                st.toast("🔮 Memproses pembuatan dokumen menggunakan Google Gemini 1.5 Flash secara Native...")
+                                st.toast("🔮 Memproses pembuatan dokumen menggunakan Google Gemini 2.5 Flash via Google GenAI SDK...")
 
-                                # Menggunakan SDK Resmi Google Generative AI secara langsung untuk mencegah isu versi API
-                                model = genai.GenerativeModel(
-                                    model_name="gemini-1.5-flash",
-                                    generation_config={"temperature": 0.7}
-                                )
+                                client = genai.Client(api_key=gemini_api_key)
 
                                 # Menggabungkan instruksi sistem (system prompt) dan user input
                                 system_instruction = f"Anda adalah guru profesional yang membuat {jenis_dokumen} berkualitas tinggi."
                                 full_prompt = f"{system_instruction}\n\n{prompt_text}"
 
-                                response = model.generate_content(full_prompt)
+                                response = client.models.generate_content(
+                                    model="gemini-2.5-flash",
+                                    contents=full_prompt,
+                                    config=types.GenerateContentConfig(
+                                        temperature=0.7
+                                    )
+                                )
                                 hasil = response.text
                             except Exception as gemini_err:
                                 # Fallback ke Groq jika Gemini error/limit
-                                st.warning(f"⚠️ Terjadi kendala pada Gemini ({str(gemini_err)}). Melakukan fallback otomatis menggunakan Groq LLaMA...")
+                                gemini_friendly = handle_ai_exception(gemini_err, provider="Gemini")
+                                st.warning(f"⚠️ {gemini_friendly}\nMelakukan fallback otomatis menggunakan Groq LLaMA...")
+                                try:
+                                    from langchain_groq import ChatGroq
+                                    llm = ChatGroq(
+                                        model="llama-3.3-70b-versatile",
+                                        temperature=0.7,
+                                        groq_api_key=groq_api_key
+                                    )
+                                    chain = prompt_template | llm | StrOutputParser()
+                                    hasil = chain.invoke({"input": prompt_text})
+                                except Exception as groq_err:
+                                    groq_friendly = handle_ai_exception(groq_err, provider="Groq")
+                                    st.error(f"❌ Pembuatan dokumen gagal.\n\n- Gemini: {gemini_friendly}\n- Groq (Fallback): {groq_friendly}")
+                                    st.info("💡 Solusi: Periksa koneksi internet Anda, hubungi admin, atau coba ubah model AI di atas ke model Groq yang lain.")
+                                    return
+                        else:
+                            # Menggunakan Groq biasa
+                            try:
                                 from langchain_groq import ChatGroq
                                 llm = ChatGroq(
-                                    model="llama-3.3-70b-versatile",
+                                    model=model_groq,
                                     temperature=0.7,
                                     groq_api_key=groq_api_key
                                 )
                                 chain = prompt_template | llm | StrOutputParser()
                                 hasil = chain.invoke({"input": prompt_text})
-                        else:
-                            # Menggunakan Groq biasa
-                            from langchain_groq import ChatGroq
-                            llm = ChatGroq(
-                                model=model_groq,
-                                temperature=0.7,
-                                groq_api_key=groq_api_key
-                            )
-                            chain = prompt_template | llm | StrOutputParser()
-                            hasil = chain.invoke({"input": prompt_text})
+                            except Exception as groq_err:
+                                groq_friendly = handle_ai_exception(groq_err, provider="Groq")
+                                st.error(f"❌ Layanan Groq gagal memproses dokumen.\n\nDetail: {groq_friendly}")
+                                return
                         
                         st.markdown("---")
                         st.subheader(f"📄 {jenis_dokumen} - {topik}")
@@ -3085,7 +3187,8 @@ Berdasarkan data di atas, tolong berikan rekomendasi belajar yang personal, takt
                     st.info("💡 **Hasil Analisis AI:**")
                     st.markdown(rekomendasi_hasil)
                 except Exception as e:
-                    st.error(f"Gagal generate rekomendasi: {str(e)}")
+                    groq_friendly = handle_ai_exception(e, provider="Groq")
+                    st.error(f"❌ Gagal memproses analisis rekomendasi AI.\n\nDetail: {groq_friendly}")
 
 # ============ SIDEBAR NAVIGASI & ROUTING ============
 st.sidebar.title("📚 Menu Guru")
