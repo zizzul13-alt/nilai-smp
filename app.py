@@ -601,14 +601,23 @@ def confirm_delete_doc():
             doc_data = doc_res.data[0]
             file_url = doc_data.get("file_url")
 
-            # Extract storage object name
-            object_name = extract_storage_object_name(file_url)
-            if object_name:
-                try:
-                    # Remove from storage bucket "dokumen"
-                    supabase.storage.from_("dokumen").remove([object_name])
-                except Exception as storage_err:
-                    raise RuntimeError(f"Gagal menghapus file dari Storage: {str(storage_err)}")
+            # Fail-closed storage object determination and deletion
+            if file_url:
+                if file_url.startswith("http://") or file_url.startswith("https://"):
+                    object_name = extract_storage_object_name(file_url)
+                    if not object_name:
+                        # STOP: has file_url but object path cannot be safely determined
+                        raise ValueError(f"Lokasi objek Storage tidak dapat ditentukan dari URL: {file_url}")
+
+                    try:
+                        # Attempt to remove from storage bucket "dokumen"
+                        supabase.storage.from_("dokumen").remove([object_name])
+                    except Exception as storage_err:
+                        raise RuntimeError(f"Gagal menghapus file dari Storage: {str(storage_err)}")
+                else:
+                    # Document has no real file URL in Storage (e.g. generated local text file)
+                    # Explicitly bypass storage deletion
+                    pass
 
         # Delete database record
         supabase.table("dokumen").delete().eq("id", st.session_state.hapus_doc_id).execute()
@@ -646,6 +655,25 @@ def trigger_edit_siswa(s_id, s_nama):
     st.session_state.edit_siswa_nama = s_nama
 
 # ============ FUNGSI UTILITY ============
+def validate_score_range(nilai_val, kategori):
+    """
+    Validasi batas nilai terpusat untuk semua jalur input.
+    - Kategori 'Sikap' mendukung range -50 s.d 100.
+    - Kategori lainnya mendukung range 0 s.d 100.
+    Mengembalikan True jika nilai valid atau jika nilai kosong (None),
+    dan False jika di luar batas range yang diizinkan.
+    """
+    if nilai_val is None or pd.isna(nilai_val) or nilai_val == '':
+        return True
+    try:
+        val_float = float(nilai_val)
+        if kategori == "Sikap":
+            return -50.0 <= val_float <= 100.0
+        else:
+            return 0.0 <= val_float <= 100.0
+    except (ValueError, TypeError):
+        return False
+
 def hari_ke_angka(hari):
     hari_map = {
         "Senin": 0, "Selasa": 1, "Rabu": 2, "Kamis": 3, 
@@ -826,12 +854,20 @@ def tampilan_kartu(data_list, judul="Daftar"):
     """, unsafe_allow_html=True)
     
     for item in data_list:
-        nilai = item.get('Nilai', 0)
-        nilai_class = "nilai-rendah" if nilai < 70 else ""
-        nilai_text = f"{nilai:.0f}" if isinstance(nilai, (int, float)) and nilai > 0 else "—"
-        sebelumnya = item.get('Nilai Sebelumnya', '-')
-        if sebelumnya != '-' and sebelumnya:
-            keterangan = f"Sebelumnya: {sebelumnya}"
+        nilai = item.get('Nilai', None)
+        nilai_class = ""
+        if nilai is not None and not pd.isna(nilai) and nilai != '-':
+            nilai_val_num = float(nilai)
+            if nilai_val_num < 70:
+                nilai_class = "nilai-rendah"
+            nilai_text = f"{nilai_val_num:.0f}"
+        else:
+            nilai_text = "—"
+
+        sebelumnya = item.get('Nilai Sebelumnya', None)
+        if sebelumnya is not None and sebelumnya != '-' and not pd.isna(sebelumnya):
+            sebelumnya_num = float(sebelumnya)
+            keterangan = f"Sebelumnya: {sebelumnya_num:.0f}"
         else:
             keterangan = item.get('Catatan', '') or "Kosong"
         
@@ -1137,6 +1173,20 @@ def page_input_nilai():
                         st.error("❌ Mohon isi kolom 'Topik' di bagian atas sebelum mengimpor nilai!")
                         return
 
+                    # Centralized validation check
+                    invalid_rows = []
+                    for idx, row in df_uploaded.iterrows():
+                        nilai_val = row["Nilai"]
+                        if pd.notna(nilai_val) and str(nilai_val).strip() != "":
+                            if not validate_score_range(nilai_val, kategori):
+                                invalid_rows.append(f"Siswa '{row['Nama Siswa']}' bernilai: {nilai_val}")
+
+                    if invalid_rows:
+                        st.error(f"❌ Impor dibatalkan! Ditemukan nilai di luar batas terpusat untuk kategori '{kategori}' (-50..100 untuk Sikap, 0..100 untuk lainnya):")
+                        for ir in invalid_rows:
+                            st.markdown(f"- {ir}")
+                        return
+
                     try:
                         # 1. Daftarkan siswa baru jika ada persetujuan
                         for nama_baru in siswa_baru_yang_didaftarkan:
@@ -1282,6 +1332,20 @@ def page_input_nilai():
                 if not topik:
                     st.error("❌ Topik wajib diisi!")
                 else:
+                    # Centralized validation check
+                    invalid_rows = []
+                    for idx, row in edited_df.iterrows():
+                        row_nilai = row['Nilai']
+                        if pd.notna(row_nilai) and row_nilai is not None:
+                            if not validate_score_range(row_nilai, kategori):
+                                invalid_rows.append(f"Siswa '{row['Nama']}' bernilai: {row_nilai}")
+
+                    if invalid_rows:
+                        st.error(f"❌ Gagal menyimpan! Ditemukan nilai di luar batas terpusat untuk kategori '{kategori}' (-50..100 untuk Sikap, 0..100 untuk lainnya):")
+                        for ir in invalid_rows:
+                            st.markdown(f"- {ir}")
+                        return
+
                     try:
                         saved = 0
                         updated = 0
@@ -1449,6 +1513,20 @@ def page_input_nilai():
             if not topik:
                 st.error("❌ Topik wajib diisi!")
             else:
+                # Centralized validation check
+                invalid_rows = []
+                for s in siswa:
+                    nilai_val = st.session_state.get(f"num_{s['id']}", None)
+                    if nilai_val is not None:
+                        if not validate_score_range(nilai_val, kategori):
+                            invalid_rows.append(f"Siswa '{s['nama']}' bernilai: {nilai_val}")
+
+                if invalid_rows:
+                    st.error(f"❌ Gagal menyimpan! Ditemukan nilai di luar batas terpusat untuk kategori '{kategori}' (-50..100 untuk Sikap, 0..100 untuk lainnya):")
+                    for ir in invalid_rows:
+                        st.markdown(f"- {ir}")
+                    return
+
                 try:
                     saved = 0
                     updated = 0
@@ -2591,7 +2669,6 @@ def page_dokumen():
 
                                 from google import genai
                                 from google.genai import types
-                                from google.genai import errors
 
                                 st.toast("🔮 Memproses pembuatan dokumen menggunakan Google Gemini 2.5 Flash via Google GenAI SDK...")
 
