@@ -568,21 +568,23 @@ def handle_ai_exception(e, provider="Gemini"):
     # Logging for debugging
     print(f"[{provider} Error]: {err_str}")
 
+    suffix = f"\n\n[Detail Error: {err_str}]"
+
     # 401: Unauthorized / Invalid Key
     if "401" in err_str or "unauthorized" in err_str.lower() or "api_key_invalid" in err_str.lower() or "invalid api key" in err_str.lower() or "api key not valid" in err_str.lower():
-        return f"🔑 Kunci API {provider} tidak valid atau tidak terotorisasi. Silakan periksa kembali konfigurasi API Key Anda."
+        return f"🔑 Kunci API {provider} tidak valid atau tidak terotorisasi. Silakan periksa kembali konfigurasi API Key Anda.{suffix}"
 
     # 429: Rate Limit
     if "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower() or "exceeded" in err_str.lower():
-        return f"⏳ Batas penggunaan (Rate Limit/Kuota) {provider} telah tercapai atau habis harian. Silakan tunggu beberapa saat."
+        return f"⏳ Batas penggunaan (Rate Limit/Kuota) {provider} telah tercapai atau habis harian. Silakan tunggu beberapa saat.{suffix}"
 
     # 404: Not Found
     if "404" in err_str or "model_not_found" in err_str.lower() or "not found" in err_str.lower():
-        return f"❌ Model AI {provider} yang dipilih tidak ditemukan atau sedang tidak didukung saat ini."
+        return f"❌ Model AI {provider} yang dipilih tidak ditemukan atau sedang tidak didukung saat ini.{suffix}"
 
     # Timeout
     if "timeout" in err_str.lower() or "deadline exceeded" in err_str.lower() or "time out" in err_str.lower():
-        return f"⏱️ Waktu koneksi habis (Timeout) saat menghubungi server {provider}. Silakan coba lagi."
+        return f"⏱️ Waktu koneksi habis (Timeout) saat menghubungi server {provider}. Silakan coba lagi.{suffix}"
 
     # Other specific errors
     return f"⚠️ Terjadi kendala teknis pada layanan {provider}. Detail: {err_str}"
@@ -1220,6 +1222,8 @@ def page_input_nilai():
             </style>
             """, unsafe_allow_html=True)
 
+            min_nilai_val = -50 if kategori == "Sikap" else 0
+
             data = []
             for s in siswa:
                 nilai_sebelumnya = next((n['nilai'] for n in existing_nilai if n['siswa_id'] == s['id']), None)
@@ -1249,7 +1253,7 @@ def page_input_nilai():
                     ),
                     "Nilai": st.column_config.NumberColumn(
                         "Nilai",
-                        min_value=-50,  # Diubah agar mendukung nilai minus sampai -50 (khusus sikap & harian)
+                        min_value=min_nilai_val,
                         max_value=100,
                         step=1,
                         format="%.0f",
@@ -1365,6 +1369,8 @@ def page_input_nilai():
         </style>
         """, unsafe_allow_html=True)
 
+        min_nilai_val_float = -50.0 if kategori == "Sikap" else 0.0
+
         # Inisialisasi local temp state jika kosong
         # Sinkronisasi widget state key langsung ke number_input
         for s in siswa:
@@ -1395,7 +1401,7 @@ def page_input_nilai():
                 cur_val = st.session_state.get(key_num, None)
                 if cur_val is None:
                     cur_val = 0.0
-                new_val = max(-50.0, min(100.0, cur_val + amount))  # Diubah batas bawahnya agar bisa sampai -50.0
+                new_val = max(min_nilai_val_float, min(100.0, cur_val + amount))
                 st.session_state[key_num] = float(new_val)
 
             # Tombol Minus (-)
@@ -1419,7 +1425,7 @@ def page_input_nilai():
             # Input Angka Langsung (nilai bind ke st.session_state[key_num] via parameter key)
             nilai_val = col_actions[2].number_input(
                 "Nilai",
-                min_value=-50.0,  # Diubah batas bawahnya agar mendukung nilai minus sampai -50.0
+                min_value=min_nilai_val_float,
                 max_value=100.0,
                 step=1.0,
                 key=f"num_{s['id']}",
@@ -2595,14 +2601,31 @@ def page_dokumen():
                                 system_instruction = f"Anda adalah guru profesional yang membuat {jenis_dokumen} berkualitas tinggi."
                                 full_prompt = f"{system_instruction}\n\n{prompt_text}"
 
-                                response = client.models.generate_content(
-                                    model="gemini-2.5-flash",
-                                    contents=full_prompt,
-                                    config=types.GenerateContentConfig(
-                                        temperature=0.7
+                                # 1-attempt retry on timeout logic
+                                try:
+                                    response = client.models.generate_content(
+                                        model="gemini-2.5-flash",
+                                        contents=full_prompt,
+                                        config=types.GenerateContentConfig(
+                                            temperature=0.7
+                                        )
                                     )
-                                )
-                                hasil = response.text
+                                    hasil = response.text
+                                except Exception as inner_err:
+                                    err_str = str(inner_err)
+                                    is_timeout = "timeout" in err_str.lower() or "deadline exceeded" in err_str.lower() or "time out" in err_str.lower()
+                                    if is_timeout:
+                                        st.toast("⏱️ Koneksi Timeout. Mencoba kembali (retry 1x)...")
+                                        response = client.models.generate_content(
+                                            model="gemini-2.5-flash",
+                                            contents=full_prompt,
+                                            config=types.GenerateContentConfig(
+                                                temperature=0.7
+                                            )
+                                        )
+                                        hasil = response.text
+                                    else:
+                                        raise inner_err
                             except Exception as gemini_err:
                                 # Fallback ke Groq jika Gemini error/limit
                                 gemini_friendly = handle_ai_exception(gemini_err, provider="Gemini")
