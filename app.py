@@ -584,6 +584,23 @@ def extract_storage_object_name(file_url, bucket_name="dokumen"):
     try:
         decoded_url = unquote(file_url)
         parsed = urlparse(decoded_url)
+
+        # Verify that the URL domain matches Supabase domain structure or st.secrets
+        is_valid_domain = False
+        if "supabase.co" in parsed.netloc.lower():
+            is_valid_domain = True
+        else:
+            try:
+                supabase_url = st.secrets["supabase"]["url"]
+                sb_parsed = urlparse(supabase_url)
+                if parsed.netloc == sb_parsed.netloc:
+                    is_valid_domain = True
+            except:
+                pass
+
+        if not is_valid_domain:
+            return None
+
         path = parsed.path
         search_str = f"/{bucket_name}/"
         if search_str in path:
