@@ -301,58 +301,37 @@ key = "your-supabase-anon-key"
 import httpx
 from functools import wraps
 
-def handle_db_connection(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
+def show_db_connection_error(e):
+    st.error("⚠️ **Database tidak dapat dihubungi. Silakan coba lagi.**")
+
+    # Check for debug mode in Streamlit secrets
+    debug_mode = False
+    try:
+        debug_mode = st.secrets.get("DEBUG_MODE", False)
+    except:
+        pass
+
+    if debug_mode:
+        sanitized_err = str(e)
         try:
-            return func(*args, **kwargs)
-        except (httpx.ConnectError, httpx.RequestError, httpx.HTTPStatusError, Exception) as e:
-            err_str = str(e)
-            is_conn_error = (
-                isinstance(e, (httpx.ConnectError, httpx.RequestError, httpx.HTTPStatusError)) or
-                "connect" in err_str.lower() or
-                "network" in err_str.lower() or
-                "paused" in err_str.lower() or
-                "connection" in err_str.lower()
-            )
-
-            if is_conn_error:
-                st.error("⚠️ **Database tidak dapat dihubungi. Silakan coba lagi.**")
-
-                # Check for debug mode in Streamlit secrets
-                debug_mode = False
-                try:
-                    debug_mode = st.secrets.get("DEBUG_MODE", False)
-                except:
-                    pass
-
-                if debug_mode:
-                    sanitized_err = err_str
-                    try:
-                        supabase_url = st.secrets["supabase"]["url"]
-                        supabase_key = st.secrets["supabase"]["key"]
-                        if supabase_url in sanitized_err:
-                            sanitized_err = sanitized_err.replace(supabase_url, "REDACTED_SUPABASE_URL")
-                        if supabase_key in sanitized_err:
-                            sanitized_err = sanitized_err.replace(supabase_key, "REDACTED_SUPABASE_KEY")
-                    except:
-                        pass
-                    st.info(f"🔍 **[DEBUG] Detail Kendala Koneksi:** {sanitized_err}")
-
-                st.stop()
-            else:
-                raise e
-    return wrapper
+            supabase_url = st.secrets["supabase"]["url"]
+            supabase_key = st.secrets["supabase"]["key"]
+            if supabase_url in sanitized_err:
+                sanitized_err = sanitized_err.replace(supabase_url, "REDACTED_SUPABASE_URL")
+            if supabase_key in sanitized_err:
+                sanitized_err = sanitized_err.replace(supabase_key, "REDACTED_SUPABASE_KEY")
+        except:
+            pass
+        st.info(f"🔍 **[DEBUG] Detail Kendala Koneksi:** {sanitized_err}")
+    st.stop()
 
 # ============ FUNGSI DATABASE DENGAN CACHE ============
 @st.cache_data(ttl=300)
-@handle_db_connection
 def get_kelas():
     response = supabase.table("kelas").select("*").order("nama_kelas").execute()
     return response.data
 
 @st.cache_data(ttl=300)
-@handle_db_connection
 def get_siswa(kelas_id=None):
     query = supabase.table("siswa").select("*")
     if kelas_id:
@@ -360,7 +339,6 @@ def get_siswa(kelas_id=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
-@handle_db_connection
 def get_jadwal(kelas_id=None):
     query = supabase.table("jadwal").select("*")
     if kelas_id:
@@ -368,7 +346,6 @@ def get_jadwal(kelas_id=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
-@handle_db_connection
 def get_bank_soal(kelas_id=None, keyword=None):
     query = supabase.table("bank_soal").select("*")
     if kelas_id:
@@ -378,7 +355,6 @@ def get_bank_soal(kelas_id=None, keyword=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
-@handle_db_connection
 def get_kkm(kelas_id=None, kategori=None):
     query = supabase.table("kkm").select("*")
     if kelas_id:
@@ -388,7 +364,6 @@ def get_kkm(kelas_id=None, kategori=None):
     return query.execute().data
 
 @st.cache_data(ttl=300)
-@handle_db_connection
 def get_dokumen(kelas_id=None, jenis=None):
     query = supabase.table("dokumen").select("*")
     if kelas_id:
@@ -398,7 +373,6 @@ def get_dokumen(kelas_id=None, jenis=None):
     return query.execute().data
 
 @st.cache_data(ttl=60)
-@handle_db_connection
 def get_nilai(kelas_id=None, kategori=None, topik=None):
     query = supabase.table("nilai").select("*")
     if kelas_id:
@@ -590,6 +564,8 @@ def confirm_delete_jadwal():
         clear_cache()
         st.session_state.jadwal_success_msg = f"✅ Jadwal '{st.session_state.hapus_text}' berhasil dihapus!"
     except Exception as e:
+        if isinstance(e, httpx.RequestError):
+            show_db_connection_error(e)
         st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
     st.session_state.hapus_id = None
     st.session_state.hapus_text = ""
@@ -679,6 +655,8 @@ def confirm_delete_doc():
         clear_cache()
         st.session_state.doc_success_msg = f"✅ Dokumen '{st.session_state.hapus_doc_judul}' berhasil dihapus!"
     except Exception as e:
+        if isinstance(e, httpx.RequestError):
+            show_db_connection_error(e)
         st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
     st.session_state.hapus_doc_id = None
     st.session_state.hapus_doc_judul = ""
@@ -697,6 +675,8 @@ def confirm_delete_siswa():
         clear_cache()
         st.session_state.siswa_success_msg = f"✅ Siswa '{st.session_state.hapus_siswa_nama}' berhasil dihapus!"
     except Exception as e:
+        if isinstance(e, httpx.RequestError):
+            show_db_connection_error(e)
         st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
     st.session_state.hapus_siswa_id = None
     st.session_state.hapus_siswa_nama = ""
@@ -3365,22 +3345,25 @@ menu = st.sidebar.radio(
 )
 
 # ============ ROUTING - ROUTING PAGES BERDASARKAN MENU ============
-if menu == "🏠 Dashboard":
-    page_dashboard()
-elif menu == "👤 Dashboard per Siswa":
-    page_dashboard_siswa()
-elif menu == "📝 Input Nilai Rapel":
-    page_input_nilai()
-elif menu == "📊 Lihat & Export Nilai":
-    page_lihat_nilai()
-elif menu == "📅 Kalender & Jadwal":
-    page_jadwal()
-elif menu == "📖 Bank Soal & Materi":
-    page_bank_soal()
-elif menu == "📁 Dokumen Pembelajaran":
-    page_dokumen()
-elif menu == "⚙️ Pengaturan Kelas & Siswa":
-    page_pengaturan()
+try:
+    if menu == "🏠 Dashboard":
+        page_dashboard()
+    elif menu == "👤 Dashboard per Siswa":
+        page_dashboard_siswa()
+    elif menu == "📝 Input Nilai Rapel":
+        page_input_nilai()
+    elif menu == "📊 Lihat & Export Nilai":
+        page_lihat_nilai()
+    elif menu == "📅 Kalender & Jadwal":
+        page_jadwal()
+    elif menu == "📖 Bank Soal & Materi":
+        page_bank_soal()
+    elif menu == "📁 Dokumen Pembelajaran":
+        page_dokumen()
+    elif menu == "⚙️ Pengaturan Kelas & Siswa":
+        page_pengaturan()
+except httpx.RequestError as e:
+    show_db_connection_error(e)
 
 # ============ FOOTER ============
 st.sidebar.markdown("---")
