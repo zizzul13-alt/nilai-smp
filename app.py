@@ -323,7 +323,6 @@ def show_db_connection_error(e):
         except:
             pass
         st.info(f"🔍 **[DEBUG] Detail Kendala Koneksi:** {sanitized_err}")
-    st.stop()
 
 # ============ FUNGSI DATABASE DENGAN CACHE ============
 @st.cache_data(ttl=300)
@@ -566,6 +565,7 @@ def confirm_delete_jadwal():
     except Exception as e:
         if isinstance(e, httpx.RequestError):
             show_db_connection_error(e)
+            st.stop()
         st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
     st.session_state.hapus_id = None
     st.session_state.hapus_text = ""
@@ -674,6 +674,7 @@ def confirm_delete_doc():
     except Exception as e:
         if isinstance(e, httpx.RequestError):
             show_db_connection_error(e)
+            st.stop()
         st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
     st.session_state.hapus_doc_id = None
     st.session_state.hapus_doc_judul = ""
@@ -694,6 +695,7 @@ def confirm_delete_siswa():
     except Exception as e:
         if isinstance(e, httpx.RequestError):
             show_db_connection_error(e)
+            st.stop()
         st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
     st.session_state.hapus_siswa_id = None
     st.session_state.hapus_siswa_nama = ""
@@ -3381,6 +3383,7 @@ try:
         page_pengaturan()
 except httpx.RequestError as e:
     show_db_connection_error(e)
+    st.stop()
 
 # ============ FOOTER ============
 st.sidebar.markdown("---")
