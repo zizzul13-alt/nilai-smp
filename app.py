@@ -308,19 +308,25 @@ def show_db_connection_error(e):
     debug_mode = False
     try:
         debug_mode = st.secrets.get("DEBUG_MODE", False)
-    except:
-        pass
+    except Exception:
+        # Silently default to False if secrets are not configured or accessed incorrectly
+        debug_mode = False
 
     if debug_mode:
         sanitized_err = str(e)
         try:
-            supabase_url = st.secrets["supabase"]["url"]
-            supabase_key = st.secrets["supabase"]["key"]
-            if supabase_url in sanitized_err:
-                sanitized_err = sanitized_err.replace(supabase_url, "REDACTED_SUPABASE_URL")
-            if supabase_key in sanitized_err:
-                sanitized_err = sanitized_err.replace(supabase_key, "REDACTED_SUPABASE_KEY")
-        except:
+            for key_name in ["gemini_api_key", "groq_api_key"]:
+                if key_name in st.secrets:
+                    val = st.secrets[key_name]
+                    if val and len(val) > 4 and val in sanitized_err:
+                        sanitized_err = sanitized_err.replace(val, f"REDACTED_{key_name.upper()}")
+            if "supabase" in st.secrets:
+                for sub_key in ["url", "key"]:
+                    val = st.secrets["supabase"].get(sub_key)
+                    if val and len(val) > 4 and val in sanitized_err:
+                        sanitized_err = sanitized_err.replace(val, f"REDACTED_SUPABASE_{sub_key.upper()}")
+        except Exception:
+            # Safely continue if keys are missing from st.secrets
             pass
         st.info(f"🔍 **[DEBUG] Detail Kendala Koneksi:** {sanitized_err}")
 
@@ -466,7 +472,8 @@ def compress_file(file_bytes, file_name):
                 for page in pdf_reader.pages:
                     try:
                         page.compress_content_streams()
-                    except:
+                    except Exception:
+                        # Silently skip compression for individual pages that fail (e.g. malformed streams)
                         pass
                     pdf_writer.add_page(page)
                 
@@ -565,8 +572,8 @@ def confirm_delete_jadwal():
     except Exception as e:
         if isinstance(e, httpx.RequestError):
             show_db_connection_error(e)
-            st.stop()
-        st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
+        else:
+            st.session_state.jadwal_error_msg = f"❌ Gagal menghapus jadwal: {str(e)}"
     st.session_state.hapus_id = None
     st.session_state.hapus_text = ""
 
@@ -595,7 +602,8 @@ def extract_storage_object_name(file_url, bucket_name="dokumen"):
                 sb_parsed = urlparse(supabase_url)
                 if parsed.netloc == sb_parsed.netloc:
                     is_valid_domain = True
-            except:
+            except Exception:
+                # Silently skip if supabase secrets are missing or cannot be parsed
                 pass
 
         if not is_valid_domain:
@@ -614,7 +622,35 @@ def handle_ai_exception(e, provider="Gemini"):
     # Logging for debugging
     print(f"[{provider} Error]: {err_str}")
 
-    suffix = f"\n\n[Detail Error: {err_str}]"
+    # Check for debug mode in Streamlit secrets
+    debug_mode = False
+    try:
+        debug_mode = st.secrets.get("DEBUG_MODE", False)
+    except Exception:
+        # Silently default to False if secrets are not configured or accessed incorrectly
+        debug_mode = False
+
+    # Sanitize secrets in case they are present in the error string
+    sanitized_err = err_str
+    try:
+        for key_name in ["gemini_api_key", "groq_api_key"]:
+            if key_name in st.secrets:
+                val = st.secrets[key_name]
+                if val and len(val) > 4 and val in sanitized_err:
+                    sanitized_err = sanitized_err.replace(val, f"REDACTED_{key_name.upper()}")
+        if "supabase" in st.secrets:
+            for sub_key in ["url", "key"]:
+                val = st.secrets["supabase"].get(sub_key)
+                if val and len(val) > 4 and val in sanitized_err:
+                    sanitized_err = sanitized_err.replace(val, f"REDACTED_SUPABASE_{sub_key.upper()}")
+    except Exception:
+        # Safely continue if keys are missing from st.secrets
+        pass
+
+    if debug_mode:
+        suffix = f"\n\n[Detail Error: {sanitized_err}]"
+    else:
+        suffix = ""
 
     # 401: Unauthorized / Invalid Key
     if "401" in err_str or "unauthorized" in err_str.lower() or "api_key_invalid" in err_str.lower() or "invalid api key" in err_str.lower() or "api key not valid" in err_str.lower():
@@ -633,7 +669,10 @@ def handle_ai_exception(e, provider="Gemini"):
         return f"⏱️ Waktu koneksi habis (Timeout) saat menghubungi server {provider}. Silakan coba lagi.{suffix}"
 
     # Other specific errors
-    return f"⚠️ Terjadi kendala teknis pada layanan {provider}. Detail: {err_str}"
+    if debug_mode:
+        return f"⚠️ Terjadi kendala teknis pada layanan {provider}. Detail: {sanitized_err}"
+    else:
+        return f"⚠️ Terjadi kendala teknis pada layanan {provider}."
 
 def select_doc_to_delete(doc_id, judul):
     st.session_state.hapus_doc_id = doc_id
@@ -674,8 +713,8 @@ def confirm_delete_doc():
     except Exception as e:
         if isinstance(e, httpx.RequestError):
             show_db_connection_error(e)
-            st.stop()
-        st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
+        else:
+            st.session_state.doc_error_msg = f"❌ Gagal menghapus dokumen: {str(e)}"
     st.session_state.hapus_doc_id = None
     st.session_state.hapus_doc_judul = ""
 
@@ -695,8 +734,8 @@ def confirm_delete_siswa():
     except Exception as e:
         if isinstance(e, httpx.RequestError):
             show_db_connection_error(e)
-            st.stop()
-        st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
+        else:
+            st.session_state.siswa_error_msg = f"❌ Gagal menghapus siswa: {str(e)}"
     st.session_state.hapus_siswa_id = None
     st.session_state.hapus_siswa_nama = ""
 
@@ -2615,7 +2654,8 @@ def page_dokumen():
         # ===== AMBIL API KEY =====
         try:
             groq_api_key = st.secrets["groq_api_key"]
-        except:
+        except Exception:
+            # Fallback to manual input if groq_api_key is missing from Streamlit secrets
             groq_api_key = st.text_input(
                 "🔑 Groq API Key",
                 type="password",
@@ -3295,7 +3335,8 @@ def page_dashboard_siswa():
             # Ambil api key
             try:
                 groq_api_key = st.secrets["groq_api_key"]
-            except:
+            except Exception:
+                # Fallback to session state key if groq_api_key is missing from Streamlit secrets
                 groq_api_key = st.session_state.get("groq_dokumen_key", "")
 
             if not groq_api_key:
@@ -3383,7 +3424,6 @@ try:
         page_pengaturan()
 except httpx.RequestError as e:
     show_db_connection_error(e)
-    st.stop()
 
 # ============ FOOTER ============
 st.sidebar.markdown("---")
