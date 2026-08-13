@@ -2831,7 +2831,7 @@ def page_dokumen():
                             except Exception as groq_err:
                                 groq_friendly = handle_ai_exception(groq_err, provider="Groq")
                                 st.error(f"❌ Layanan Groq gagal memproses dokumen.\n\nDetail: {groq_friendly}")
-                                st.info("💡 Solusi: Periksa koneksi internet Anda, hubungi admin, atau coba ubah model AI di atas ke model Groq yang lain.")
+                                st.info("💡 Solusi: Periksa koneksi internet Anda atau hubungi admin.")
                                 return
                         
                         st.markdown("---")
