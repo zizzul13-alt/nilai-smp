@@ -594,17 +594,19 @@ def extract_storage_object_name(file_url, bucket_name="dokumen"):
 
         # Verify that the URL domain matches Supabase domain structure or st.secrets
         is_valid_domain = False
-        if "supabase.co" in parsed.netloc.lower():
-            is_valid_domain = True
-        else:
-            try:
-                supabase_url = st.secrets["supabase"]["url"]
-                sb_parsed = urlparse(supabase_url)
-                if parsed.netloc == sb_parsed.netloc:
-                    is_valid_domain = True
-            except Exception:
-                # Silently skip if supabase secrets are missing or cannot be parsed
-                pass
+        hostname = parsed.netloc.lower()
+        try:
+            supabase_url = st.secrets["supabase"]["url"]
+            sb_parsed = urlparse(supabase_url)
+            if hostname == sb_parsed.netloc.lower():
+                is_valid_domain = True
+        except Exception:
+            pass
+
+        if not is_valid_domain:
+            import re
+            if re.match(r"^[a-zA-Z0-9-]+\.supabase\.co$", hostname):
+                is_valid_domain = True
 
         if not is_valid_domain:
             return None
