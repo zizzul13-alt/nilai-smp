@@ -1,37 +1,31 @@
-name: commit-lockfile-once
+name: verify-foundation
 
 on:
+  pull_request:
   push:
-    branches: [r3.0-codex-01-foundation]
+    branches: [main, r3.0-codex-01-foundation]
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 jobs:
-  commit-lockfile:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          ref: r3.0-codex-01-foundation
-      - name: Download previously generated lockfile artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          rm -rf .lockfile-artifact
-          mkdir .lockfile-artifact
-          gh run download 33735206865 --repo "$GITHUB_REPOSITORY" --name package-lock --dir .lockfile-artifact
-          cp .lockfile-artifact/package-lock.json package-lock.json
-          rm -rf .lockfile-artifact
-      - name: Commit package-lock.json
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "package-lock.json already committed"
-            exit 0
-          fi
-          git commit -m "Commit package-lock for reproducible installs"
-          git push origin HEAD:r3.0-codex-01-foundation
+          node-version: 22
+      - name: Clean dependency install from committed lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit and contract tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Foundation E2E
+        run: npm run test:e2e
