@@ -9,7 +9,10 @@
 
 ## Commands
 
+Start clean verification from the committed dependency graph:
+
 ```bash
+npm ci --no-audit --no-fund
 npm run typecheck
 npm test
 npx playwright install chromium
@@ -17,7 +20,7 @@ npm run test:e2e
 npm run build
 ```
 
-CI additionally installs Chromium with system dependencies and runs all tiers available in R3.0.
+CI uses the same committed lockfile with `npm ci --no-audit --no-fund`, additionally installs Chromium with system dependencies, and runs all tiers available in R3.0.
 
 ## Deferred by design
 
