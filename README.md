@@ -1,94 +1,85 @@
-# 📚 Aplikasi Web Asisten Pengajar SMP
+# Nilai SMP
 
-Aplikasi Web modern berbasis **Streamlit** yang dirancang khusus untuk mempermudah guru SMP dalam mengelola administrasi kelas, merekap nilai secara fleksibel (ramah HP/touchscreen), menyusun jadwal mengajar semesteran, hingga menyusun perangkat pembelajaran (RPP, Modul Ajar, LKPD) secara otomatis menggunakan teknologi **AI (Groq/LLaMA)**.
+Nilai SMP R3 is a mobile-first, single-teacher daily workspace. The target architecture is **React + Vite + Supabase**, delivered as Cloudflare Workers Static Assets.
 
----
+This repository is in staged migration from the historical Streamlit application. The old implementation is preserved under `legacy/streamlit/` as evidence and migration reference; it is not the target architecture.
 
-## ✨ Fitur Utama
+## R3.0 implementation status
 
-1. **🏠 Dashboard Analitik & Insights**
-   * Metrik ringkas (Total Kelas, Siswa, Transaksi Nilai, Bank Soal).
-   * Tampilan dinamis **Jadwal Mengajar Hari Ini**.
-   * Grafik Analitik KKM yang menunjukkan rata-rata nilai kelas dan persentase ketuntasan belajar siswa.
+**IMPLEMENTED**
 
-2. **📝 Input Nilai Rapel (Desktop & Mobile-Friendly)**
-   * **Mode Tabel (Desktop):** Input cepat dengan spreadsheet interaktif yang responsif.
-   * **Mode Kartu Touchscreen (HP):** Layout ramah sentuhan dengan tombol cepat `➕ 5` dan `➖ 5` untuk pengisian nilai yang praktis lewat HP.
-   * **Dukungan Nilai Minus:** Mengizinkan input nilai dari `-50` hingga `100` (sangat berguna untuk rekap nilai sikap harian atau poin pelanggaran).
+- React + Vite + TypeScript application shell.
+- Browser-safe Supabase client configuration.
+- Supabase Auth baseline: session restore, email/password login, auth-state subscription, logout, explicit errors.
+- Source-controlled migration path under `supabase/migrations/`.
+- Minimal schema compatibility version table and fail-closed frontend check after authentication.
+- Vitest unit/contract test foundation and Playwright E2E harness.
+- Cloudflare Workers Static Assets SPA configuration.
+- Documentation and reproducible verification commands.
 
-3. **📊 Lihat & Export Rekap Nilai**
-   * Filter rekapitulasi berdasarkan Kategori Nilai, Semester, dan Topik.
-   * Statistik performa belajar (rata-rata, nilai tertinggi, terendah, dan grafik distribusi pencapaian siswa).
-   * Fitur **Export ke Excel** sekali klik yang langsung menghasilkan lembar rekap rapi siap cetak.
+**PLANNED / FROZEN CONTRACT, NOT YET IMPLEMENTED**
 
-4. **📅 Kalender & Jadwal Mengajar**
-   * Input jadwal mengajar harian secara manual.
-   * **Generator Jadwal Semester Otomatis:** Cukup masukkan daftar bab beserta durasi minggunya, aplikasi akan menyusun jadwal mingguan secara otomatis dalam satu semester.
-   * Mode hapus yang aman dan sistem konfirmasi visual anti-salah-klik.
+Academic Year/Period, Student/Enrollment, Material/Lesson/Meeting, Activity, Assessment, Result/Attempt, scoring/correction, Dexie Pending Safe, synchronization/conflicts, Today/Continue, pacing, reporting, artifacts, portable backup/restore, legacy data migration, AI recommendation features, and collaboration.
 
-5. **📖 Bank Soal & Materi**
-   * Pencarian bank soal berdasarkan kelas, kata kunci, dan tag (UH, UTS, UAS, Tugas, Materi, dsb).
-   * Manajemen database soal harian untuk mempermudah pembuatan paket ujian.
+## Prerequisites
 
-6. **📁 Dokumen Pembelajaran & AI Generator**
-   * Unggah dokumen pembelajaran (PDF, Word, Excel, Gambar) dengan **fitur kompresi otomatis** untuk menghemat ruang penyimpanan.
-   * **Integrasi AI (Groq):** Membuat RPP, Modul Ajar, LKPD, dan Materi secara instan dengan pilihan model AI tercanggih (seperti LLaMA 3.3).
+- Node.js 22 LTS (the repository accepts supported Node 22–24; CI verifies Node 22).
+- npm.
+- A Supabase project when exercising real authentication/database behavior.
 
-7. **⚙️ Pengaturan Kelas, Siswa, & KKM**
-   * Pengelolaan kelas dan penambahan data siswa secara massal (*copy-paste* daftar nama).
-   * Deteksi otomatis untuk mencegah nama atau kelas duplikat (sensitivitas huruf kapital diabaikan).
-   * Pengaturan batas KKM khusus untuk setiap kategori nilai.
+## Setup
 
----
-
-## 🛠️ Persyaratan Sistem & Instalasi
-
-### 1. Prasyarat (Prerequisites)
-Pastikan Anda sudah menginstal **Python 3.9** atau versi di atasnya di perangkat Anda.
-
-### 2. Kloning Repository & Instalasi Dependensi
-Jalankan perintah berikut di terminal Anda:
 ```bash
-# Kloning repository ini
-git clone https://github.com/username/asisten-pengajar-smp.git
-cd asisten-pengajar-smp
-
-# Instal library/paket Python yang diperlukan
-pip install -r requirements.txt
+npm install --no-audit --no-fund
+cp .env.example .env.local
+npm run dev
 ```
 
-### 3. Konfigurasi Kredensial (`.streamlit/secrets.toml`)
-Aplikasi ini menggunakan **Supabase** sebagai basis data awan dan **Groq** sebagai penyedia kecerdasan buatan. Buat berkas baru bernama `secrets.toml` di dalam folder `.streamlit` pada direktori utama proyek Anda:
+Set only browser-safe values in `.env.local`:
 
-```toml
-[supabase]
-url = "https://proyek-supabase-anda.supabase.co"
-key = "anon-key-dari-dashboard-supabase"
-
-# Opsional: Untuk mengaktifkan fitur Pembuat Perangkat Pembelajaran dengan AI
-groq_api_key = "gsk_xxxx..."
+```text
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=your-publishable-or-anon-key
 ```
 
-> **Catatan:** Format struktur tabel database dapat disesuaikan dengan skema tabel Supabase Anda (`kelas`, `siswa`, `jadwal`, `bank_soal`, `kkm`, `dokumen`, dan `nilai`).
+Never put service-role keys, database passwords, or privileged deployment credentials into `VITE_*` variables.
 
----
+## Verification
 
-## 🚀 Cara Menjalankan Aplikasi
-
-Jalankan perintah berikut untuk memulai server Streamlit lokal:
 ```bash
-streamlit run app.py
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
 ```
-Aplikasi akan otomatis terbuka di peramban (browser) Anda pada alamat default: `http://localhost:8501`.
 
----
+`npm run verify` runs typecheck, unit/contract tests, and production build. E2E is separate because Playwright browser binaries must be installed once with `npx playwright install chromium`.
 
-## 🎨 Teknologi yang Digunakan
-* **Streamlit** (Framework UI Interaktif)
-* **Supabase** (Database real-time & Cloud Storage)
-* **LangChain & Groq (LLaMA/Gemma)** (Mesin AI Pembuat RPP)
-* **Pandas & OpenPyXL** (Pengolahan data & Export Excel)
-* **PyPDF2 & Filetype** (Kompresi file & Manajemen Dokumen)
+No lint framework is configured in R3.0; TypeScript strict typechecking is the static-analysis baseline to avoid adding another dependency before rules are justified.
 
----
-*Dibuat dengan ❤️ untuk kemudahan administrasi Guru-Guru Hebat Indonesia!*
+## Repository map
+
+```text
+src/app/                 application/bootstrap and auth gate
+src/components/          minimal presentation components
+src/config/              browser config and schema-version contract
+src/services/            Supabase, auth, and data-access foundations
+src/styles/              minimal mobile-first shell styling
+supabase/migrations/     canonical source-controlled database migrations
+tests/unit/              fast unit + database-contract tests
+tests/e2e/               critical browser E2E harness
+docs/                    durable architecture/operations contracts
+legacy/streamlit/        preserved pre-R3 implementation
+```
+
+## Documentation
+
+- `docs/ARCHITECTURE.md`
+- `docs/DATA_MODEL.md`
+- `docs/SYNC_CONTRACT.md`
+- `docs/BACKUP_RESTORE.md`
+- `docs/DEPLOYMENT.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/TESTING.md`
+
+The source-of-truth order remains: current repository and merged implementation first, then frozen R1/R2 contracts. Legacy code does not gain authority to redefine frozen semantics.
