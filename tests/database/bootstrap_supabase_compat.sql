@@ -16,15 +16,6 @@ returns uuid
 language sql
 stable
 as $$
-  select nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'
-$$;
-
--- Cast the textual claim to uuid while preserving NULL for anonymous requests.
-create or replace function auth.uid()
-returns uuid
-language sql
-stable
-as $$
   select (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')::uuid
 $$;
 
