@@ -29,8 +29,10 @@ Academic Year/Period, Student/Enrollment, Material/Lesson/Meeting, Activity, Ass
 
 ## Setup
 
+For a reproducible clean install, use the committed lockfile:
+
 ```bash
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 cp .env.example .env.local
 npm run dev
 ```
@@ -47,6 +49,7 @@ Never put service-role keys, database passwords, or privileged deployment creden
 ## Verification
 
 ```bash
+npm ci --no-audit --no-fund
 npm run typecheck
 npm test
 npm run build
