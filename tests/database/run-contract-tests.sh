@@ -40,34 +40,31 @@ expect_fail 'anonymous protected read denied' "$ANON select * from public.studen
 
 expect_value 'duplicate student names are allowed' "$A select count(*) from public.students where display_name = 'Budi';" '2'
 expect_value 'same class identity can recur in another period' "$A select count(*) from public.classes where identity_key = 'viii-a';" '2'
-
 expect_fail 'duplicate student plus class enrollment denied' "$A insert into public.enrollments(workspace_id, student_id, class_id) select id, '40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000001' from public.workspaces;"
 
-# Browser-forged foreign workspace writes fail at RLS even when the UUID is known.
+# Browser-forged foreign workspace writes fail or affect zero rows under RLS even when UUIDs are known.
 B_WORKSPACE="$(run "$B select id from public.workspaces;")"
 A_WORKSPACE="$(run "$A select id from public.workspaces;")"
 expect_fail 'user A foreign workspace insert denied' "$A insert into public.students(workspace_id, display_name) values ('$B_WORKSPACE', 'Forged');"
-expect_fail 'user B foreign update denied' "$B update public.students set display_name = 'Stolen' where id = '40000000-0000-0000-0000-000000000001'; select 1/0;"
-expect_value 'foreign update changed no rows' "$A select display_name from public.students where id = '40000000-0000-0000-0000-000000000001';" 'Budi'
-expect_fail 'user B foreign delete denied/no-op is detected' "$B delete from public.students where id = '40000000-0000-0000-0000-000000000001'; select case when exists(select 1 from public.students where id='40000000-0000-0000-0000-000000000001') then 1/0 else 1 end;"
-expect_value 'foreign delete did not remove row' "$A select count(*) from public.students where id = '40000000-0000-0000-0000-000000000001';" '1'
+expect_value 'user B foreign update affects zero rows' "$B with changed as (update public.students set display_name='Stolen' where id='40000000-0000-0000-0000-000000000001' returning 1) select count(*) from changed;" '0'
+expect_value 'foreign update changed no data' "$A select display_name from public.students where id='40000000-0000-0000-0000-000000000001';" 'Budi'
+expect_value 'user B foreign delete affects zero rows' "$B with removed as (delete from public.students where id='40000000-0000-0000-0000-000000000001' returning 1) select count(*) from removed;" '0'
+expect_value 'foreign delete did not remove row' "$A select count(*) from public.students where id='40000000-0000-0000-0000-000000000001';" '1'
 
-# Structural workspace-aware FKs are tested as postgres, bypassing RLS deliberately.
-# If these fail, the database itself rejects impossible cross-workspace graphs.
+# Structural workspace-aware FKs are tested as postgres, deliberately bypassing RLS.
 run "insert into public.academic_years(id, workspace_id, identity_key, display_name, sort_order) values ('10000000-0000-0000-0000-00000000000b', '$B_WORKSPACE', '2026-2027', '2026/2027', 1);"
 expect_fail 'cross-workspace Academic Period -> Academic Year denied structurally' "insert into public.academic_periods(workspace_id, academic_year_id, identity_key, display_name, sort_order) values ('$B_WORKSPACE', '10000000-0000-0000-0000-000000000001', 'bad', 'Bad', 1);"
 expect_fail 'cross-workspace Class -> Academic Period denied structurally' "insert into public.classes(workspace_id, academic_period_id, identity_key, display_name) values ('$B_WORKSPACE', '20000000-0000-0000-0000-000000000001', 'bad', 'Bad');"
 run "insert into public.students(id, workspace_id, display_name) values ('40000000-0000-0000-0000-00000000000b', '$B_WORKSPACE', 'B Student');"
 run "insert into public.academic_periods(id, workspace_id, academic_year_id, identity_key, display_name, sort_order) values ('20000000-0000-0000-0000-00000000000b', '$B_WORKSPACE', '10000000-0000-0000-0000-00000000000b', 's1', 'Semester 1', 1);"
 run "insert into public.classes(id, workspace_id, academic_period_id, identity_key, display_name) values ('30000000-0000-0000-0000-00000000000b', '$B_WORKSPACE', '20000000-0000-0000-0000-00000000000b', 'viii-a', 'VIII A');"
-expect_fail 'A-student plus B-class enrollment denied structurally' "insert into public.enrollments(workspace_id, student_id, class_id) values ('$A_WORKSPACE', '40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-00000000000b');"
+expect_fail 'A-workspace cannot reference B-class in enrollment' "insert into public.enrollments(workspace_id, student_id, class_id) values ('$A_WORKSPACE', '40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-00000000000b');"
 expect_fail 'B-workspace cannot pair A-student with B-class' "insert into public.enrollments(workspace_id, student_id, class_id) values ('$B_WORKSPACE', '40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-00000000000b');"
 
-expect_fail 'authenticated user cannot provision another user workspace' "$A select public.bootstrap_personal_workspace('00000000-0000-0000-0000-00000000000b');"
+expect_fail 'authenticated API exposes no foreign-owner bootstrap argument' "$A select public.bootstrap_personal_workspace('00000000-0000-0000-0000-00000000000b');"
 expect_fail 'anonymous workspace bootstrap denied' "$ANON select public.bootstrap_personal_workspace();"
 expect_value 'schema version advances only to R3.1 migration state' "$A select version from public.app_schema_version where id=1;" 'r3.1-academic-spine.1'
 
-# Lifecycle is an update, not identity deletion; Student survives enrollment history changes.
 run "$A update public.enrollments set status='withdrawn', ended_on=current_date where id='50000000-0000-0000-0000-000000000001';"
 expect_value 'enrollment lifecycle update preserves student identity' "$A select count(*) from public.students where id='40000000-0000-0000-0000-000000000001';" '1'
 
