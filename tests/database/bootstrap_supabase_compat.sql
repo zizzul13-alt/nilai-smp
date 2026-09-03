@@ -23,4 +23,5 @@ grant execute on function auth.uid() to anon, authenticated;
 
 insert into auth.users(id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'a@example.test'),
-  ('00000000-0000-0000-0000-00000000000b', 'b@example.test');
+  ('00000000-0000-0000-0000-00000000000b', 'b@example.test'),
+  ('00000000-0000-0000-0000-00000000000c', 'c@example.test');
