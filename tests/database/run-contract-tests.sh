@@ -26,7 +26,7 @@ expect_value 'ledger contains exactly one operation' "$A select count(*) from pu
 expect_sqlstate 'same op id changed payload has stable permanent class' "$A perform * from public.apply_student_rename_operation('$OP','$STUDENT','Tampered',1)" 'P3202'
 expect_value 'stale revision becomes conflict' "$A select outcome||':'||revision from public.apply_student_rename_operation('60000000-0000-0000-0000-000000000002','$STUDENT','Stale',1);" 'conflict:2'
 expect_value 'conflict did not overwrite server' "$A select display_name||':'||revision from public.students where id='$STUDENT';" 'Budi Baru:2'
-expect_sqlstate 'B target ownership failure has stable permanent class' "$B perform * from public.apply_student_rename_operation('60000000-0000-0000-0000-000000000003','$STUDENT','Stolen',2)" 'P3201'
+expect_sqlstate 'B foreign target is classified as target not owned/found' "$B perform * from public.apply_student_rename_operation('60000000-0000-0000-0000-000000000003','$STUDENT','Stolen',2)" 'P3203'
 expect_sqlstate 'workspace missing has stable permanent class' "$C perform * from public.apply_student_rename_operation('60000000-0000-0000-0000-000000000004','$STUDENT','No Workspace',2)" 'P3201'
 expect_sqlstate 'owned workspace missing target has stable permanent class' "$A perform * from public.apply_student_rename_operation('60000000-0000-0000-0000-000000000005','40000000-0000-0000-0000-000000000099','Missing',2)" 'P3203'
 expect_sqlstate 'missing auth identity has stable retryable class' "set role authenticated; set request.jwt.claims = '{\"role\":\"authenticated\"}'; perform * from public.apply_student_rename_operation('60000000-0000-0000-0000-000000000006','$STUDENT','No Auth',2)" '28000'
