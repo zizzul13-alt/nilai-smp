@@ -1,1 +1,1 @@
-export const EXPECTED_SCHEMA_VERSION = 'r3.0-foundation.1';
+export const EXPECTED_SCHEMA_VERSION = 'r3.1-academic-spine.1';
