@@ -9,21 +9,26 @@ create or replace function public.apply_student_rename_operation(p_op_id uuid,p_
 returns table(outcome text,revision bigint,replayed boolean) language plpgsql security definer set search_path=pg_catalog,public,auth as $$
 declare caller_id uuid:=auth.uid();owned_workspace_id uuid;current_revision bigint;prior public.applied_operations;normalized_name text:=btrim(p_display_name);request_meta jsonb;
 begin
- if caller_id is null then raise exception 'authentication required' using errcode='42501'; end if;
+ -- Stable SQLSTATE contract for the browser client:
+ -- 28000 = actual authentication/session identity unavailable (retryable after auth recovery)
+ -- P3201 = workspace integrity failure (permanent)
+ -- P3202 = op_id scope/payload mismatch (permanent)
+ -- P3203 = target missing/not owned (permanent)
+ if caller_id is null then raise exception 'authentication required' using errcode='28000'; end if;
  if p_op_id is null or normalized_name='' or p_expected_revision<1 then raise exception 'invalid operation' using errcode='22023'; end if;
  request_meta:=jsonb_build_object('display_name',normalized_name,'expected_revision',p_expected_revision);
  select w.id into owned_workspace_id from public.workspaces w where w.owner_user_id=caller_id;
- if owned_workspace_id is null then raise exception 'workspace required' using errcode='42501'; end if;
+ if owned_workspace_id is null then raise exception 'workspace required' using errcode='P3201'; end if;
  select ao.* into prior from public.applied_operations ao where ao.op_id=p_op_id;
  if found then
-  if prior.workspace_id<>owned_workspace_id or prior.operation_type<>'student.rename' or prior.target_entity_id<>p_student_id or prior.request_metadata<>request_meta then raise exception 'op_id scope or payload mismatch' using errcode='42501'; end if;
+  if prior.workspace_id<>owned_workspace_id or prior.operation_type<>'student.rename' or prior.target_entity_id<>p_student_id or prior.request_metadata<>request_meta then raise exception 'op_id scope or payload mismatch' using errcode='P3202'; end if;
   return query select 'saved'::text,prior.result_revision,true;return;
  end if;
  select s.revision into current_revision from public.students s where s.id=p_student_id and s.workspace_id=owned_workspace_id for update;
- if current_revision is null then raise exception 'student not found in owned workspace' using errcode='42501'; end if;
+ if current_revision is null then raise exception 'student not found in owned workspace' using errcode='P3203'; end if;
  select ao.* into prior from public.applied_operations ao where ao.op_id=p_op_id;
  if found then
-  if prior.workspace_id<>owned_workspace_id or prior.operation_type<>'student.rename' or prior.target_entity_id<>p_student_id or prior.request_metadata<>request_meta then raise exception 'op_id scope or payload mismatch' using errcode='42501'; end if;
+  if prior.workspace_id<>owned_workspace_id or prior.operation_type<>'student.rename' or prior.target_entity_id<>p_student_id or prior.request_metadata<>request_meta then raise exception 'op_id scope or payload mismatch' using errcode='P3202'; end if;
   return query select 'saved'::text,prior.result_revision,true;return;
  end if;
  if current_revision<>p_expected_revision then return query select 'conflict'::text,current_revision,false;return;end if;
