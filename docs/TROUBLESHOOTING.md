@@ -14,16 +14,18 @@ Do not continue writing academic data. Verify that the expected migration under 
 
 ## Build/typecheck fails
 
+Use the committed lockfile to reproduce a clean dependency installation:
+
 ```bash
 node --version
 npm --version
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run typecheck
 npm test
 npm run build
 ```
 
-Use Node 22 LTS first because CI verifies that baseline.
+Use Node 22 LTS first because CI verifies that baseline. If `npm ci` reports that `package.json` and `package-lock.json` disagree, do not bypass the lockfile; reconcile the dependency change through normal review.
 
 ## Legacy behavior differs
 
