@@ -1,24 +1,22 @@
 # Sync Contract
 
-## R3.3 Rapid Correction status
-Safe Work now supports two narrow operation kinds: the R3.2 Student rename proof and `assessment.judgement`. This remains **not full offline mode**. PostgreSQL is long-term canonical truth; Dexie is a temporary durable recovery buffer.
+## Rapid Correction
+Rapid Correction continues the R3.2 truth law: `TRANSIENT -> durable IndexedDB transaction -> PENDING_SAFE -> server -> SAVED`. Pending Safe is truthful only after Dexie commit. `assessment.judgement` has per-Result causal ordering, idempotent op_id replay and explicit revision Conflict recovery.
 
-## Truth law
-`TRANSIENT -> successful IndexedDB transaction -> PENDING_SAFE -> server synchronization -> SAVED`.
+## Bulk Entry / Excel Import
+Bulk Import has deliberately stronger and simpler semantics and does **not** use the Safe Work queue:
 
-Pending Safe is truthful only after the Dexie transaction commits. A Dexie failure remains transient/error and must never be labelled Pending Safe. `FAILED` and `CONFLICT` are durable manual-recovery states; only `PENDING_SAFE` auto-syncs.
+```text
+local parse/edit -> Preview -> Validate -> online atomic Commit -> server ACK -> Saved
+```
 
-## Academic operation
-`assessment.judgement` carries stable `op_id`, Assessment + Enrollment identity, explicit Result state/score, optional Attempt evidence, and `expected_revision`. The server RPC `apply_assessment_judgement_operation()` atomically accepts the AppliedOperation, updates/inserts the current Result, and optionally appends Attempt evidence. A lost ACK retried with the same op_id replays the prior success and cannot duplicate Attempt evidence.
+Preview is not Commit. Parsed spreadsheet state may be lost before Commit and is not labelled Pending Safe. Commit requires connectivity. `apply_assessment_bulk_operation()` accepts one stable batch op_id and one Assessment batch; PostgreSQL either commits every intended academic mutation plus its ledger record or commits none.
 
-## Ordering and conflicts
-The local causal key is `assessment_result:<assessment_id>:<enrollment_id>`. An unresolved retryable/FAILED/CONFLICT operation blocks later operations for that Result while independent Results may continue. Result revisions are monotonic. Stale expected revision returns CONFLICT and never overwrites server truth. No Last Write Wins exists.
+## Revision/conflict
+Each preview row carries the current canonical Result revision, or 0 when no Result exists. The RPC serializes each logical Assessment × Enrollment key, checks all revisions before mutation, and if any is stale returns batch `conflict` with canonical enrollment/revision/state/score snapshots. No row is silently overwritten and no partial batch is accepted. Teacher refreshes Preview and explicitly creates a new batch.
 
-## Recovery
-FAILED/CONFLICT remain visible near correction with affected Enrollment, local intended state/score and server Result context when available. Retry explicitly returns an operation to Pending Safe. Discard explicitly removes the local intention and leaves canonical server truth untouched.
+## Idempotency
+Lost ACK + retry of the same op_id and exact payload replays the saved summary without duplicate Result/Attempt effects. Same op_id with changed Assessment/payload fails closed with P3202. Filename is never operation identity.
 
 ## Namespace/privacy
-Operations are scoped by `auth_user_id + workspace_id`; foreign namespaces are never queried into the active correction workflow. Logout warns when unsynced work exists and does not silently delete it. No auth secret is stored in Dexie.
-
-## Deterministic classes
-`PGRST301`/`28000` are retryable auth; `PGRST000`/offline are retryable network; P3202 is permanent op-id mismatch; P3401/P3402/P3403 are permanent workspace/Assessment/Enrollment integrity failures; `22023` is invalid operation; revision mismatch is explicit CONFLICT.
+Server derives caller/workspace from auth. Template/import identity must resolve inside the selected Assessment class/workspace. Rapid Dexie namespaces remain `auth_user_id + workspace_id`; bulk import adds no secrets or spreadsheet payloads to Dexie.
