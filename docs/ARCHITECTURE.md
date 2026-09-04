@@ -2,7 +2,7 @@
 
 ## Status
 
-R3.0 application foundation and the R3.1 canonical academic spine are implemented. Teaching, assessment, offline Pending Safe, sync, reporting, artifacts, backup/restore implementation, and legacy migration remain frozen-but-unimplemented.
+R3.0 application foundation, the R3.1 canonical academic spine, and the R3.2 narrow Safe Work durability core are implemented. Teaching, assessment, reporting, artifacts, backup/restore implementation, legacy migration, and full offline mode remain frozen-but-unimplemented.
 
 ## Target boundaries
 
@@ -13,16 +13,17 @@ Browser
     presentation/components
     domain/academic types
     services/academic data access
+    Safe Work recovery state: IndexedDB + Dexie
       Supabase browser client
-        Auth + Data API
+        Auth + Data API / narrow RPCs
           PostgreSQL + RLS + constraints
             auth.users -> workspaces -> academic spine
+            server canonical truth + applied-operation idempotency
 
 Delivery: Cloudflare Workers Static Assets
-Later local durability: IndexedDB + Dexie Pending Safe (not implemented)
 ```
 
-Supabase is canonical operational truth. Cloudflare is delivery/glue, not the academic backend. Browser filtering is never the authorization boundary.
+Supabase is canonical operational truth. Cloudflare is delivery/glue, not the academic backend. Browser filtering is never the authorization boundary. Dexie is local recovery state, not a second academic database, replica, backup, or full-offline subsystem.
 
 ## Ownership boundary
 
@@ -44,7 +45,15 @@ The app restores the persisted Supabase session, subscribes to auth changes, sup
 
 ## Schema compatibility
 
-`src/config/schema.ts` declares `r3.1-academic-spine.1`. The authenticated app reads singleton `public.app_schema_version`. A mismatch fails closed before academic data access. The R3.1 migration advances that row only after the canonical schema, constraints, RLS, grants, indexes, and bootstrap function have been constructed.
+`src/config/schema.ts` declares `r3.2-safe-work.1`. The authenticated app reads singleton `public.app_schema_version`. A mismatch fails closed before academic data access. Ordered migrations advance that row only after their schema, constraints, RLS, grants, indexes, and functions have been constructed.
+
+## R3.2 Safe Work layer
+
+Dexie wraps browser IndexedDB as temporary durable recovery state. UI state, local durable state, and server canonical state remain distinct. `PENDING_SAFE` is only observable after the local Dexie transaction commits.
+
+The only R3.2 proof mutation is revision-checked Student rename. The sync worker automatically processes only `PENDING_SAFE`. `FAILED` and `CONFLICT` remain durable manual-recovery states and causally block later operations for the same entity. Startup and reconnect may resume pending work, but must not revive permanent failures.
+
+The Student rename RPC derives ownership from `auth.uid()`, locks the Student row, checks expected revision, updates name/revision/updated_at and inserts `applied_operations` in the same PostgreSQL transaction. Stable `op_id` replay gives lost-ACK idempotency. Revision mismatch returns an explicit conflict; deterministic server error classes distinguish actual auth loss from permanent workspace/op-id/target failures. No service-role credential is exposed.
 
 ## Legacy
 
