@@ -8,17 +8,18 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 
 - **R3.0 Foundation:** React/Vite/TypeScript shell, browser-safe Supabase client, persisted Auth baseline, source-controlled migrations, fail-closed schema compatibility, Vitest/Playwright, Cloudflare static delivery.
 - **R3.1 Academic Spine:** Personal Workspace, Academic Year, Academic Period, Class, Student and Enrollment with owner RLS and workspace-aware structural integrity.
-- **R3.2 Safe Work:** Dexie/IndexedDB durable recovery queue, Pending Safe truth law, explicit FAILED/CONFLICT states, Student rename revision/idempotency proof, startup/reconnect recovery, deterministic server/client errors.
+- **R3.2 Safe Work:** Dexie/IndexedDB durable recovery queue, Pending Safe truth law, explicit FAILED/CONFLICT states, startup/reconnect recovery and deterministic server/client errors.
 - **R3.1 Teaching Core:** Material, stable Lesson, append-only LessonVersion history, actual Meeting, multiple Checkpoints, Activity and explicit multi-Meeting Activity links.
-- **R3.3 Assessment Core:** stable Assessment, reusable ScoringProfile, one current Result per Assessment × Enrollment, explicit Result states, preserved Attempt evidence/history, and an atomic Result + optional Attempt RPC.
+- **R3.3 Assessment Core:** stable Assessment, immutable-ruleset ScoringProfile, one current Result per Assessment × Enrollment, explicit Result states and preserved Attempt evidence.
+- **R3.3 Rapid Correction:** explicit resumable correction sessions, arbitrary paper-order student search, mobile rapid judgement, academic Safe Work operations, same-Result causal ordering, idempotent Result + optional Attempt + AppliedOperation server transaction, and in-workflow FAILED/CONFLICT recovery.
 
 **NOT YET IMPLEMENTED**
 
-Rapid correction production UI; correction-session resume; assessment Excel import; bulk grade-entry UI; Today/Continue and pacing; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic conflict-resolution UI; final teacher-facing management UX.
+Assessment Excel import; paste-grid/bulk grade entry; Today/Continue and pacing; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; generic enterprise conflict management.
 
-## Canonical assessment laws
+## Canonical correction laws
 
-Assessment != Activity; Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Attempt is preserved raw evidence/history; Result is current interpreted truth. Assessment UUID identity never depends on category/topic/display label/spreadsheet position.
+Assessment != Activity; Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Skip leaves UNCHECKED. A CorrectionSession is workflow progress, not evidence, and completes only by explicit teacher action. Pending Safe means the operation has committed durably to the current user + workspace IndexedDB namespace; it does not mean the server has accepted it. PostgreSQL remains canonical truth.
 
 ## Prerequisites and setup
 
@@ -44,21 +45,21 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. `npm run verify` covers typecheck, unit/contracts and production build; CI additionally runs real PostgreSQL and Playwright.
+The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI additionally runs real PostgreSQL and Playwright, including rapid-correction durable queue/restart contracts.
 
 ## Repository map
 
 ```text
 src/app/                 application/bootstrap and auth gate
-src/components/          minimal presentation components
+src/components/          mobile correction + minimal presentation components
 src/config/              browser config and schema-version contract
 src/domain/              canonical TypeScript domain contracts
-src/services/academic/   explicit academic/teaching/assessment boundaries
-src/services/safeWork/   narrow local durability/sync proof
+src/services/academic/   academic/teaching/assessment/correction boundaries
+src/services/safeWork/   narrow durable operation queue and sync worker
 supabase/migrations/     append-only canonical database migrations
 tests/database/          real PostgreSQL contract attacks
 tests/unit/              fast static/domain contracts
-tests/e2e/               critical browser E2E
+tests/e2e/               critical IndexedDB/browser E2E
 legacy/streamlit/        preserved pre-R3 evidence
 ```
 

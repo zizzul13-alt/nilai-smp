@@ -1,63 +1,41 @@
 # Data Model
 
 ## Status
+R3.1 Academic + Teaching Core, R3.2 Safe Work metadata, R3.3 Assessment Core and Rapid Correction are implemented.
 
-**R3.1 ACADEMIC + TEACHING CORE, R3.2 SAFE WORK METADATA, AND R3.3 ASSESSMENT CORE IMPLEMENTED.** Reporting, artifacts, backup, migration, collaboration, AI and full-offline domains remain unimplemented.
-
-## Ownership and hierarchy
-
+## Ownership graph
 ```text
 auth.users -> workspaces
   -> academic_years -> academic_periods -> classes
   -> students -> enrollments -> classes
   -> materials -> lessons -> lesson_versions
   -> meetings -> checkpoints
-  -> activities <-> meetings through activity_meetings
+  -> activities <-> meetings
   -> scoring_profiles
-  -> assessments -> class + academic_period + optional activity/profile
-       -> assessment_results -> enrollment
-            -> assessment_attempts
-  -> applied_operations (Safe Work idempotency metadata, not academic history)
+  -> assessments -> assessment_results(revision) -> assessment_attempts
+  -> correction_sessions (workflow progress, not evidence)
+  -> applied_operations (idempotency metadata, not academic history)
 ```
+Every protected record is workspace-owned; composite FKs defend graph integrity.
 
-Every protected academic record stores `workspace_id`; workspace-aware composite FKs prevent foreign graph composition.
+## Assessment truth
+ScoringProfile is an immutable-ruleset identity. Assessment is stable UUID identity with Class/Period and optional Activity/Profile. Result is one current interpreted outcome per Assessment × Enrollment and now has monotonic `revision >= 1`. Attempt is ordered preserved evidence with ORIGINAL/MAKEUP/REMEDIAL/CORRECTION kinds.
 
-## Assessment Core entities
+Result state/score laws: UNCHECKED/MISSING/EXCUSED have NULL score; GRADED has non-NULL numeric score, including 0 and negative values. Skip is a workflow action and writes no Result, therefore remains UNCHECKED. Missing is never converted to zero.
 
-- **ScoringProfile:** stable reusable scoring semantics. `config` is validated as a JSON object, supports rules such as `{correct:10, wrong:-5, blank:0}`, and does not impose 0..100 scoring.
-- **Assessment:** stable UUID teacher-owned identity in one Class and its AcademicPeriod. Optional Activity and ScoringProfile are context, not identity. Assessment can exist without Activity. Category/topic/display label/spreadsheet position are not identity keys.
-- **Result:** one current interpreted outcome per `(workspace_id, assessment_id, enrollment_id)`. It structurally requires Assessment and Enrollment to share Class.
-- **Attempt:** ordered preserved raw evidence/history under Result. Attempt kinds are ORIGINAL, MAKEUP, REMEDIAL, CORRECTION. Additional evidence never deletes prior Attempt rows.
+## CorrectionSession
+`correction_sessions` contains stable UUID, workspace, Assessment, Class, status `active|completed`, optional current Enrollment, started/updated timestamps and optional completed timestamp. Its Class/Assessment/Enrollment graph is workspace-aware. It records resumable teacher workflow context only and is never Attempt/Result evidence. Completion requires explicit `completed` + timestamp.
 
-## Result semantics
+## Applied academic operation
+`applied_operations` remains idempotency metadata. `assessment.judgement` uses Enrollment as ledger target plus full Assessment/Enrollment/payload/revision request metadata. Server acceptance stores resulting Result/Attempt metadata and result revision. Reusing op_id with changed scope/payload is rejected.
 
-State and score are separate canonical facts:
-
-- `UNCHECKED` -> score NULL
-- `MISSING` -> score NULL
-- `EXCUSED` -> score NULL
-- `GRADED` -> score non-NULL, including valid `0` and negative values
-
-Therefore `0 != blank`, Missing != 0, and attendance does not silently determine Result state. Result != Attempt; current interpreted truth is not simply the latest Attempt row. Raw Evidence != Reported Outcome.
-
-## Existing canonical distinctions
-
-Student != Enrollment. Material != Lesson. Lesson != Meeting. Activity != Assessment. Assessment != Result. Result != Attempt. Workflow State != Score. UNCHECKED != GRADED != MISSING != EXCUSED. Susulan/MAKEUP != Remedial. Canonical Lesson != Artifact. Finalized != Archived. Archive != Backup. UI State != Local Durable State != Server Canonical State. Provider != Data Ownership.
-
-## Integrity and lifecycle
-
-Parent relationships use RESTRICT. Composite uniqueness supplies workspace-aware FK targets. Assessment Class/AcademicPeriod consistency, optional Activity/Class consistency, optional Profile ownership, Result Assessment/Enrollment/Class consistency, and Attempt/Result ownership are database-enforced. Result uniqueness prevents multiple current rows for one Assessment × Enrollment. Attempt sequence uniqueness preserves deterministic history.
-
-Result/Attempt direct browser writes are not granted. The narrow `record_assessment_judgement()` transaction updates current interpreted Result and optionally appends Attempt evidence atomically. This is not a generic rule engine and is not yet a Safe Work mutation.
-
-## Migration governance
-
-Ordered migrations remain append-only:
-
+## Migration chain
 ```text
 r3.0-foundation.1
 -> r3.1-academic-spine.1
 -> r3.2-safe-work.1
 -> r3.1-teaching-core.1
 -> r3.3-assessment-core.1
+-> r3.3-rapid-correction.1
 ```
+Migrations remain append-only.
