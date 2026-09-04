@@ -11,36 +11,30 @@ npm ci --no-audit --no-fund
 npm run verify
 ```
 
-Provide browser-safe build variables through the deployment environment:
-
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
-
-These are public client configuration, not privileged secrets.
+Provide only browser-safe `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Never put service-role/database/deployment credentials in browser variables.
 
 ## Cloudflare Workers Static Assets
 
-`wrangler.jsonc` points to `./dist` and uses `not_found_handling: single-page-application` for SPA fallback. No Worker script/API backend is introduced.
+`wrangler.jsonc` serves `./dist` with SPA fallback. Cloudflare is delivery, not the academic backend.
 
 ```bash
 npm run deploy
 ```
 
-Cloudflare account authentication belongs to the deployment/CI environment. Do not put API tokens in the repository or in `VITE_*` variables.
-
 ## Supabase migrations
 
-Apply source-controlled files in `supabase/migrations/` in filename order through the governed deployment process before releasing a frontend that expects the new schema version. The cumulative compatibility history is:
+Apply `supabase/migrations/` strictly in filename order before releasing a frontend that expects the new schema head:
 
 ```text
 r3.0-foundation.1
 -> r3.1-academic-spine.1
 -> r3.2-safe-work.1
 -> r3.1-teaching-core.1
+-> r3.3-assessment-core.1
 ```
 
-The current runtime head is `r3.1-teaching-core.1`, matching `src/config/schema.ts`. Teaching Core carries an R3.1 name because it closes a previously missed R3.1 Academic Core residual after R3.2 Safe Work had already merged; it is nevertheless the later cumulative migration and does not remove R3.2 semantics.
+The current runtime head is `r3.3-assessment-core.1`, matching `src/config/schema.ts`. The R3.1 Teaching Core remains intentionally after R3.2 because it closed a previously missed R3.1 residual; R3.3 then extends that cumulative state.
 
-Each migration advances `app_schema_version` only after its complete contract has been established. Do not manually pre-set the schema version, apply only fragments of a migration, or point destructive contract tests at production. The browser remains fail-closed until the deployed schema matches `src/config/schema.ts`.
+Each migration advances `app_schema_version` only after its complete contract exists. Do not pre-set schema versions, apply fragments, or point destructive contract tests at production. The browser fails closed on mismatch.
 
-Routine teacher operation must not require Supabase dashboard maintenance. Production cutover requires separate Governor authorization.
+Routine teacher operation must not require Supabase dashboard maintenance. Production cutover remains separately governed.
