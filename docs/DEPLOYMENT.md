@@ -25,7 +25,8 @@ r3.0-foundation.1
 -> r3.1-teaching-core.1
 -> r3.3-assessment-core.1
 -> r3.3-rapid-correction.1
+-> r3.3-bulk-assessment.1
 ```
-The runtime head and `src/config/schema.ts` must both be `r3.3-rapid-correction.1`. Apply migrations strictly in filename order before deploying this frontend. Never pre-set schema versions or apply fragments. The browser fails closed on mismatch.
+The runtime head and `src/config/schema.ts` must both be `r3.3-bulk-assessment.1`. Apply migrations strictly in filename order before deploying this frontend; the browser fails closed on mismatch.
 
-Rapid correction requires normal browser IndexedDB availability for Pending Safe durability. Routine teacher operation must not require Supabase dashboard maintenance. Production cutover remains separately governed.
+Rapid Correction requires IndexedDB for Pending Safe. Bulk Import additionally requires normal browser File/Blob, DOMParser and DecompressionStream support for bounded XLSX parsing, and live server connectivity at Commit. No spreadsheet/server secret is embedded in generated templates.
