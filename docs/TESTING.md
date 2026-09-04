@@ -1,22 +1,19 @@
 # Testing Strategy
 
-## Implemented tiers
+## Tiers
+1. **Vitest:** frozen semantic/static architecture contracts.
+2. **Real PostgreSQL:** full ordered migration chain plus RLS, revision, idempotency and transaction attacks.
+3. **Playwright:** real browser IndexedDB durability, restart, namespace and rapid-workflow queue behavior.
+4. **Build/typecheck:** production TypeScript/Vite boundary.
 
-1. **Vitest:** browser config, auth/service behavior, schema compatibility, migration contracts, Safe Work and canonical-domain invariants.
-2. **Real PostgreSQL:** `npm run test:db` applies the full ordered migration chain to disposable PostgreSQL 17 with the Supabase-compatible auth harness, runs inherited attacks, then R3.3 Assessment attacks.
-3. **Service boundary:** explicit Academic, Teaching, and Assessment services remain outside presentation; PostgreSQL remains authorization.
-4. **Playwright:** cumulative mobile/desktop foundation and actual Dexie Safe Work durability/retry/conflict coverage.
+## Rapid Correction acceptance
+The Golden 40-paper browser scenario queues an arbitrary reversed physical order without Student-page navigation or server round-trip per paper. It includes score 0, negative score, Missing, Excused and an explicit Skip represented by absence of a write; 39 durable operations survive page restart. Duplicate names are legal because selection/write identity is Enrollment, not display name.
 
-## Assessment Core database reality
+Browser failure coverage proves Dexie transaction failure cannot return Pending Safe, Pending Safe survives reload, same-Result causal keys remain ordered, and user/workspace namespaces remain isolated. Worker/static contracts preserve FAILED/CONFLICT manual recovery and independent-Result progress.
 
-R3.3 tests prove owned ScoringProfile and Assessment creation, Assessment independence from Activity, stable UUID identity, negative scoring, explicit UNCHECKED/MISSING/EXCUSED null-score states, GRADED zero preservation, negative graded score, one current Result per Assessment × Enrollment, ORIGINAL/MAKEUP/REMEDIAL/CORRECTION history, preserved prior attempts, cross-workspace Class/Profile/Activity/Enrollment attacks, owner isolation, anonymous denial, and denial of direct browser Result/Attempt split writes.
-
-The canonical Result + optional Attempt path is one PostgreSQL function transaction. Tests exercise the RPC and verify both current Result truth and appended evidence. PostgreSQL transactional semantics prevent a function failure from committing only one half.
-
-Inherited R3.0–R3.2 and Teaching Core coverage remains cumulative, including LessonVersion append-only history and Safe Work lost-ACK/conflict/error-class behavior.
+PostgreSQL rapid-correction tests prove atomic Result + optional Attempt + AppliedOperation, same-op lost-ACK replay without duplicate Attempt, zero, negative score, Missing NULL score, stale-revision Conflict without overwrite, op-id payload mismatch, correction-session explicit completion, owner isolation and anonymous denial.
 
 ## Commands
-
 ```bash
 npm ci --no-audit --no-fund
 npm run typecheck
@@ -26,9 +23,7 @@ npm run build
 npx playwright install chromium
 npm run test:e2e
 ```
+CI uses ephemeral PostgreSQL; no production database or service-role browser credential is required.
 
-CI runs the same committed verification against ephemeral PostgreSQL. No production database or browser service-role credential is required.
-
-## Deferred by design
-
-Rapid correction production UI, correction-session resume, Excel assessment import, bulk grade entry, Today/Continue, reporting/finalization, artifacts, backup/restore engine, legacy migration, AI/collaboration, full offline, generic conflict-resolution UI, sophisticated statistics, and Assessment Safe Work integration remain future authorized work.
+## Still out of scope
+Excel/paste-grid, reporting/finalization, Today/Continue, artifacts, backup/restore, legacy migration, AI, collaboration, full offline, generic global search and generic enterprise conflict management.
