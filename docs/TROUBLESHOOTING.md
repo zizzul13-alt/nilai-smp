@@ -10,7 +10,18 @@ The UI surfaces the Supabase Auth error. Verify the configured project, account 
 
 ## “Database belum kompatibel”
 
-Do not continue writing academic data. Verify that the ordered migrations under `supabase/migrations/` have been applied and that `app_schema_version` matches `src/config/schema.ts`. R3.2 expects `r3.2-safe-work.1`.
+Do not continue writing academic data. Verify that the ordered migrations under `supabase/migrations/` have been applied and that `app_schema_version` matches `src/config/schema.ts`. The current runtime expects `r3.1-teaching-core.1`.
+
+Compatibility history is cumulative:
+
+```text
+r3.0-foundation.1
+-> r3.1-academic-spine.1
+-> r3.2-safe-work.1
+-> r3.1-teaching-core.1
+```
+
+The final R3.1-labelled Teaching Core migration is intentionally after R3.2 because it closes a previously missed R3.1 Academic Core residual. Do not roll the database back to `r3.2-safe-work.1`; the Teaching Core head includes and preserves the merged R3.2 Safe Work contract.
 
 ## Pending locally
 
