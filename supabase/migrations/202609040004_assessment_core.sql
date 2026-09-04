@@ -1,5 +1,9 @@
 -- R3.3 canonical Assessment Core. Server truth first; no new Safe Work mutation is introduced.
 
+-- Existing parent tables gain composite uniqueness only to support class/period-aware canonical FKs.
+alter table public.classes add constraint class_workspace_id_period_unique unique (workspace_id,id,academic_period_id);
+alter table public.enrollments add constraint enrollment_workspace_id_class_unique unique (workspace_id,id,class_id);
+
 create table public.scoring_profiles (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete restrict,
@@ -75,10 +79,6 @@ create table public.assessment_attempts (
   constraint assessment_attempt_sequence_unique unique (workspace_id,result_id,sequence_no),
   constraint assessment_attempt_workspace_id_unique unique (workspace_id,id)
 );
-
--- Existing parent tables gain composite uniqueness only to support class/period-aware canonical FKs.
-alter table public.classes add constraint class_workspace_id_period_unique unique (workspace_id,id,academic_period_id);
-alter table public.enrollments add constraint enrollment_workspace_id_class_unique unique (workspace_id,id,class_id);
 
 create index scoring_profiles_workspace_status_name_idx on public.scoring_profiles(workspace_id,status,name);
 create index assessments_workspace_class_status_idx on public.assessments(workspace_id,class_id,status);
