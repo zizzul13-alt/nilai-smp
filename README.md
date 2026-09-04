@@ -11,15 +11,18 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 - **R3.2 Safe Work:** Dexie/IndexedDB durable recovery queue, Pending Safe truth law, explicit FAILED/CONFLICT states, startup/reconnect recovery and deterministic server/client errors.
 - **R3.1 Teaching Core:** Material, stable Lesson, append-only LessonVersion history, actual Meeting, multiple Checkpoints, Activity and explicit multi-Meeting Activity links.
 - **R3.3 Assessment Core:** stable Assessment, immutable-ruleset ScoringProfile, one current Result per Assessment × Enrollment, explicit Result states and preserved Attempt evidence.
-- **R3.3 Rapid Correction:** explicit resumable correction sessions, arbitrary paper-order student search, mobile rapid judgement, academic Safe Work operations, same-Result causal ordering, idempotent Result + optional Attempt + AppliedOperation server transaction, and in-workflow FAILED/CONFLICT recovery.
+- **R3.3 Rapid Correction:** explicit resumable correction sessions, arbitrary paper-order student search, mobile rapid judgement and Pending Safe academic operations.
+- **R3.3 Bulk Assessment:** desktop Bulk Entry plus Nilai SMP-owned XLSX template/import, stable Enrollment identity, Preview/Validate before mutation, and online atomic Result/Attempt batch commit with idempotency and revision conflicts.
 
 **NOT YET IMPLEMENTED**
 
-Assessment Excel import; paste-grid/bulk grade entry; Today/Continue and pacing; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; generic enterprise conflict management.
+Today/Continue and pacing; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; fuzzy spreadsheet matching; generic spreadsheet engine.
 
-## Canonical correction laws
+## Input-path laws
 
-Assessment != Activity; Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Skip leaves UNCHECKED. A CorrectionSession is workflow progress, not evidence, and completes only by explicit teacher action. Pending Safe means the operation has committed durably to the current user + workspace IndexedDB namespace; it does not mean the server has accepted it. PostgreSQL remains canonical truth.
+Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Spreadsheet row != Student identity; template Assessment/Enrollment UUIDs are stable round-trip keys and display name never silently disambiguates duplicates.
+
+Rapid Correction, Bulk Entry and Excel Import are distinct workflows. Rapid Correction may truthfully use the durable Pending Safe queue. Bulk Import does **not** pretend to be offline: parse/preview is local, Commit requires connectivity, one PostgreSQL transaction accepts all intended mutations or none, and UI says Saved only after server acknowledgement.
 
 ## Prerequisites and setup
 
@@ -45,26 +48,22 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI additionally runs real PostgreSQL and Playwright, including rapid-correction durable queue/restart contracts.
+The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, atomic bulk commit/idempotency/revision contracts, rapid-correction durability and browser XLSX round-trip behavior.
 
 ## Repository map
 
 ```text
 src/app/                 application/bootstrap and auth gate
-src/components/          mobile correction + minimal presentation components
+src/components/          rapid correction + desktop bulk workflow
 src/config/              browser config and schema-version contract
 src/domain/              canonical TypeScript domain contracts
-src/services/academic/   academic/teaching/assessment/correction boundaries
-src/services/safeWork/   narrow durable operation queue and sync worker
+src/services/academic/   academic/assessment/correction/bulk boundaries
+src/services/safeWork/   narrow durable rapid-operation queue and sync worker
 supabase/migrations/     append-only canonical database migrations
 tests/database/          real PostgreSQL contract attacks
 tests/unit/              fast static/domain contracts
-tests/e2e/               critical IndexedDB/browser E2E
-legacy/streamlit/        preserved pre-R3 evidence
+tests/e2e/               critical browser acceptance
+legacy/streamlit/        preserved pre-R3 behavior evidence
 ```
 
-## Documentation
-
-Durable contracts live in `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/SYNC_CONTRACT.md`, `docs/BACKUP_RESTORE.md`, `docs/DEPLOYMENT.md`, `docs/TROUBLESHOOTING.md`, and `docs/TESTING.md`.
-
-Source-of-truth order remains current repository/merged implementation first, then frozen R1/R2 contracts. Legacy code cannot redefine frozen semantics.
+Source-of-truth order remains current repository/merged implementation first, then frozen R1/R2/R3 contracts. Legacy code cannot redefine frozen semantics.
