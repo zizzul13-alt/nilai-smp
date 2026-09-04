@@ -14,6 +14,12 @@ export type AssessmentJudgementPayload = {
   evidence:Record<string,unknown>;
 };
 
+export type AssessmentConflictSnapshot = {
+  canonical_state:ResultState|null;
+  canonical_score:number|null;
+  canonical_revision:number;
+};
+
 export type PendingOperation = {
   op_id:string;
   auth_user_id:string;
@@ -29,6 +35,7 @@ export type PendingOperation = {
   status:SafeWorkStatus;
   expected_revision:number;
   last_error_code:string|null;
+  conflict_snapshot?:AssessmentConflictSnapshot|null;
 };
 
 export type SyncResult =
