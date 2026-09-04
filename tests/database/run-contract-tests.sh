@@ -40,6 +40,8 @@ MAT="71000000-0000-0000-0000-000000000001"; LES="72000000-0000-0000-0000-0000000
 expect_value 'A creates owned Material' "$A insert into public.materials(id,workspace_id,title) values('$MAT',$AW,'Gerak'); select title from public.materials where id='$MAT';" 'Gerak'
 expect_value 'A creates Lesson under Material' "$A insert into public.lessons(id,workspace_id,material_id,title) values('$LES',$AW,'$MAT','Gerak Lurus'); select title from public.lessons where id='$LES';" 'Gerak Lurus'
 expect_value 'LessonVersion 1 allowed' "$A insert into public.lesson_versions(id,workspace_id,lesson_id,version_number,content_text) values('$LV1',$AW,'$LES',1,'v1 immutable'); select content_text from public.lesson_versions where id='$LV1';" 'v1 immutable'
+expect_fail 'LessonVersion 1 canonical content cannot be updated' "$A update public.lesson_versions set content_text='rewritten history' where id='$LV1';"
+expect_value 'LessonVersion 1 remains unchanged after rejected update' "$A select content_text from public.lesson_versions where id='$LV1';" 'v1 immutable'
 expect_value 'LessonVersion 2 allowed' "$A insert into public.lesson_versions(id,workspace_id,lesson_id,version_number,content_text) values('$LV2',$AW,'$LES',2,'v2 revised'); select count(*) from public.lesson_versions where lesson_id='$LES';" '2'
 expect_fail 'duplicate LessonVersion number rejected' "$A insert into public.lesson_versions(workspace_id,lesson_id,version_number) values($AW,'$LES',2);"
 expect_value 'previous LessonVersion remains unchanged' "$A select content_text from public.lesson_versions where id='$LV1';" 'v1 immutable'
