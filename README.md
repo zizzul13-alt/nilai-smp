@@ -9,11 +9,16 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 - **R3.0 Foundation:** React/Vite/TypeScript shell, browser-safe Supabase client, persisted Auth baseline, source-controlled migrations, fail-closed schema compatibility, Vitest/Playwright, Cloudflare static delivery.
 - **R3.1 Academic Spine:** Personal Workspace, Academic Year, Academic Period, Class, Student and Enrollment with owner RLS and workspace-aware structural integrity.
 - **R3.2 Safe Work:** Dexie/IndexedDB durable recovery queue, Pending Safe truth law, explicit FAILED/CONFLICT states, Student rename revision/idempotency proof, startup/reconnect recovery, deterministic server/client errors.
-- **R3.1 Teaching Core:** Material, stable Lesson, LessonVersion history, actual Meeting (including lessonless meetings), multiple Checkpoints, Activity and explicit multi-Meeting Activity links.
+- **R3.1 Teaching Core:** Material, stable Lesson, append-only LessonVersion history, actual Meeting, multiple Checkpoints, Activity and explicit multi-Meeting Activity links.
+- **R3.3 Assessment Core:** stable Assessment, reusable ScoringProfile, one current Result per Assessment × Enrollment, explicit Result states, preserved Attempt evidence/history, and an atomic Result + optional Attempt RPC.
 
 **NOT YET IMPLEMENTED**
 
-Assessment/Result/Attempt; scoring profiles and correction; rapid correction UI; assessment Excel import; Today/Continue and pacing; reporting; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic conflict-resolution UI; final teacher-facing Teaching Core management UX.
+Rapid correction production UI; correction-session resume; assessment Excel import; bulk grade-entry UI; Today/Continue and pacing; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic conflict-resolution UI; final teacher-facing management UX.
+
+## Canonical assessment laws
+
+Assessment != Activity; Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Attempt is preserved raw evidence/history; Result is current interpreted truth. Assessment UUID identity never depends on category/topic/display label/spreadsheet position.
 
 ## Prerequisites and setup
 
@@ -48,7 +53,7 @@ src/app/                 application/bootstrap and auth gate
 src/components/          minimal presentation components
 src/config/              browser config and schema-version contract
 src/domain/              canonical TypeScript domain contracts
-src/services/academic/   explicit academic read/service boundaries
+src/services/academic/   explicit academic/teaching/assessment boundaries
 src/services/safeWork/   narrow local durability/sync proof
 supabase/migrations/     append-only canonical database migrations
 tests/database/          real PostgreSQL contract attacks
