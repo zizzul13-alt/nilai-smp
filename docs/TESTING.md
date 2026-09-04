@@ -2,22 +2,18 @@
 
 ## Implemented tiers
 
-1. **Vitest:** browser configuration, auth/service behavior, schema compatibility, migration contracts, Safe Work contracts, and Teaching Core migration invariants.
-2. **Real PostgreSQL:** `tests/database/run-contract-tests.sh` applies every ordered migration to disposable PostgreSQL 17 with minimal Supabase-compatible auth roles/`auth.uid()`, then attacks real constraints and RLS.
-3. **Service boundary:** small explicit academic services remain outside presentation; Teaching Core adds only a minimal owned read boundary. Authorization stays in PostgreSQL.
-4. **Playwright:** mobile + desktop foundation checks plus actual Dexie/IndexedDB Safe Work durability/retry/conflict tests remain cumulative.
+1. **Vitest:** browser config, auth/service behavior, schema compatibility, migration contracts, Safe Work and canonical-domain invariants.
+2. **Real PostgreSQL:** `npm run test:db` applies the full ordered migration chain to disposable PostgreSQL 17 with the Supabase-compatible auth harness, runs inherited attacks, then R3.3 Assessment attacks.
+3. **Service boundary:** explicit Academic, Teaching, and Assessment services remain outside presentation; PostgreSQL remains authorization.
+4. **Playwright:** cumulative mobile/desktop foundation and actual Dexie Safe Work durability/retry/conflict coverage.
 
-## Database test reality
+## Assessment Core database reality
 
-This is not regex evidence. CI creates disposable PostgreSQL, applies R3.0 -> Academic Spine -> Safe Work -> Teaching Core migrations, then executes SQL as authenticated A/B and anon.
+R3.3 tests prove owned ScoringProfile and Assessment creation, Assessment independence from Activity, stable UUID identity, negative scoring, explicit UNCHECKED/MISSING/EXCUSED null-score states, GRADED zero preservation, negative graded score, one current Result per Assessment × Enrollment, ORIGINAL/MAKEUP/REMEDIAL/CORRECTION history, preserved prior attempts, cross-workspace Class/Profile/Activity/Enrollment attacks, owner isolation, anonymous denial, and denial of direct browser Result/Attempt split writes.
 
-Inherited coverage remains: workspace bootstrap, Academic Year/Period/Class/Student/Enrollment integrity, duplicate identity rules, Safe Work Student revision, exactly-once `op_id`, lost ACK, altered-payload rejection, conflict/no-overwrite, applied-operation isolation, and deterministic error classes.
+The canonical Result + optional Attempt path is one PostgreSQL function transaction. Tests exercise the RPC and verify both current Result truth and appended evidence. PostgreSQL transactional semantics prevent a function failure from committing only one half.
 
-Teaching Core coverage adds owned Material/Lesson creation, LessonVersion v1/v2 history and duplicate rejection, lessonless Meeting, valid Lesson+Version Meeting, proof that Meeting does not rewrite LessonVersion, multiple/latest Checkpoints, Activity spanning two Meetings, duplicate-link rejection, every requested cross-workspace FK attack, representative A-vs-B SELECT/INSERT/UPDATE/DELETE RLS attacks, and anonymous denial.
-
-## R3.2 browser durability coverage
-
-Playwright continues to prove actual Dexie durable enqueue ordering, page/application lifecycle persistence, persistence failure, namespace isolation, network retry, stable-op lost ACK replay, auth pause, revision conflict, cleanup after save, and that FAILED/CONFLICT do not auto-retry. Teaching Core does not broaden offline/Safe Work behavior.
+Inherited R3.0–R3.2 and Teaching Core coverage remains cumulative, including LessonVersion append-only history and Safe Work lost-ACK/conflict/error-class behavior.
 
 ## Commands
 
@@ -35,4 +31,4 @@ CI runs the same committed verification against ephemeral PostgreSQL. No product
 
 ## Deferred by design
 
-Assessment/Result/Attempt, scoring/correction, teacher-facing Teaching Core management UX, Today/Continue, reporting, artifacts, backup/restore engine, legacy migration, AI/collaboration, full offline, generic conflict-resolution UI, and later-domain Safe Work mutations remain future authorized work.
+Rapid correction production UI, correction-session resume, Excel assessment import, bulk grade entry, Today/Continue, reporting/finalization, artifacts, backup/restore engine, legacy migration, AI/collaboration, full offline, generic conflict-resolution UI, sophisticated statistics, and Assessment Safe Work integration remain future authorized work.
