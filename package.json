@@ -1,6 +1,6 @@
 {
   "name": "nilai-smp",
-  "version": "3.2.0-safe-work.1",
+  "version": "3.3.0-assessment-core.1",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22 <25" },
@@ -11,7 +11,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:db": "bash tests/database/run-contract-tests.sh",
+    "test:db": "bash tests/database/run-contract-tests.sh && bash tests/database/run-assessment-contract-tests.sh",
     "test:e2e": "playwright test",
     "verify": "npm run typecheck && npm run test && npm run build",
     "deploy": "npm run build && wrangler deploy"
