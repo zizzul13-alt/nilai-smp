@@ -117,11 +117,16 @@ alter table public.activities enable row level security;
 alter table public.activity_meetings enable row level security;
 
 revoke all on public.materials, public.lessons, public.lesson_versions, public.meetings, public.checkpoints, public.activities, public.activity_meetings from anon;
-grant select,insert,update,delete on public.materials, public.lessons, public.lesson_versions, public.meetings, public.checkpoints, public.activities, public.activity_meetings to authenticated;
+grant select,insert,update,delete on public.materials, public.lessons, public.meetings, public.checkpoints, public.activities, public.activity_meetings to authenticated;
+-- LessonVersion is canonical history: browser users may read existing versions and append new ones,
+-- but may not rewrite or delete previously published version identity/content.
+grant select,insert on public.lesson_versions to authenticated;
+revoke update,delete on public.lesson_versions from authenticated;
 
 create policy material_owner_all on public.materials for all to authenticated using (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid())) with check (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
 create policy lesson_owner_all on public.lessons for all to authenticated using (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid())) with check (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
-create policy lesson_version_owner_all on public.lesson_versions for all to authenticated using (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid())) with check (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
+create policy lesson_version_owner_select on public.lesson_versions for select to authenticated using (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
+create policy lesson_version_owner_insert on public.lesson_versions for insert to authenticated with check (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
 create policy meeting_owner_all on public.meetings for all to authenticated using (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid())) with check (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
 create policy checkpoint_owner_all on public.checkpoints for all to authenticated using (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid())) with check (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
 create policy activity_owner_all on public.activities for all to authenticated using (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid())) with check (exists(select 1 from public.workspaces w where w.id=workspace_id and w.owner_user_id=auth.uid()));
