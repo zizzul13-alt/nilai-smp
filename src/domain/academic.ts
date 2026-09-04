@@ -8,6 +8,7 @@ export type ActivityLifecycle = 'planned' | 'active' | 'completed' | 'archived';
 export type AssessmentLifecycle = 'planned' | 'active' | 'archived';
 export type ResultState = 'UNCHECKED' | 'GRADED' | 'MISSING' | 'EXCUSED';
 export type AttemptKind = 'ORIGINAL' | 'MAKEUP' | 'REMEDIAL' | 'CORRECTION';
+export type CorrectionSessionStatus = 'active' | 'completed';
 
 export interface Workspace { id:string; owner_user_id:string; created_at:string; updated_at:string; }
 export interface AcademicYear { id:string; workspace_id:string; identity_key:string; display_name:string; sort_order:number; status:AcademicLifecycle; starts_on:string|null; ends_on:string|null; }
@@ -28,6 +29,8 @@ export interface ActivityMeeting { id:string; workspace_id:string; class_id:stri
 export interface ScoringProfile { id:string; workspace_id:string; name:string; description:string|null; config:Record<string, unknown>; status:TeachingLifecycle; created_at:string; updated_at:string; }
 export interface Assessment { id:string; workspace_id:string; class_id:string; academic_period_id:string; activity_id:string|null; scoring_profile_id:string|null; title:string; description:string|null; instructions:string|null; status:AssessmentLifecycle; created_at:string; updated_at:string; }
 /** scoring_profile_id identifies the ruleset used for the current interpreted outcome. */
-export interface Result { id:string; workspace_id:string; assessment_id:string; enrollment_id:string; class_id:string; scoring_profile_id:string|null; state:ResultState; score:number|null; created_at:string; updated_at:string; }
+export interface Result { id:string; workspace_id:string; assessment_id:string; enrollment_id:string; class_id:string; scoring_profile_id:string|null; state:ResultState; score:number|null; revision:number; created_at:string; updated_at:string; }
 /** scoring_profile_id permanently identifies the immutable ruleset used when this evidence was recorded. */
 export interface Attempt { id:string; workspace_id:string; result_id:string; scoring_profile_id:string|null; attempt_kind:AttemptKind; sequence_no:number; raw_score:number|null; evidence:Record<string, unknown>; recorded_at:string; created_at:string; }
+/** Workflow progress only: never academic evidence. Completion is explicit. */
+export interface CorrectionSession { id:string; workspace_id:string; assessment_id:string; class_id:string; status:CorrectionSessionStatus; current_enrollment_id:string|null; started_at:string; updated_at:string; completed_at:string|null; }
