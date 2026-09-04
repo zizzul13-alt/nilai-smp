@@ -20,7 +20,7 @@ export class SafeWorkSyncWorker {
         await markOperation(this.db, op.op_id, { attempt_count: op.attempt_count + 1, last_attempt_at: new Date().toISOString() });
         const result = await this.apply(op);
         if (result.kind === 'saved') await markSavedAndMinimize(this.db, op.op_id);
-        else if (result.kind === 'conflict') { await markOperation(this.db, op.op_id, { status:'CONFLICT', last_error_code:`REVISION_CONFLICT:${result.revision}` }); blocked.add(key); }
+        else if (result.kind === 'conflict') { await markOperation(this.db, op.op_id, { status:'CONFLICT', last_error_code:'REVISION_CONFLICT' }); blocked.add(key); }
         else if (result.kind === 'retryable') { await markOperation(this.db, op.op_id, { status:'PENDING_SAFE', last_error_code:result.code }); blocked.add(key); }
         else { await markOperation(this.db, op.op_id, { status:'FAILED', last_error_code:result.code }); blocked.add(key); }
       }
