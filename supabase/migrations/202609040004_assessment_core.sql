@@ -17,6 +17,23 @@ create table public.scoring_profiles (
   constraint scoring_profile_workspace_id_unique unique (workspace_id,id)
 );
 
+create or replace function public.reject_scoring_profile_config_rewrite()
+returns trigger
+language plpgsql
+set search_path=pg_catalog,public
+as $$
+begin
+  if new.config is distinct from old.config then
+    raise exception 'scoring profile rules are immutable; create a new profile for new rules' using errcode='P3304';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger scoring_profile_config_immutable
+before update of config on public.scoring_profiles
+for each row execute function public.reject_scoring_profile_config_rewrite();
+
 create table public.assessments (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete restrict,
@@ -48,6 +65,7 @@ create table public.assessment_results (
   assessment_id uuid not null,
   enrollment_id uuid not null,
   class_id uuid not null,
+  scoring_profile_id uuid,
   state text not null default 'UNCHECKED' check (state in ('UNCHECKED','GRADED','MISSING','EXCUSED')),
   score numeric,
   created_at timestamptz not null default now(),
@@ -56,6 +74,8 @@ create table public.assessment_results (
     references public.assessments(workspace_id,id,class_id) on delete restrict,
   constraint assessment_result_enrollment_fk foreign key (workspace_id,enrollment_id,class_id)
     references public.enrollments(workspace_id,id,class_id) on delete restrict,
+  constraint assessment_result_scoring_profile_fk foreign key (workspace_id,scoring_profile_id)
+    references public.scoring_profiles(workspace_id,id) on delete restrict,
   constraint assessment_result_state_score_semantics check (
     (state = 'GRADED' and score is not null) or
     (state in ('UNCHECKED','MISSING','EXCUSED') and score is null)
@@ -68,6 +88,7 @@ create table public.assessment_attempts (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete restrict,
   result_id uuid not null,
+  scoring_profile_id uuid,
   attempt_kind text not null check (attempt_kind in ('ORIGINAL','MAKEUP','REMEDIAL','CORRECTION')),
   sequence_no integer not null check (sequence_no >= 1),
   raw_score numeric,
@@ -76,6 +97,8 @@ create table public.assessment_attempts (
   created_at timestamptz not null default now(),
   constraint assessment_attempt_result_fk foreign key (workspace_id,result_id)
     references public.assessment_results(workspace_id,id) on delete restrict,
+  constraint assessment_attempt_scoring_profile_fk foreign key (workspace_id,scoring_profile_id)
+    references public.scoring_profiles(workspace_id,id) on delete restrict,
   constraint assessment_attempt_sequence_unique unique (workspace_id,result_id,sequence_no),
   constraint assessment_attempt_workspace_id_unique unique (workspace_id,id)
 );
@@ -127,6 +150,7 @@ declare
   caller_id uuid:=auth.uid();
   owned_workspace_id uuid;
   owned_class_id uuid;
+  judgement_scoring_profile_id uuid;
   result_row public.assessment_results;
   new_attempt_id uuid;
   next_sequence integer;
@@ -141,7 +165,7 @@ begin
   select w.id into owned_workspace_id from public.workspaces w where w.owner_user_id=caller_id;
   if owned_workspace_id is null then raise exception 'workspace required' using errcode='P3301'; end if;
 
-  select a.class_id into owned_class_id
+  select a.class_id,a.scoring_profile_id into owned_class_id,judgement_scoring_profile_id
   from public.assessments a
   where a.id=p_assessment_id and a.workspace_id=owned_workspace_id;
   if owned_class_id is null then raise exception 'assessment not found in owned workspace' using errcode='P3302'; end if;
@@ -149,18 +173,18 @@ begin
     raise exception 'enrollment not found in assessment class' using errcode='P3303';
   end if;
 
-  insert into public.assessment_results(workspace_id,assessment_id,enrollment_id,class_id,state,score)
-  values(owned_workspace_id,p_assessment_id,p_enrollment_id,owned_class_id,p_state,p_score)
+  insert into public.assessment_results(workspace_id,assessment_id,enrollment_id,class_id,scoring_profile_id,state,score)
+  values(owned_workspace_id,p_assessment_id,p_enrollment_id,owned_class_id,judgement_scoring_profile_id,p_state,p_score)
   on conflict(workspace_id,assessment_id,enrollment_id) do update
-    set state=excluded.state,score=excluded.score,updated_at=now()
+    set scoring_profile_id=excluded.scoring_profile_id,state=excluded.state,score=excluded.score,updated_at=now()
   returning * into result_row;
 
   if p_attempt_kind is not null then
     perform 1 from public.assessment_results r where r.id=result_row.id for update;
     select coalesce(max(a.sequence_no),0)+1 into next_sequence
     from public.assessment_attempts a where a.workspace_id=owned_workspace_id and a.result_id=result_row.id;
-    insert into public.assessment_attempts(workspace_id,result_id,attempt_kind,sequence_no,raw_score,evidence)
-    values(owned_workspace_id,result_row.id,p_attempt_kind,next_sequence,p_raw_score,p_evidence)
+    insert into public.assessment_attempts(workspace_id,result_id,scoring_profile_id,attempt_kind,sequence_no,raw_score,evidence)
+    values(owned_workspace_id,result_row.id,judgement_scoring_profile_id,p_attempt_kind,next_sequence,p_raw_score,p_evidence)
     returning id into new_attempt_id;
   end if;
 
