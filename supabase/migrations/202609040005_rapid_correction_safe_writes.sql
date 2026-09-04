@@ -81,6 +81,12 @@ begin
     return;
   end if;
 
+  -- Serialize the logical Result key even when no assessment_results row exists yet.
+  -- The transaction-scoped lock is released automatically when this RPC transaction ends.
+  perform pg_advisory_xact_lock(hashtextextended(
+    owned_workspace_id::text||':'||p_assessment_id::text||':'||p_enrollment_id::text,0
+  ));
+
   select r.* into result_row from public.assessment_results r
     where r.workspace_id=owned_workspace_id and r.assessment_id=p_assessment_id and r.enrollment_id=p_enrollment_id for update;
   if found then current_revision:=result_row.revision; else current_revision:=0; end if;
