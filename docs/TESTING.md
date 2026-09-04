@@ -1,17 +1,18 @@
 # Testing Strategy
 
 ## Tiers
-1. **Vitest:** frozen semantic/static architecture contracts.
-2. **Real PostgreSQL:** full ordered migration chain plus RLS, revision, idempotency and transaction attacks.
-3. **Playwright:** real browser IndexedDB durability, restart, namespace and rapid-workflow queue behavior.
+1. **Vitest:** frozen semantic/static architecture contracts plus parser/identity laws.
+2. **Real PostgreSQL:** ordered migration chain plus RLS, revision, idempotency and atomic transaction attacks.
+3. **Playwright:** browser IndexedDB/Rapid Correction behavior and XLSX template round-trip.
 4. **Build/typecheck:** production TypeScript/Vite boundary.
 
 ## Rapid Correction acceptance
-The Golden 40-paper browser scenario queues an arbitrary reversed physical order without Student-page navigation or server round-trip per paper. It includes score 0, negative score, Missing, Excused and an explicit Skip represented by absence of a write; 39 durable operations survive page restart. Duplicate names are legal because selection/write identity is Enrollment, not display name.
+Golden 40 paper coverage retains arbitrary physical order, duplicate names, zero, negative, Missing, Excused, Skip and Pending Safe restart semantics.
 
-Browser failure coverage proves Dexie transaction failure cannot return Pending Safe, Pending Safe survives reload, same-Result causal keys remain ordered, and user/workspace namespaces remain isolated. Worker/static contracts preserve FAILED/CONFLICT manual recovery and independent-Result progress.
+## Golden Bulk acceptance
+The bulk suite builds a 40-Enrollment class with duplicate display names and resolves rows by stable Enrollment identity in arbitrary order. Parser contracts prove blank != zero, numeric 0, negative values, explicit Missing/Excused and malformed values. Browser acceptance generates the Nilai SMP XLSX template and parses it back with exact Enrollment identities; malformed workbook rejection is exercised.
 
-PostgreSQL rapid-correction tests prove atomic Result + optional Attempt + AppliedOperation, same-op lost-ACK replay without duplicate Attempt, zero, negative score, Missing NULL score, stale-revision Conflict without overwrite, op-id payload mismatch, correction-session explicit completion, owner isolation and anonymous denial.
+Real PostgreSQL bulk contracts prove atomic multi-Result commit, graded Attempt creation, zero/negative/Missing semantics, duplicate Enrollment rejection, foreign-workspace rejection, stale-row whole-batch Conflict with canonical snapshot, transaction rollback on a failing row, lost-ACK same-op replay without duplicate Attempts, changed-payload op-id denial, ledger uniqueness and anonymous denial.
 
 ## Commands
 ```bash
@@ -26,4 +27,4 @@ npm run test:e2e
 CI uses ephemeral PostgreSQL; no production database or service-role browser credential is required.
 
 ## Still out of scope
-Excel/paste-grid, reporting/finalization, Today/Continue, artifacts, backup/restore, legacy migration, AI, collaboration, full offline, generic global search and generic enterprise conflict management.
+Reporting/finalization, Today/Continue, artifacts, backup/restore, legacy migration, AI, collaboration, full offline, fuzzy matching, generic spreadsheet engine and generic enterprise conflict management.
