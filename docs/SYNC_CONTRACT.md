@@ -1,31 +1,24 @@
 # Sync Contract
 
-## R3.2 status
-Safe Work core remains implemented for one proof mutation: Student rename. This is **not full offline mode** and R3.3 does not broaden the Dexie queue.
+## R3.3 Rapid Correction status
+Safe Work now supports two narrow operation kinds: the R3.2 Student rename proof and `assessment.judgement`. This remains **not full offline mode**. PostgreSQL is long-term canonical truth; Dexie is a temporary durable recovery buffer.
 
-## Canonical laws
-- Server database remains canonical academic truth.
-- UI State != Local Durable State != Server Canonical State.
-- `PENDING SAFE` must never be claimed before durable IndexedDB commit.
-- `0 != blank`; Missing != 0; workflow state != score.
-- Assessment Result is current interpreted truth; Attempt is preserved raw evidence/history.
+## Truth law
+`TRANSIENT -> successful IndexedDB transaction -> PENDING_SAFE -> server synchronization -> SAVED`.
 
-## Safe Work truth states
-`TRANSIENT -> durable local commit -> PENDING_SAFE -> server -> SAVED`, with FAILED/CONFLICT explicit durable manual-recovery states. Only `PENDING_SAFE` auto-syncs. Namespace isolation, stable op-id replay, deterministic error classification, causal blocking, and Student revision semantics remain unchanged.
+Pending Safe is truthful only after the Dexie transaction commits. A Dexie failure remains transient/error and must never be labelled Pending Safe. `FAILED` and `CONFLICT` are durable manual-recovery states; only `PENDING_SAFE` auto-syncs.
 
-## R3.3 Assessment write boundary
+## Academic operation
+`assessment.judgement` carries stable `op_id`, Assessment + Enrollment identity, explicit Result state/score, optional Attempt evidence, and `expected_revision`. The server RPC `apply_assessment_judgement_operation()` atomically accepts the AppliedOperation, updates/inserts the current Result, and optionally appends Attempt evidence. A lost ACK retried with the same op_id replays the prior success and cannot duplicate Attempt evidence.
 
-Assessment Core is server-canonical first. ScoringProfile/Assessment use ordinary RLS-protected server writes. Result and Attempt tables expose SELECT but no direct authenticated INSERT/UPDATE/DELETE. A narrow `record_assessment_judgement()` SECURITY DEFINER RPC derives ownership from `auth.uid()`, validates Assessment × Enrollment Class consistency, updates/creates the one current Result, and optionally appends Attempt evidence inside one PostgreSQL transaction.
+## Ordering and conflicts
+The local causal key is `assessment_result:<assessment_id>:<enrollment_id>`. An unresolved retryable/FAILED/CONFLICT operation blocks later operations for that Result while independent Results may continue. Result revisions are monotonic. Stale expected revision returns CONFLICT and never overwrites server truth. No Last Write Wins exists.
 
-This prevents application code from intentionally issuing independent `Attempt saved` / `Result failed` browser writes. A PostgreSQL function error rolls back the whole statement/transaction. The RPC is **not** registered as a Safe Work operation, does not use IndexedDB, and must not be labelled Pending Safe. Future rapid-correction durability/idempotency may extend the established architecture only under a separate governed package.
+## Recovery
+FAILED/CONFLICT remain visible near correction with affected Enrollment, local intended state/score and server Result context when available. Retry explicitly returns an operation to Pending Safe. Discard explicitly removes the local intention and leaves canonical server truth untouched.
 
-## Existing Safe Work deterministic classification
-- `PGRST301` / `28000` -> retryable auth
-- `PGRST000` / offline -> retryable network
-- `P3201` workspace integrity -> permanent
-- `P3202` op-id mismatch -> permanent
-- `P3203` target missing/not-owned -> permanent
-- `22023` invalid operation -> permanent
-- revision mismatch -> explicit CONFLICT
+## Namespace/privacy
+Operations are scoped by `auth_user_id + workspace_id`; foreign namespaces are never queried into the active correction workflow. Logout warns when unsynced work exists and does not silently delete it. No auth secret is stored in Dexie.
 
-R3.3 RPC domain errors are server-canonical errors, not Safe Work queue classifications.
+## Deterministic classes
+`PGRST301`/`28000` are retryable auth; `PGRST000`/offline are retryable network; P3202 is permanent op-id mismatch; P3401/P3402/P3403 are permanent workspace/Assessment/Enrollment integrity failures; `22023` is invalid operation; revision mismatch is explicit CONFLICT.
