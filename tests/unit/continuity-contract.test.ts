@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AcademicClass, Checkpoint, Meeting } from '../../src/domain/academic';
-import type { PendingOperation } from '../../src/domain/safeWork';
+import type { PendingOperation, SafeWorkStatus } from '../../src/domain/safeWork';
 import { deriveClassContinuity, type TeachingCoreContext } from '../../src/services/academic/teachingCore';
+import { checkpointSafetyNotice, withCheckpointRefreshFailure } from '../../src/services/safeWork/checkpointSafety';
 import { applySafeWorkOperation } from '../../src/services/safeWork/serverMutation';
 
 const migration=readFileSync('supabase/migrations/202609050001_continuity_core.sql','utf8');
@@ -16,6 +17,10 @@ const classroom:AcademicClass={id:'c1',workspace_id:'w',academic_period_id:'p',i
 function core(meetings:Meeting[]=[],checkpoints:Checkpoint[]=[]):TeachingCoreContext{return{materials:[],lessons:[],lessonVersions:[],meetings,checkpoints,activities:[],activityMeetings:[]};}
 function meeting(id:string,status:Meeting['status'],occurred_at:string):Meeting{return{id,workspace_id:'w',class_id:'c1',lesson_id:null,lesson_version_id:null,occurred_at,status};}
 function checkpoint(id:string,meeting_id:string,sequence_no:number,stopped_at:string,next_step:string|null,recorded_at=`2026-09-05T0${sequence_no}:00:00Z`):Checkpoint{return{id,workspace_id:'w',meeting_id,sequence_no,stopped_at,next_step,recorded_at};}
+function checkpointOperation(status:SafeWorkStatus,lastError:string|null=null):PendingOperation{return{
+  op_id:'op1',auth_user_id:'u',workspace_id:'w',entity_type:'meeting_checkpoint',entity_id:'m1',causal_key:'meeting_checkpoint:m1',operation_kind:'meeting.checkpoint',
+  payload:{meeting_id:'m1',stopped_at:'Halaman 37',next_step:'Nomor 3'},created_at:'2026-09-05T08:00:00Z',attempt_count:1,last_attempt_at:null,status,expected_revision:0,last_error_code:lastError,conflict_snapshot:null,
+};}
 
 describe('R3.4 continuity contracts',()=>{
   it('zero previous meetings offers an empty continuity state',()=>{
@@ -103,13 +108,27 @@ describe('R3.4 continuity contracts',()=>{
     expect(ui).toContain('withMeetingLifecyclePreflight');
   });
 
-  it('UI keeps checkpoint write safety separate from canonical refresh availability',()=>{
-    expect(ui).toContain('Phase 1: durable enqueue');
+  it('UI keeps durable enqueue, persisted sync status, and canonical refresh as separate safety phases',()=>{
+    expect(ui).toContain('Phase 1: durable enqueue only');
     expect(ui).toContain('Phase 2: sync');
     expect(ui).toContain('Phase 3: canonical read-model refresh');
-    expect(ui).toContain('Saved — server mengonfirmasi checkpoint. Latest view belum dapat refresh');
+    expect(ui).toContain('checkpointSafetyNotice(remaining)');
+    expect(ui).toContain('withCheckpointRefreshFailure');
     expect(ui).toContain('Failed — checkpoint belum tersimpan aman di perangkat');
-    expect(ui).toContain("remaining.status==='FAILED'");
+  });
+
+  it('safety mapper reports actual persisted state and never downgrades Saved on refresh failure',()=>{
+    expect(checkpointSafetyNotice(checkpointOperation('PENDING_SAFE','AUTH_REQUIRED'))).toMatchObject({state:'PENDING_SAFE',kind:'info'});
+    expect(checkpointSafetyNotice(checkpointOperation('FAILED','MEETING_NOT_IN_PROGRESS'))).toMatchObject({state:'FAILED',kind:'error'});
+    expect(checkpointSafetyNotice(checkpointOperation('CONFLICT','REVISION_CONFLICT'))).toMatchObject({state:'CONFLICT',kind:'error'});
+    const saved=checkpointSafetyNotice(undefined);
+    expect(saved).toMatchObject({state:'SAVED',kind:'info'});
+    expect(saved.text).toMatch(/^Saved/);
+    const refreshFailed=withCheckpointRefreshFailure(saved,new Error('read model unavailable'));
+    expect(refreshFailed.state).toBe('SAVED');
+    expect(refreshFailed.kind).toBe('info');
+    expect(refreshFailed.text).toMatch(/^Saved/);
+    expect(refreshFailed.text).toContain('Latest view could not refresh');
   });
 
   it('explicit lifecycle remains explicit and cross-tab coordination is advisory, not the safety decision',()=>{
