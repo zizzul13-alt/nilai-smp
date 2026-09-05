@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { StatusPanel } from '../components/StatusPanel';
+import { TeachingContinuity } from '../components/TeachingContinuity';
 import { RapidCorrection } from '../components/RapidCorrection';
 import { BulkAssessment } from '../components/BulkAssessment';
 import { AssessmentManager } from '../components/AssessmentManager';
@@ -53,7 +54,8 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
   const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [logoutError, setLogoutError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'assessments' | 'rapid' | 'bulk'>('assessments');
+  const [mode, setMode] = useState<'continuity'|'assessments'|'rapid'|'bulk'>('continuity');
+  const worker = useMemo(()=>new SafeWorkSyncWorker(safeWorkDb,client),[client]);
 
   useEffect(() => {
     let active = true;
@@ -67,7 +69,6 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
     if (schema?.status !== 'compatible') return;
     let disposed = false;
     let removeReconnect: (() => void) | undefined;
-    const worker = new SafeWorkSyncWorker(safeWorkDb, client);
     void bootstrapOwnedWorkspace(client).then(workspace => {
       if (disposed) return;
       setWorkspaceId(workspace.id);
@@ -79,7 +80,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
       disposed = true;
       removeReconnect?.();
     };
-  }, [client, schema, userId]);
+  }, [client, schema, userId, worker]);
 
   async function logout() {
     if (await hasUnsyncedForUser(safeWorkDb, userId)) {
@@ -97,6 +98,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
       <div className="topbar">
         <span>{email}</span>
         <div>
+          <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => setMode('continuity')}>Teaching</button>{' '}
           <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>{' '}
           <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => setMode('rapid')}>Rapid Correction</button>{' '}
           <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>{' '}
@@ -104,6 +106,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
         </div>
       </div>
       {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
+      {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
       {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
       {mode === 'rapid' ? <RapidCorrection client={client} userId={userId} workspaceId={workspaceId} /> : null}
       {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
