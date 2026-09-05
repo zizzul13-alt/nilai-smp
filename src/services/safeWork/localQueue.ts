@@ -7,6 +7,7 @@ import type {
   StudentRenamePayload,
 } from '../../domain/safeWork';
 import type { AttemptKind, ResultState } from '../../domain/academic';
+import { publishSafeWorkChange } from './coordination';
 
 export class SafeWorkDb extends Dexie {
   operations!:EntityTable<PendingOperation,'op_id'>;
@@ -23,6 +24,8 @@ export class SafeWorkDb extends Dexie {
 
 export const safeWorkDb=new SafeWorkDb();
 
+function signal(op:PendingOperation|undefined){if(op)publishSafeWorkChange(op);}
+
 export type EnqueueStudentRename={authUserId:string;workspaceId:string;studentId:string;displayName:string;expectedRevision:number;opId?:string};
 export async function enqueueStudentRename(db:SafeWorkDb,input:EnqueueStudentRename):Promise<PendingOperation>{
   const displayName=input.displayName.trim();
@@ -30,6 +33,7 @@ export async function enqueueStudentRename(db:SafeWorkDb,input:EnqueueStudentRen
   const payload:StudentRenamePayload={display_name:displayName};
   const operation:PendingOperation={op_id:input.opId??crypto.randomUUID(),auth_user_id:input.authUserId,workspace_id:input.workspaceId,entity_type:'student',entity_id:input.studentId,causal_key:`student:${input.studentId}`,operation_kind:'student.rename',payload,created_at:new Date().toISOString(),attempt_count:0,last_attempt_at:null,status:'PENDING_SAFE',expected_revision:input.expectedRevision,last_error_code:null,conflict_snapshot:null};
   await db.transaction('rw',db.operations,async()=>{await db.operations.add(operation);});
+  signal(operation);
   return operation;
 }
 
@@ -40,6 +44,7 @@ export async function enqueueAssessmentJudgement(db:SafeWorkDb,input:EnqueueAsse
   const payload:AssessmentJudgementPayload={assessment_id:input.assessmentId,enrollment_id:input.enrollmentId,state:input.state,score:input.score,attempt_kind:input.attemptKind,raw_score:input.rawScore,evidence:input.evidence??{}};
   const operation:PendingOperation={op_id:input.opId??crypto.randomUUID(),auth_user_id:input.authUserId,workspace_id:input.workspaceId,entity_type:'assessment_result',entity_id:input.enrollmentId,causal_key:`assessment_result:${input.assessmentId}:${input.enrollmentId}`,operation_kind:'assessment.judgement',payload,created_at:new Date().toISOString(),attempt_count:0,last_attempt_at:null,status:'PENDING_SAFE',expected_revision:input.expectedRevision,last_error_code:null,conflict_snapshot:null};
   await db.transaction('rw',db.operations,async()=>{await db.operations.add(operation);});
+  signal(operation);
   return operation;
 }
 
@@ -57,6 +62,7 @@ export async function enqueueMeetingCheckpoint(db:SafeWorkDb,input:EnqueueMeetin
   };
   // PENDING_SAFE is returned only after the durable IndexedDB transaction commits.
   await db.transaction('rw',db.operations,async()=>{await db.operations.add(operation);});
+  signal(operation);
   return operation;
 }
 
@@ -68,10 +74,10 @@ export async function pendingMeetingCheckpoints(db:SafeWorkDb,authUserId:string,
 }
 export async function hasUnsyncedWork(db:SafeWorkDb,authUserId:string,workspaceId:string){return(await pendingForNamespace(db,authUserId,workspaceId)).length>0;}
 export async function hasUnsyncedForUser(db:SafeWorkDb,authUserId:string){return(await db.operations.where('auth_user_id').equals(authUserId).count())>0;}
-export async function markSavedAndMinimize(db:SafeWorkDb,opId:string){await db.operations.delete(opId);}
-export async function markOperation(db:SafeWorkDb,opId:string,patch:Partial<PendingOperation>){await db.operations.update(opId,patch);}
-export async function retryOperation(db:SafeWorkDb,opId:string){await db.operations.update(opId,{status:'PENDING_SAFE',last_error_code:null,conflict_snapshot:null});}
-export async function discardOperation(db:SafeWorkDb,opId:string){await db.operations.delete(opId);}
+export async function markSavedAndMinimize(db:SafeWorkDb,opId:string){const op=await db.operations.get(opId);await db.operations.delete(opId);signal(op);}
+export async function markOperation(db:SafeWorkDb,opId:string,patch:Partial<PendingOperation>){await db.operations.update(opId,patch);signal(await db.operations.get(opId));}
+export async function retryOperation(db:SafeWorkDb,opId:string){await db.operations.update(opId,{status:'PENDING_SAFE',last_error_code:null,conflict_snapshot:null});signal(await db.operations.get(opId));}
+export async function discardOperation(db:SafeWorkDb,opId:string){const op=await db.operations.get(opId);await db.operations.delete(opId);signal(op);}
 
 async function sameCausalRows(db:SafeWorkDb,op:PendingOperation){return db.operations.where('[auth_user_id+workspace_id+causal_key]').equals([op.auth_user_id,op.workspace_id,op.causal_key]).sortBy('created_at');}
 async function rebaseRows(db:SafeWorkDb,rows:PendingOperation[],baseRevision:number){let revision=baseRevision;for(const row of rows){await db.operations.update(row.op_id,{expected_revision:revision,status:'PENDING_SAFE',last_error_code:null,conflict_snapshot:null});revision++;}}
