@@ -7,6 +7,7 @@ expect_fail(){ local label="$1" sql="$2"; if "${PSQL[@]}" -qc "$sql" >/tmp/nilai
 expect_sqlstate(){ local label="$1" sql="$2" expected="$3" actual; actual="$(run "do \$\$ begin begin $sql; exception when others then raise notice 'CONTINUITY_SQLSTATE:%', sqlstate; end; end \$\$;" 2>&1 | sed -n 's/.*CONTINUITY_SQLSTATE://p' | tail -1)"; [[ "$actual" == "$expected" ]]||fail "$label (expected SQLSTATE '$expected', got '$actual')";pass "$label";}
 
 "${PSQL[@]}" -f supabase/migrations/202609050001_continuity_core.sql >/dev/null
+"${PSQL[@]}" -f supabase/migrations/202609050002_continuity_lifecycle_guard.sql >/dev/null
 A="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000a\",\"role\":\"authenticated\"}';"
 B="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000b\",\"role\":\"authenticated\"}';"
 ANON="set role anon;set request.jwt.claims='{\"role\":\"anon\"}';"
@@ -32,6 +33,7 @@ expect_value 'checkpoint retry created exactly one row' "$A select count(*) from
 expect_value 'second checkpoint gets deterministic next sequence' "$A select sequence_no from public.apply_meeting_checkpoint_operation('$CP2','$M1','Halaman 39','Latihan 4');" '2'
 expect_value 'latest sequence is deterministic' "$A select sequence_no||':'||stopped_at from public.checkpoints where meeting_id='$M1' order by sequence_no desc limit 1;" '2:Halaman 39'
 expect_sqlstate 'blank stopped_at rejected' "$A perform * from public.apply_meeting_checkpoint_operation('92000000-0000-0000-0000-000000000099','$M1','   ',null)" '22023'
+expect_sqlstate 'null lifecycle status rejected fail closed' "$A perform * from public.set_teaching_meeting_status_operation('93000000-0000-0000-0000-000000000099','$M1',null)" '22023'
 expect_value 'browser disappearance has no implicit completion effect' "$A select status from public.meetings where id='$M1';" 'in_progress'
 
 expect_value 'explicit Complete Meeting changes lifecycle' "$A select outcome||':'||meeting_status||':'||replayed from public.set_teaching_meeting_status_operation('$FINISH1','$M1','completed');" 'saved:completed:false'
