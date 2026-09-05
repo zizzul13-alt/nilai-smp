@@ -24,6 +24,9 @@ export type ClassContinuity = {
   classroom: AcademicClass;
   state: 'active'|'history'|'empty';
   activeMeeting: Meeting|null;
+  latestActualMeeting: Meeting|null;
+  latestMeaningfulCheckpoint: Checkpoint|null;
+  /** Compatibility aliases for existing R3.4 UI/tests; semantics now follow the explicit fields above. */
   latestMeeting: Meeting|null;
   latestCheckpoint: Checkpoint|null;
   lesson: Lesson|null;
@@ -60,23 +63,46 @@ function byOccurrenceDesc(a:Meeting,b:Meeting){
   const time=b.occurred_at.localeCompare(a.occurred_at);
   return time!==0?time:b.id.localeCompare(a.id);
 }
-function latestCheckpointFor(meetingId:string,checkpoints:Checkpoint[]){
+function checkpointsForMeetingDesc(meetingId:string,checkpoints:Checkpoint[]){
   return checkpoints.filter(c=>c.meeting_id===meetingId).sort((a,b)=>{
     if(b.sequence_no!==a.sequence_no)return b.sequence_no-a.sequence_no;
     const time=b.recorded_at.localeCompare(a.recorded_at);
     return time!==0?time:b.id.localeCompare(a.id);
-  })[0]??null;
+  });
+}
+function latestCheckpointFor(meetingId:string,checkpoints:Checkpoint[]){
+  return checkpointsForMeetingDesc(meetingId,checkpoints)[0]??null;
+}
+function latestMeaningfulCheckpoint(actual:Meeting[],activeMeeting:Meeting|null,checkpoints:Checkpoint[]){
+  const activeCheckpoint=activeMeeting?latestCheckpointFor(activeMeeting.id,checkpoints):null;
+  if(activeCheckpoint)return activeCheckpoint;
+  for(const meeting of actual){
+    const checkpoint=latestCheckpointFor(meeting.id,checkpoints);
+    if(checkpoint)return checkpoint;
+  }
+  return null;
 }
 
 export function deriveClassContinuity(classes:AcademicClass[],core:TeachingCoreContext):ClassContinuity[]{
   return classes.map(classroom=>{
     const actual=core.meetings.filter(m=>m.class_id===classroom.id&&!['planned','archived'].includes(m.status)).sort(byOccurrenceDesc);
     const activeMeeting=actual.find(m=>m.status==='in_progress')??null;
-    const latestMeeting=activeMeeting??actual[0]??null;
-    const latestCheckpoint=latestMeeting?latestCheckpointFor(latestMeeting.id,core.checkpoints):null;
-    const lesson=latestMeeting?.lesson_id?core.lessons.find(l=>l.id===latestMeeting.lesson_id)??null:null;
-    const lessonVersion=latestMeeting?.lesson_version_id?core.lessonVersions.find(v=>v.id===latestMeeting.lesson_version_id)??null:null;
-    return{classroom,state:activeMeeting?'active':latestMeeting?'history':'empty',activeMeeting,latestMeeting,latestCheckpoint,lesson,lessonVersion};
+    const latestActualMeeting=actual[0]??null;
+    const meaningfulCheckpoint=latestMeaningfulCheckpoint(actual,activeMeeting,core.checkpoints);
+    const contextMeeting=activeMeeting??latestActualMeeting;
+    const lesson=contextMeeting?.lesson_id?core.lessons.find(l=>l.id===contextMeeting.lesson_id)??null:null;
+    const lessonVersion=contextMeeting?.lesson_version_id?core.lessonVersions.find(v=>v.id===contextMeeting.lesson_version_id)??null:null;
+    return{
+      classroom,
+      state:activeMeeting?'active':latestActualMeeting?'history':'empty',
+      activeMeeting,
+      latestActualMeeting,
+      latestMeaningfulCheckpoint:meaningfulCheckpoint,
+      latestMeeting:latestActualMeeting,
+      latestCheckpoint:meaningfulCheckpoint,
+      lesson,
+      lessonVersion,
+    };
   });
 }
 
