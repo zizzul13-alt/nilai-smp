@@ -31,8 +31,11 @@ Apply every source-controlled migration strictly in filename order:
 202609050001_continuity_core.sql
 202609050002_continuity_lifecycle_guard.sql
 202609050003_continuity_write_boundary.sql
+202609060001_today_reentry.sql
 ```
 
-The final migration-owned `app_schema_version` and `src/config/schema.ts` must agree on `r3.4-continuity-core.1` before deploying the matching frontend. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
+The final migration-owned `app_schema_version` and `src/config/schema.ts` must agree on `r3.4-today-reentry.1` before deploying the matching frontend. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
+
+Today uses bounded ownership-derived PostgreSQL RPC reads plus local IndexedDB Safe Work summary; it does not download Teaching Core history. Re-entry baselines are append-only facts and do not rewrite Meeting/Checkpoint history.
 
 Safe Work requires IndexedDB for durable Pending Safe operations, including Rapid Correction and Teaching Continuity meeting checkpoints. Bulk Import additionally requires normal browser File/Blob, DOMParser and DecompressionStream support for bounded XLSX parsing, and live server connectivity at Commit. No spreadsheet/server secret is embedded in generated templates.
