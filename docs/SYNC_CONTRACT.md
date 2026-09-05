@@ -28,6 +28,8 @@ Rapid Correction continues the R3.2 truth law: `TRANSIENT -> durable IndexedDB t
 
 Rapid Correction is workflow identity only; it does not imply `CORRECTION`, `ORIGINAL`, `MAKEUP`, or `REMEDIAL` Attempt evidence. When no academic evidence kind is explicitly supplied, Rapid Correction queues `attempt_kind=NULL`, `raw_score=NULL`, and no Attempt evidence payload. The canonical Result may still be GRADED (including 0 or a negative score), MISSING, or EXCUSED. The server creates an `assessment_attempts` row only when an explicit AttemptKind is supplied.
 
+Legacy durable Rapid Correction operations are normalized during the append-only Dexie v3 upgrade only when the old fabricated fingerprint (`assessment.judgement` + `attempt_kind=CORRECTION` + `evidence.source=rapid-correction`) is still `PENDING_SAFE` with `attempt_count=0`. Only the academic evidence fields are cleared; the same op_id, causal identity, revision expectation and durability metadata are preserved. A matching `PENDING_SAFE` row that has already been attempted is quarantined as `FAILED / LEGACY_ATTEMPT_KIND_UNCERTAIN` with its original payload and op_id unchanged, because the server may already have committed that exact payload. Existing FAILED/CONFLICT legacy rows are not guessed or rewritten. Generic Retry and local-as-new conflict recovery fail closed for uncertain legacy fabricated payloads; discard/use-server remain explicit safe exits.
+
 ## Bulk Entry / Excel Import
 Bulk Import has deliberately stronger and simpler semantics and does **not** use the Safe Work queue:
 
