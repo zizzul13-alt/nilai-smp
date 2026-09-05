@@ -1,21 +1,21 @@
-import{expect,test}from'@playwright/test';
+import{expect,test,type Page}from'@playwright/test';
 const harness='/tests/e2e/fixtures/today-ui-harness.tsx';
-async function mount(page:any,name:string,options:Record<string,unknown>={}){await page.goto('/');await page.evaluate(async({h,name,options})=>{const mod=await import(h);await mod.mountTodayHarness(name,options);},{h:harness,name,options});}
-async function snapshot(page:any){return page.evaluate(async h=>(await import(h)).todayHarnessSnapshot(),harness);}
+async function mount(page:Page,name:string,options:Record<string,unknown>={}){await page.goto('/');await page.evaluate(async({h,name,options}:{h:string;name:string;options:Record<string,unknown>})=>{const mod=await import(h);await mod.mountTodayHarness(name,options);},{h:harness,name,options});}
+async function snapshot(page:Page){return page.evaluate(async(h:string)=>(await import(h)).todayHarnessSnapshot(),harness);}
 
 test('Today dispatches active Meeting directly to the correct Teaching class',async({page})=>{
   await mount(page,'active');
   await expect(page.getByRole('heading',{name:'Apa yang penting sekarang?'})).toBeVisible();
   await expect(page.getByText('VIII A · Meeting aktif')).toBeVisible();
-  await expect(page.getByText('Halaman 37')).toBeVisible();
-  await expect(page.getByText('Nomor 3')).toBeVisible();
+  await expect(page.getByText('Halaman 37').first()).toBeVisible();
+  await expect(page.getByText('Nomor 3').first()).toBeVisible();
   const primary=page.getByRole('button',{name:'CONTINUE CLASS'});await expect(primary).toBeVisible();await primary.click();
   expect((await snapshot(page)).nav).toEqual([{surface:'continuity',id:'C1'}]);
 });
 
 test('Today resumes active correction at the exact Assessment without inferring evidence',async({page})=>{
   await mount(page,'correction');
-  await expect(page.getByText('Kuis Gerak')).toBeVisible();
+  await expect(page.getByText('Kuis Gerak').first()).toBeVisible();
   const resume=page.getByRole('button',{name:'RESUME CORRECTION'});await expect(resume).toBeVisible();await resume.click();
   expect((await snapshot(page)).nav).toEqual([{surface:'rapid',id:'A1'}]);
 });
@@ -50,7 +50,7 @@ test('Before Leaving truthfully surfaces Pending Safe and disappears when clean'
   await expect(page.getByRole('heading',{name:'BEFORE LEAVING'})).toBeVisible();
   await expect(page.getByText(/1 Pending Safe/)).toBeVisible();
   await expect(page.getByText(/Saved/)).toHaveCount(0);
-  await page.evaluate(async({h,name})=>{const mod=await import(h);await mod.remountTodayWithoutPending(name);},{h:harness,name:'active'});
+  await page.evaluate(async({h,name}:{h:string;name:string})=>{const mod=await import(h);await mod.remountTodayWithoutPending(name);},{h:harness,name:'active'});
   await expect(page.getByText(/Pending Safe/)).toHaveCount(0);
   await expect(page.getByText('Tidak ada hal yang perlu diamankan atau ditutup sekarang.')).toBeVisible();
 });
