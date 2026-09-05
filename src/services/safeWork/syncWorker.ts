@@ -31,21 +31,22 @@ export class SafeWorkSyncWorker {
   }
 
   private async runNamespace(authUserId: string, workspaceId: string, state: NamespaceRunState): Promise<void> {
-    // An operation is attempted at most once per overall sync request. A retryable
-    // transport/auth result therefore waits for a future external trigger instead
-    // of spinning because another wakeup was coalesced during this run.
-    const attemptedThisRun = new Set<string>();
+    // Only retryable transport/auth failures are deferred for the remainder of this
+    // overall run. FAILED/CONFLICT rows are blocked by their durable status, while an
+    // explicit recovery that changes FAILED back to PENDING_SAFE may join a coalesced
+    // rerun immediately without waiting for reload/reconnect.
+    const deferredRetryableThisRun = new Set<string>();
 
     while (true) {
       state.rerunRequested = false;
-      await this.drainPass(authUserId, workspaceId, attemptedThisRun);
+      await this.drainPass(authUserId, workspaceId, deferredRetryableThisRun);
 
-      const eligibleWorkRemains = await this.hasEligibleUnattemptedWork(authUserId, workspaceId, attemptedThisRun);
+      const eligibleWorkRemains = await this.hasEligibleWork(authUserId, workspaceId, deferredRetryableThisRun);
       if (!eligibleWorkRemains && !state.rerunRequested) return;
     }
   }
 
-  private async drainPass(authUserId: string, workspaceId: string, attemptedThisRun: Set<string>): Promise<void> {
+  private async drainPass(authUserId: string, workspaceId: string, deferredRetryableThisRun: Set<string>): Promise<void> {
     const operations = (await pendingForNamespace(this.db, authUserId, workspaceId))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
     const blocked = new Set<string>();
@@ -60,14 +61,14 @@ export class SafeWorkSyncWorker {
       }
       if (op.status !== 'PENDING_SAFE' || blocked.has(key)) continue;
 
-      // A retryable operation already attempted during this overall run remains
-      // the causal predecessor and must not be retried or leapfrogged immediately.
-      if (attemptedThisRun.has(op.op_id)) {
+      // A retryable predecessor remains the causal blocker for this overall run.
+      // It can be retried by a later independent sync trigger, but not by a wakeup
+      // that was coalesced into the same run.
+      if (deferredRetryableThisRun.has(op.op_id)) {
         blocked.add(key);
         continue;
       }
 
-      attemptedThisRun.add(op.op_id);
       await markOperation(this.db, op.op_id, {
         attempt_count: op.attempt_count + 1,
         last_attempt_at: new Date().toISOString(),
@@ -91,6 +92,7 @@ export class SafeWorkSyncWorker {
         blocked.add(key);
       } else if (result.kind === 'retryable') {
         await markOperation(this.db, op.op_id, { status: 'PENDING_SAFE', last_error_code: result.code });
+        deferredRetryableThisRun.add(op.op_id);
         blocked.add(key);
       } else {
         await markOperation(this.db, op.op_id, { status: 'FAILED', last_error_code: result.code });
@@ -99,10 +101,10 @@ export class SafeWorkSyncWorker {
     }
   }
 
-  private async hasEligibleUnattemptedWork(
+  private async hasEligibleWork(
     authUserId: string,
     workspaceId: string,
-    attemptedThisRun: Set<string>,
+    deferredRetryableThisRun: Set<string>,
   ): Promise<boolean> {
     const operations = (await pendingForNamespace(this.db, authUserId, workspaceId))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
@@ -117,7 +119,7 @@ export class SafeWorkSyncWorker {
         continue;
       }
       if (op.status !== 'PENDING_SAFE' || blocked.has(key)) continue;
-      if (attemptedThisRun.has(op.op_id)) {
+      if (deferredRetryableThisRun.has(op.op_id)) {
         blocked.add(key);
         continue;
       }
