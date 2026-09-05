@@ -55,6 +55,24 @@ test('unknown network failure keeps the same checkpoint op_id for retry and only
   expect(result.afterSaved).toBe(false);
 });
 
+test('auth expiry keeps checkpoint durable and retryable instead of claiming Saved',async({page})=>{
+  await page.goto('/');
+  const result=await page.evaluate(async(paths)=>{
+    const local=await import(paths.queue);
+    const sync=await import(paths.worker);
+    const db=new local.SafeWorkDb('r34-continuity-auth-proof');
+    const client={rpc:async()=>({data:null,error:{code:'28000',message:'authentication required'}})};
+    const op=await local.enqueueMeetingCheckpoint(db,{authUserId:'A',workspaceId:'WA',meetingId:'M1',stoppedAt:'Halaman 41',nextStep:'Latihan 5',opId:'a1000000-0000-0000-0000-000000000003'});
+    const worker=new sync.SafeWorkSyncWorker(db,client);
+    await worker.syncNamespace('A','WA');
+    const pending=await db.operations.get(op.op_id);
+    db.close();
+    return{status:pending?.status,error:pending?.last_error_code,payload:pending?.payload};
+  },{queue:queuePath,worker:workerPath});
+
+  expect(result).toMatchObject({status:'PENDING_SAFE',error:'AUTH_REQUIRED',payload:{meeting_id:'M1',stopped_at:'Halaman 41',next_step:'Latihan 5'}});
+});
+
 test('fresh UI derivation restores active Meeting and latest checkpoint from canonical truth',async({page})=>{
   const derive=async()=>page.evaluate(async(path)=>{
     const mod=await import(path);
