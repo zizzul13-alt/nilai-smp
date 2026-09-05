@@ -9,6 +9,16 @@ import type {
 import type { AttemptKind, ResultState } from '../../domain/academic';
 import { publishSafeWorkChange } from './coordination';
 
+export const LEGACY_ATTEMPT_KIND_UNCERTAIN='LEGACY_ATTEMPT_KIND_UNCERTAIN';
+export const LEGACY_ATTEMPT_KIND_UNCERTAIN_MESSAGE='Legacy Rapid Correction attempt evidence is uncertain; generic retry is blocked. Discard local work or recover the academic evidence explicitly.';
+
+function isLegacyRapidFabricatedAttempt(op:any){
+  const payload=op?.payload as Partial<AssessmentJudgementPayload>|undefined;
+  const evidence=payload?.evidence as Record<string,unknown>|undefined;
+  return op?.operation_kind==='assessment.judgement'&&payload?.attempt_kind==='CORRECTION'&&evidence?.source==='rapid-correction';
+}
+function isLegacyRapidUncertain(op:any){return isLegacyRapidFabricatedAttempt(op)&&!(op?.status==='PENDING_SAFE'&&op?.attempt_count===0);}
+
 export class SafeWorkDb extends Dexie {
   operations!:EntityTable<PendingOperation,'op_id'>;
   constructor(name='nilai-smp-safe-work') {
@@ -17,6 +27,22 @@ export class SafeWorkDb extends Dexie {
     this.version(2).stores({operations:'&op_id, auth_user_id, [auth_user_id+workspace_id], [auth_user_id+workspace_id+status], [auth_user_id+workspace_id+causal_key], created_at'}).upgrade(async tx=>{
       await tx.table('operations').toCollection().modify(op=>{
         if(!op.causal_key)op.causal_key=`${op.entity_type}:${op.entity_id}`;
+      });
+    });
+    this.version(3).stores({operations:'&op_id, auth_user_id, [auth_user_id+workspace_id], [auth_user_id+workspace_id+status], [auth_user_id+workspace_id+causal_key], created_at'}).upgrade(async tx=>{
+      await tx.table('operations').toCollection().modify(op=>{
+        if(!isLegacyRapidFabricatedAttempt(op))return;
+        if(op.status==='PENDING_SAFE'&&op.attempt_count===0){
+          op.payload={...op.payload,attempt_kind:null,raw_score:null,evidence:{}};
+          return;
+        }
+        // A PENDING_SAFE row that was already attempted may have reached the server.
+        // Preserve its original payload/op_id and quarantine it rather than violating lost-ACK replay semantics.
+        if(op.status==='PENDING_SAFE'){
+          op.status='FAILED';
+          op.last_error_code=LEGACY_ATTEMPT_KIND_UNCERTAIN;
+        }
+        // Existing FAILED/CONFLICT legacy rows are left untouched. Their fingerprint is guarded from generic replay below.
       });
     });
   }
@@ -76,10 +102,10 @@ export async function hasUnsyncedWork(db:SafeWorkDb,authUserId:string,workspaceI
 export async function hasUnsyncedForUser(db:SafeWorkDb,authUserId:string){return(await db.operations.where('auth_user_id').equals(authUserId).count())>0;}
 export async function markSavedAndMinimize(db:SafeWorkDb,opId:string){const op=await db.operations.get(opId);await db.operations.delete(opId);signal(op);}
 export async function markOperation(db:SafeWorkDb,opId:string,patch:Partial<PendingOperation>){await db.operations.update(opId,patch);signal(await db.operations.get(opId));}
-export async function retryOperation(db:SafeWorkDb,opId:string){await db.operations.update(opId,{status:'PENDING_SAFE',last_error_code:null,conflict_snapshot:null});signal(await db.operations.get(opId));}
+export async function retryOperation(db:SafeWorkDb,opId:string){const op=await db.operations.get(opId);if(!op)throw new Error('Safe Work operation not found.');if(op.last_error_code===LEGACY_ATTEMPT_KIND_UNCERTAIN||isLegacyRapidUncertain(op))throw new Error(LEGACY_ATTEMPT_KIND_UNCERTAIN_MESSAGE);await db.operations.update(opId,{status:'PENDING_SAFE',last_error_code:null,conflict_snapshot:null});signal(await db.operations.get(opId));}
 export async function discardOperation(db:SafeWorkDb,opId:string){const op=await db.operations.get(opId);await db.operations.delete(opId);signal(op);}
 
 async function sameCausalRows(db:SafeWorkDb,op:PendingOperation){return db.operations.where('[auth_user_id+workspace_id+causal_key]').equals([op.auth_user_id,op.workspace_id,op.causal_key]).sortBy('created_at');}
-async function rebaseRows(db:SafeWorkDb,rows:PendingOperation[],baseRevision:number){let revision=baseRevision;for(const row of rows){await db.operations.update(row.op_id,{expected_revision:revision,status:'PENDING_SAFE',last_error_code:null,conflict_snapshot:null});revision++;}}
+async function rebaseRows(db:SafeWorkDb,rows:PendingOperation[],baseRevision:number){let revision=baseRevision;for(const row of rows){if(row.last_error_code===LEGACY_ATTEMPT_KIND_UNCERTAIN||isLegacyRapidUncertain(row))continue;await db.operations.update(row.op_id,{expected_revision:revision,status:'PENDING_SAFE',last_error_code:null,conflict_snapshot:null});revision++;}}
 export async function useServerForConflict(db:SafeWorkDb,opId:string){await db.transaction('rw',db.operations,async()=>{const op=await db.operations.get(opId);if(!op||op.status!=='CONFLICT'||!op.conflict_snapshot)throw new Error('Conflict snapshot is unavailable.');const rows=(await sameCausalRows(db,op)).filter(x=>x.op_id!==op.op_id);await db.operations.delete(opId);await rebaseRows(db,rows,op.conflict_snapshot.canonical_revision);});}
-export async function applyLocalAsNewJudgement(db:SafeWorkDb,opId:string):Promise<PendingOperation>{let replacement!:PendingOperation;await db.transaction('rw',db.operations,async()=>{const op=await db.operations.get(opId);if(!op||op.status!=='CONFLICT'||op.operation_kind!=='assessment.judgement'||!op.conflict_snapshot)throw new Error('Assessment conflict snapshot is unavailable.');const snapshot:AssessmentConflictSnapshot=op.conflict_snapshot,successors=(await sameCausalRows(db,op)).filter(x=>x.op_id!==op.op_id);replacement={...op,op_id:crypto.randomUUID(),created_at:op.created_at,attempt_count:0,last_attempt_at:null,status:'PENDING_SAFE',expected_revision:snapshot.canonical_revision,last_error_code:null,conflict_snapshot:null};await db.operations.delete(opId);await db.operations.add(replacement);await rebaseRows(db,successors,snapshot.canonical_revision+1);});return replacement;}
+export async function applyLocalAsNewJudgement(db:SafeWorkDb,opId:string):Promise<PendingOperation>{let replacement!:PendingOperation;await db.transaction('rw',db.operations,async()=>{const op=await db.operations.get(opId);if(!op||op.status!=='CONFLICT'||op.operation_kind!=='assessment.judgement'||!op.conflict_snapshot)throw new Error('Assessment conflict snapshot is unavailable.');if(op.last_error_code===LEGACY_ATTEMPT_KIND_UNCERTAIN||isLegacyRapidUncertain(op))throw new Error(LEGACY_ATTEMPT_KIND_UNCERTAIN_MESSAGE);const snapshot:AssessmentConflictSnapshot=op.conflict_snapshot,successors=(await sameCausalRows(db,op)).filter(x=>x.op_id!==op.op_id);replacement={...op,op_id:crypto.randomUUID(),created_at:op.created_at,attempt_count:0,last_attempt_at:null,status:'PENDING_SAFE',expected_revision:snapshot.canonical_revision,last_error_code:null,conflict_snapshot:null};await db.operations.delete(opId);await db.operations.add(replacement);await rebaseRows(db,successors,snapshot.canonical_revision+1);});return replacement;}
