@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { WorkspaceBootstrapGate } from '../../../src/components/WorkspaceBootstrapGate';
@@ -30,20 +31,29 @@ function installReconnect(_worker:SafeWorkSyncWorker,namespace:()=>{authUserId:s
   return()=>{cleanupCalls++;};
 }
 
-function renderHarness(){
-  if(!root)return;
-  root.render(
+function BootstrapHarness(){
+  const[logoutError,setLogoutError]=useState<string|null>(null);
+  return(
     <WorkspaceBootstrapGate
       client={fakeClient}
       userId="USER-A"
       worker={worker}
       bootstrap={bootstrap as any}
       installReconnect={installReconnect}
-      onLogout={()=>{logoutCalls++;}}
+      logoutError={logoutError}
+      onLogout={()=>{
+        logoutCalls++;
+        setLogoutError('synthetic sign-out failure');
+      }}
     >
       {workspaceId=><div data-testid="teacher-workspace">Teacher workspace {workspaceId}</div>}
-    </WorkspaceBootstrapGate>,
+    </WorkspaceBootstrapGate>
   );
+}
+
+function renderHarness(){
+  if(!root)return;
+  root.render(<BootstrapHarness/>);
 }
 
 export function mountBootstrapUiHarness(){
