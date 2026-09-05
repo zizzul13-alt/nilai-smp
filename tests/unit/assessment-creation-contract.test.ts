@@ -55,11 +55,12 @@ describe('R3.3 assessment usability closure', () => {
     expect(writes).toBe(0);
   });
 
-  it('exposes Assessment creation before correction/bulk workflows without adding new schema semantics', () => {
+  it('exposes Assessment creation alongside continuity/correction/bulk workflows without adding new assessment schema semantics', () => {
     expect(ui).toContain('Buat Assessment');
     expect(ui).toContain('loadAssessmentCreationContext');
     expect(ui).toContain('createAssessment(client, workspaceId');
-    expect(app).toContain("'assessments' | 'rapid' | 'bulk'");
+    expect(app).toContain("'continuity'|'assessments'|'rapid'|'bulk'");
+    expect(app).toContain("mode === 'assessments'");
     expect(app).toContain('<AssessmentManager');
     expect(migration).toContain('create table public.assessments');
     expect(migration).toContain('assessment_owner_all');
