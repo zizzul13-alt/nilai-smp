@@ -50,8 +50,11 @@ export async function applyMeetingCheckpoint(client:SupabaseClient,op:PendingOpe
   return{kind:'saved',revision:Number(row.sequence_no),replayed:Boolean(row.replayed)};
 }
 
-export function applySafeWorkOperation(client:SupabaseClient,op:PendingOperation){
-  if(op.operation_kind==='assessment.judgement')return applyAssessmentJudgement(client,op);
-  if(op.operation_kind==='meeting.checkpoint')return applyMeetingCheckpoint(client,op);
-  return applyStudentRename(client,op);
+export function applySafeWorkOperation(client:SupabaseClient,op:PendingOperation):Promise<SyncResult>{
+  switch(op.operation_kind){
+    case 'student.rename':return applyStudentRename(client,op);
+    case 'assessment.judgement':return applyAssessmentJudgement(client,op);
+    case 'meeting.checkpoint':return applyMeetingCheckpoint(client,op);
+    default:return Promise.resolve({kind:'failed',code:'UNKNOWN_OPERATION_KIND'});
+  }
 }
