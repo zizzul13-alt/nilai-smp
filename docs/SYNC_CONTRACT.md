@@ -26,6 +26,8 @@ Complete/Cancel are explicit. Browser close, reload, navigation, component unmou
 ## Rapid Correction
 Rapid Correction continues the R3.2 truth law: `TRANSIENT -> durable IndexedDB transaction -> PENDING_SAFE -> server -> SAVED`. Pending Safe is truthful only after Dexie commit. `assessment.judgement` has per-Result causal ordering, idempotent op_id replay and explicit revision Conflict recovery.
 
+Rapid Correction is workflow identity only; it does not imply `CORRECTION`, `ORIGINAL`, `MAKEUP`, or `REMEDIAL` Attempt evidence. When no academic evidence kind is explicitly supplied, Rapid Correction queues `attempt_kind=NULL`, `raw_score=NULL`, and no Attempt evidence payload. The canonical Result may still be GRADED (including 0 or a negative score), MISSING, or EXCUSED. The server creates an `assessment_attempts` row only when an explicit AttemptKind is supplied.
+
 ## Bulk Entry / Excel Import
 Bulk Import has deliberately stronger and simpler semantics and does **not** use the Safe Work queue:
 
