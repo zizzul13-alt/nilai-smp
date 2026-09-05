@@ -123,6 +123,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
     setBusy(true);setNotice(null);
     let op:PendingOperation;
 
+    // Phase 1: durable enqueue only
     try{
       op=await withMeetingContinuityLock(userId,workspaceId,activeMeeting.id,()=>enqueueMeetingCheckpoint(safeWorkDb,{authUserId:userId,workspaceId,meetingId:activeMeeting.id,stoppedAt,nextStep}));
     }catch(error){
@@ -133,6 +134,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
     setNotice({kind:'info',text:'Pending Safe — checkpoint sudah durable di perangkat, belum diklaim Saved.'});
     try{await refreshPendingOnly();}catch{/* Pending Safe remains truthful after the durable enqueue. */}
 
+    // Phase 2: sync
     try{await worker.syncNamespace(userId,workspaceId);}catch{/* Persisted operation below remains authoritative. */}
     let remaining:PendingOperation|undefined;
     try{remaining=await safeWorkDb.operations.get(op.op_id);}catch{
@@ -147,6 +149,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
 
     if(remaining){setBusy(false);return;}
     setStoppedAt('');setNextStep('');
+    // Phase 3: canonical read-model refresh
     try{await refreshContinuityOnly();}
     catch(error){setNotice(withCheckpointRefreshFailure(safetyNotice,error));}
     finally{setBusy(false);}
