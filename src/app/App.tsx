@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { StatusPanel } from '../components/StatusPanel';
+import { Today } from '../components/Today';
 import { TeachingContinuity } from '../components/TeachingContinuity';
 import { RapidCorrection } from '../components/RapidCorrection';
 import { BulkAssessment } from '../components/BulkAssessment';
@@ -50,10 +51,14 @@ function SignedOut({ client, authError }: { client: SupabaseClient; authError: s
   );
 }
 
+type WorkspaceMode='today'|'continuity'|'assessments'|'rapid'|'bulk';
+
 function SignedIn({ client, email, userId }: { client: SupabaseClient; email: string; userId: string }) {
   const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
   const [logoutError, setLogoutError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'continuity'|'assessments'|'rapid'|'bulk'>('continuity');
+  const [mode, setMode] = useState<WorkspaceMode>('today');
+  const [continuityTarget,setContinuityTarget]=useState<string|undefined>(undefined);
+  const [rapidTarget,setRapidTarget]=useState<string|undefined>(undefined);
   const worker = useMemo(()=>new SafeWorkSyncWorker(safeWorkDb,client),[client]);
 
   useEffect(() => {
@@ -70,6 +75,8 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
     }
     setLogoutError(await signOut(client));
   }
+  function openContinuity(classId?:string){setContinuityTarget(classId);setMode('continuity');}
+  function openRapid(assessmentId?:string){setRapidTarget(assessmentId);setMode('rapid');}
 
   if (!schema) return <main className="app-shell"><StatusPanel title="Memeriksa kompatibilitas data…"><p>Memverifikasi versi schema.</p></StatusPanel></main>;
   if (schema.status === 'incompatible') return <main className="app-shell"><StatusPanel title="Database belum kompatibel" tone="error"><p>{schema.reason}</p><button onClick={logout}>Keluar</button></StatusPanel></main>;
@@ -81,17 +88,19 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
           <div className="topbar">
             <span>{email}</span>
             <div>
-              <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => setMode('continuity')}>Teaching</button>{' '}
+              <button type="button" className={mode === 'today' ? '' : 'secondary'} onClick={() => setMode('today')}>Today</button>{' '}
+              <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => openContinuity()}>Teaching</button>{' '}
               <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>{' '}
-              <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => setMode('rapid')}>Rapid Correction</button>{' '}
+              <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => openRapid()}>Rapid Correction</button>{' '}
               <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>{' '}
               <button type="button" className="secondary" onClick={logout}>Keluar</button>
             </div>
           </div>
           {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
-          {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
+          {mode === 'today' ? <Today client={client} userId={userId} workspaceId={workspaceId} onOpenContinuity={openContinuity} onOpenRapid={openRapid} /> : null}
+          {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialClassId={continuityTarget} /> : null}
           {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
-          {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
+          {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialAssessmentId={rapidTarget} /> : null}
           {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
         </main>
       )}
