@@ -133,7 +133,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
     try{await worker.syncNamespace(userId,workspaceId);}catch{/* Persisted operation below remains authoritative. */}
     let remaining:PendingOperation|undefined;
     try{remaining=await safeWorkDb.operations.get(op.op_id);}catch{
-      setNotice({kind:'info',text:'Pending Safe — durable enqueue berhasil; hasil sync belum dapat dibaca. Recovery lokal tetap ada sampai diverifikasi.'});
+      setNotice({kind:'error',text:'Status checkpoint belum dapat diverifikasi setelah percobaan sync. Durable enqueue sebelumnya berhasil, tetapi jangan anggap Saved atau Pending Safe sampai status recovery dapat dibaca kembali.'});
       setBusy(false);
       return;
     }
