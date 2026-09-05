@@ -20,12 +20,19 @@ export type TeachingCoreContext = {
   activityMeetings: ActivityMeeting[];
 };
 
+export type ContinuityBaseline={
+  id:string;workspace_id:string;class_id:string;baseline_kind:'QUICK_UPDATE'|'START_FROM_TODAY';stopped_at:string;next_step:string|null;recorded_at:string;
+};
+export type EffectiveContinuityFact={source:'checkpoint'|'baseline';stopped_at:string;next_step:string|null;recorded_at:string};
+
 export type ClassContinuity = {
   classroom: AcademicClass;
   state: 'active'|'history'|'empty';
   activeMeeting: Meeting|null;
   latestActualMeeting: Meeting|null;
   latestMeaningfulCheckpoint: Checkpoint|null;
+  latestBaseline:ContinuityBaseline|null;
+  effectiveContext:EffectiveContinuityFact|null;
   /** Compatibility aliases for existing R3.4 UI/tests; semantics now follow the explicit fields above. */
   latestMeeting: Meeting|null;
   latestCheckpoint: Checkpoint|null;
@@ -36,12 +43,14 @@ export type ClassContinuity = {
 export type ContinuityContext = {
   classes: AcademicClass[];
   core: TeachingCoreContext;
+  baselines:ContinuityBaseline[];
   byClass: ClassContinuity[];
 };
 
 /**
  * Minimal diagnostic/read boundary for the canonical Teaching Core.
  * workspaceId is a query key only; PostgreSQL RLS remains authorization.
+ * Today intentionally does NOT call this full-history diagnostic boundary.
  */
 export async function loadOwnedTeachingCore(client: SupabaseClient, workspaceId: string): Promise<TeachingCoreContext> {
   const tables = ['materials','lessons','lesson_versions','meetings','checkpoints','activities','activity_meetings'] as const;
@@ -82,28 +91,45 @@ function latestMeaningfulCheckpoint(actual:Meeting[],activeMeeting:Meeting|null,
   }
   return null;
 }
+function effectiveFact(checkpoint:Checkpoint|null,baseline:ContinuityBaseline|null):EffectiveContinuityFact|null{
+  if(baseline&&(!checkpoint||baseline.recorded_at>checkpoint.recorded_at))return{source:'baseline',stopped_at:baseline.stopped_at,next_step:baseline.next_step,recorded_at:baseline.recorded_at};
+  if(checkpoint)return{source:'checkpoint',stopped_at:checkpoint.stopped_at,next_step:checkpoint.next_step,recorded_at:checkpoint.recorded_at};
+  return null;
+}
 
-export function deriveClassContinuity(classes:AcademicClass[],core:TeachingCoreContext):ClassContinuity[]{
+export function deriveClassContinuity(classes:AcademicClass[],core:TeachingCoreContext,baselines:ContinuityBaseline[]=[]):ClassContinuity[]{
   return classes.map(classroom=>{
     const actual=core.meetings.filter(m=>m.class_id===classroom.id&&!['planned','archived'].includes(m.status)).sort(byOccurrenceDesc);
     const activeMeeting=actual.find(m=>m.status==='in_progress')??null;
     const latestActualMeeting=actual[0]??null;
     const meaningfulCheckpoint=latestMeaningfulCheckpoint(actual,activeMeeting,core.checkpoints);
+    const latestBaseline=baselines.filter(b=>b.class_id===classroom.id).sort((a,b)=>b.recorded_at.localeCompare(a.recorded_at)||b.id.localeCompare(a.id))[0]??null;
     const contextMeeting=activeMeeting??latestActualMeeting;
     const lesson=contextMeeting?.lesson_id?core.lessons.find(l=>l.id===contextMeeting.lesson_id)??null:null;
     const lessonVersion=contextMeeting?.lesson_version_id?core.lessonVersions.find(v=>v.id===contextMeeting.lesson_version_id)??null:null;
     return{
       classroom,
-      state:activeMeeting?'active':latestActualMeeting?'history':'empty',
+      state:activeMeeting?'active':latestActualMeeting||latestBaseline?'history':'empty',
       activeMeeting,
       latestActualMeeting,
       latestMeaningfulCheckpoint:meaningfulCheckpoint,
+      latestBaseline,
+      effectiveContext:effectiveFact(meaningfulCheckpoint,latestBaseline),
       latestMeeting:latestActualMeeting,
       latestCheckpoint:meaningfulCheckpoint,
       lesson,
       lessonVersion,
     };
   });
+}
+
+async function loadLatestBaselines(client:SupabaseClient,workspaceId:string,classes:AcademicClass[]):Promise<ContinuityBaseline[]>{
+  const rows=await Promise.all(classes.map(async classroom=>{
+    const{data,error}=await client.from('continuity_baselines').select('id,workspace_id,class_id,baseline_kind,stopped_at,next_step,recorded_at').eq('workspace_id',workspaceId).eq('class_id',classroom.id).order('recorded_at',{ascending:false}).limit(1).maybeSingle();
+    if(error)throw new Error(`Continuity baseline load failed: ${error.message}`);
+    return data as ContinuityBaseline|null;
+  }));
+  return rows.filter((row):row is ContinuityBaseline=>Boolean(row));
 }
 
 export async function loadContinuityContext(client:SupabaseClient,workspaceId:string):Promise<ContinuityContext>{
@@ -113,7 +139,8 @@ export async function loadContinuityContext(client:SupabaseClient,workspaceId:st
   ]);
   if(classResult.error)throw new Error(`Continuity class load failed: ${classResult.error.message}`);
   const classes=(classResult.data??[]) as AcademicClass[];
-  return{classes,core,byClass:deriveClassContinuity(classes,core)};
+  const baselines=await loadLatestBaselines(client,workspaceId,classes);
+  return{classes,core,baselines,byClass:deriveClassContinuity(classes,core,baselines)};
 }
 
 export type StartTeachingMeetingResult={outcome:'started'|'continued';meeting_id:string;meeting_status:'in_progress';occurred_at:string;replayed:boolean};
