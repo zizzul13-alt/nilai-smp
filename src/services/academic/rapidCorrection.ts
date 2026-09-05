@@ -28,5 +28,7 @@ export function searchCorrectionStudents(context:CorrectionContext,query:string)
 export async function queueCorrectionJudgement(db:SafeWorkDb,input:{authUserId:string;workspaceId:string;assessmentId:string;enrollmentId:string;state:Result['state'];score:number|null;result:Result|null}){
   const causalKey=`assessment_result:${input.assessmentId}:${input.enrollmentId}`;const pending=(await pendingForNamespace(db,input.authUserId,input.workspaceId)).filter(op=>op.causal_key===causalKey);
   const expectedRevision=pending.length?Math.max(...pending.map(op=>op.expected_revision))+1:(input.result?.revision??0);
-  return enqueueAssessmentJudgement(db,{...input,expectedRevision,attemptKind:input.state==='GRADED'?'CORRECTION':null,rawScore:input.state==='GRADED'?input.score:null,evidence:{source:'rapid-correction'}});
+  // Rapid Correction is only workflow identity. Without an explicit academic-evidence choice,
+  // it must not fabricate ORIGINAL/MAKEUP/REMEDIAL/CORRECTION Attempt history.
+  return enqueueAssessmentJudgement(db,{...input,expectedRevision,attemptKind:null,rawScore:null,evidence:{}});
 }
