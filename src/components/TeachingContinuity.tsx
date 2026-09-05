@@ -15,6 +15,7 @@ import {
   retryOperation,
   safeWorkDb,
 } from '../services/safeWork/localQueue';
+import { checkpointSafetyNotice, withCheckpointRefreshFailure } from '../services/safeWork/checkpointSafety';
 import { subscribeSafeWorkChanges } from '../services/safeWork/coordination';
 import type { SafeWorkSyncWorker } from '../services/safeWork/syncWorker';
 
@@ -22,11 +23,6 @@ type Props={client:SupabaseClient;worker:SafeWorkSyncWorker;userId:string;worksp
 type Notice={kind:'info'|'error';text:string}|null;
 
 function checkpointPayload(op:PendingOperation){return op.payload as MeetingCheckpointPayload;}
-function noticeForPersistedOperation(op:PendingOperation):Notice{
-  if(op.status==='PENDING_SAFE')return{kind:'info',text:`Pending Safe — durable di perangkat, menunggu retry (${op.last_error_code??'belum dikonfirmasi server'}).`};
-  if(op.status==='FAILED')return{kind:'error',text:`Failed — checkpoint tetap durable lokal tetapi server menolak / perlu tindakan (${op.last_error_code??'UNKNOWN'}).`};
-  return{kind:'error',text:`Conflict — checkpoint tetap durable lokal dan perlu tindakan (${op.last_error_code??'REVISION_CONFLICT'}).`};
-}
 
 export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
   const[context,setContext]=useState<ContinuityContext|null>(null);
@@ -122,19 +118,19 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
     setBusy(true);setNotice(null);
     let op:PendingOperation;
 
-    // Phase 1: durable enqueue. Only after this succeeds may UI claim Pending Safe.
+    // Phase 1: durable enqueue only. Nothing after the durable commit may downgrade this truth.
     try{
       op=await withMeetingContinuityLock(userId,workspaceId,activeMeeting.id,()=>enqueueMeetingCheckpoint(safeWorkDb,{authUserId:userId,workspaceId,meetingId:activeMeeting.id,stoppedAt,nextStep}));
-      setNotice({kind:'info',text:'Pending Safe — checkpoint sudah durable di perangkat, belum diklaim Saved.'});
-      await refreshPendingOnly();
     }catch(error){
       setNotice({kind:'error',text:`Failed — checkpoint belum tersimpan aman di perangkat: ${error instanceof Error?error.message:String(error)}`});
       setBusy(false);
       return;
     }
+    setNotice({kind:'info',text:'Pending Safe — checkpoint sudah durable di perangkat, belum diklaim Saved.'});
+    try{await refreshPendingOnly();}catch{/* Pending Safe remains truthful after the durable enqueue. */}
 
-    // Phase 2: sync. Regardless of thrown sync/read errors, durable local truth is preserved.
-    try{await worker.syncNamespace(userId,workspaceId);}catch{/* Inspect exact persisted operation below. */}
+    // Phase 2: sync, then inspect the exact persisted operation state.
+    try{await worker.syncNamespace(userId,workspaceId);}catch{/* Persisted operation below remains authoritative. */}
     let remaining:PendingOperation|undefined;
     try{remaining=await safeWorkDb.operations.get(op.op_id);}catch{
       setNotice({kind:'info',text:'Pending Safe — durable enqueue berhasil; hasil sync belum dapat dibaca. Recovery lokal tetap ada sampai diverifikasi.'});
@@ -142,21 +138,21 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
       return;
     }
 
+    const safetyNotice=checkpointSafetyNotice(remaining);
+    setNotice(safetyNotice);
+    try{await refreshPendingOnly();}catch{/* Safety state above is independent from recovery-list refresh availability. */}
+
     if(remaining){
-      setNotice(noticeForPersistedOperation(remaining));
-      try{await refreshPendingOnly();}catch{/* Notice above remains truthful. */}
       setBusy(false);
       return;
     }
 
     // Missing minimized row after sync means server-confirmed Saved.
     setStoppedAt('');setNextStep('');
-    setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint.'});
-    try{await refreshPendingOnly();}catch{/* Saved truth is not downgraded by a recovery-list read failure. */}
 
     // Phase 3: canonical read-model refresh is independent from write safety.
     try{await refreshContinuityOnly();}
-    catch{setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint. Latest view belum dapat refresh; coba refresh tampilan.'});}
+    catch(error){setNotice(withCheckpointRefreshFailure(safetyNotice,error));}
     finally{setBusy(false);}
   }
 
@@ -166,24 +162,23 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
     try{
       const before=await safeWorkDb.operations.get(opId);
       if(!before){
-        setNotice({kind:'info',text:'Saved — server sudah mengonfirmasi checkpoint.'});
-        try{await refreshContinuityOnly();}catch{setNotice({kind:'info',text:'Saved — server sudah mengonfirmasi checkpoint. Latest view belum dapat refresh.'});}
+        const saved=checkpointSafetyNotice(undefined);
+        setNotice(saved);
+        try{await refreshContinuityOnly();}catch(error){setNotice(withCheckpointRefreshFailure(saved,error));}
         return;
       }
       if(before.status==='CONFLICT'){
-        setNotice(noticeForPersistedOperation(before));
+        setNotice(checkpointSafetyNotice(before));
         return;
       }
       if(before.status==='FAILED')await retryOperation(safeWorkDb,opId);
       try{await worker.syncNamespace(userId,workspaceId);}catch{/* Persisted status below is authoritative. */}
       const remaining=await safeWorkDb.operations.get(opId);
-      if(remaining){
-        setNotice(noticeForPersistedOperation(remaining));
-        try{await refreshPendingOnly();}catch{/* Persisted operation status already rendered. */}
-      }else{
-        setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint.'});
-        try{await refreshPendingOnly();}catch{/* Saved remains Saved. */}
-        try{await refreshContinuityOnly();}catch{setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint. Latest view belum dapat refresh; coba refresh tampilan.'});}
+      const safetyNotice=checkpointSafetyNotice(remaining);
+      setNotice(safetyNotice);
+      try{await refreshPendingOnly();}catch{/* Persisted operation status already rendered. */}
+      if(!remaining){
+        try{await refreshContinuityOnly();}catch(error){setNotice(withCheckpointRefreshFailure(safetyNotice,error));}
       }
     }catch(error){setNotice({kind:'error',text:`Status checkpoint tidak dapat diverifikasi: ${error instanceof Error?error.message:String(error)}`});}
     finally{setBusy(false);}
@@ -198,7 +193,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
     try{
       const gate=await withMeetingLifecyclePreflight(safeWorkDb,userId,workspaceId,attempt.meetingId,()=>setTeachingMeetingStatus(client,{opId:attempt.opId,meetingId:attempt.meetingId,status:attempt.status}));
       if(gate.blocked){
-        await refreshPendingOnly();
+        try{await refreshPendingOnly();}catch{/* Fresh durable preflight already proved blocking work exists. */}
         setNotice({kind:'error',text:'Checkpoint belum tersinkron untuk Meeting ini. Selesaikan recovery/sync checkpoint sebelum Complete atau Cancel.'});
         return;
       }
