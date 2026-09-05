@@ -1,4 +1,138 @@
-import {FormEvent,useEffect,useMemo,useState}from'react';import type{SupabaseClient}from'@supabase/supabase-js';import{StatusPanel}from'../components/StatusPanel';import{RapidCorrection}from'../components/RapidCorrection';import{BulkAssessment}from'../components/BulkAssessment';import{readBrowserConfig}from'../config/env';import{EXPECTED_SCHEMA_VERSION}from'../config/schema';import{getSupabaseClient}from'../services/supabase/client';import{initialAuthSnapshot,loadSession,signInWithPassword,signOut,subscribeToAuth,type AuthSnapshot}from'../services/auth/auth';import{checkSchemaCompatibility,type SchemaCompatibility}from'../services/schema/schemaCompatibility';import{bootstrapOwnedWorkspace}from'../services/academic/academicSpine';import{hasUnsyncedForUser,safeWorkDb}from'../services/safeWork/localQueue';import{installReconnectSync,SafeWorkSyncWorker}from'../services/safeWork/syncWorker';
-function SignedOut({client,authError}:{client:SupabaseClient;authError:string|null}){const[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(authError),[busy,setBusy]=useState(false);async function submit(e:FormEvent){e.preventDefault();setBusy(true);setError(await signInWithPassword(client,email.trim(),password));setBusy(false)}return <main className="app-shell"><section className="auth-card"><p className="eyebrow">Nilai SMP · R3</p><h1>Masuk</h1><form onSubmit={submit} className="auth-form"><label>Email<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></label><label>Kata sandi<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required/></label>{error?<p className="form-error" role="alert">Gagal masuk: {error}</p>:null}<button disabled={busy}>{busy?'Memeriksa…':'Masuk'}</button></form></section></main>}
-function SignedIn({client,email,userId}:{client:SupabaseClient;email:string;userId:string}){const[schema,setSchema]=useState<SchemaCompatibility|null>(null),[workspaceId,setWorkspaceId]=useState<string|null>(null),[logoutError,setLogoutError]=useState<string|null>(null),[mode,setMode]=useState<'rapid'|'bulk'>('rapid');useEffect(()=>{let active=true;void checkSchemaCompatibility(client,EXPECTED_SCHEMA_VERSION).then(r=>{if(active)setSchema(r)});return()=>{active=false}},[client]);useEffect(()=>{if(schema?.status!=='compatible')return;let disposed=false;let removeReconnect:(()=>void)|undefined;const worker=new SafeWorkSyncWorker(safeWorkDb,client);void bootstrapOwnedWorkspace(client).then(workspace=>{if(disposed)return;setWorkspaceId(workspace.id);const ns={authUserId:userId,workspaceId:workspace.id};void worker.syncNamespace(ns.authUserId,ns.workspaceId);removeReconnect=installReconnectSync(worker,()=>disposed?null:ns)}).catch(()=>{});return()=>{disposed=true;removeReconnect?.()}},[client,schema,userId]);async function logout(){if(await hasUnsyncedForUser(safeWorkDb,userId)){if(!window.confirm('Ada pekerjaan Pending Safe/FAILED/CONFLICT di perangkat ini. Pekerjaan tetap disimpan dalam namespace akun ini dan tidak terlihat oleh akun lain. Tetap keluar?'))return}setLogoutError(await signOut(client))}if(!schema)return <main className="app-shell"><StatusPanel title="Memeriksa kompatibilitas data…"><p>Memverifikasi versi schema.</p></StatusPanel></main>;if(schema.status==='incompatible')return <main className="app-shell"><StatusPanel title="Database belum kompatibel" tone="error"><p>{schema.reason}</p><button onClick={logout}>Keluar</button></StatusPanel></main>;if(!workspaceId)return <main className="app-shell"><StatusPanel title="Membuka workspace…"><p>Memulihkan konteks guru.</p></StatusPanel></main>;return <main className="teacher-shell"><div className="topbar"><span>{email}</span><div><button type="button" className="secondary" onClick={()=>setMode(mode==='rapid'?'bulk':'rapid')}>{mode==='rapid'?'Bulk Entry / Import':'Rapid Correction'}</button> <button type="button" className="secondary" onClick={logout}>Keluar</button></div></div>{logoutError?<p className="form-error" role="alert">Gagal keluar: {logoutError}</p>:null}{mode==='rapid'?<RapidCorrection client={client} userId={userId} workspaceId={workspaceId}/>:<BulkAssessment client={client} workspaceId={workspaceId}/>}</main>}
-export function App(){const configResult=useMemo(()=>readBrowserConfig(),[]),client=useMemo(()=>configResult.ok?getSupabaseClient(configResult.config):null,[configResult]);const[auth,setAuth]=useState<AuthSnapshot>(initialAuthSnapshot);useEffect(()=>{if(!client)return;let active=true;void loadSession(client).then(s=>{if(active)setAuth(s)});const sub=subscribeToAuth(client,s=>{if(active)setAuth(s)});return()=>{active=false;sub.unsubscribe()}},[client]);if(!configResult.ok)return <main className="app-shell"><StatusPanel title="Konfigurasi belum siap" tone="error"><p>Browser configuration tidak lengkap atau tidak aman.</p><p>Jangan gunakan service-role key di browser.</p></StatusPanel></main>;if(!client||auth.status==='loading')return <main className="app-shell"><StatusPanel title="Memuat sesi…"><p>Memulihkan sesi Supabase Auth.</p></StatusPanel></main>;if(auth.status==='signed-out')return <SignedOut client={client} authError={auth.error}/>;return <SignedIn client={client} userId={auth.session.user.id} email={auth.session.user.email??auth.session.user.id}/>}
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { StatusPanel } from '../components/StatusPanel';
+import { RapidCorrection } from '../components/RapidCorrection';
+import { BulkAssessment } from '../components/BulkAssessment';
+import { AssessmentManager } from '../components/AssessmentManager';
+import { readBrowserConfig } from '../config/env';
+import { EXPECTED_SCHEMA_VERSION } from '../config/schema';
+import { getSupabaseClient } from '../services/supabase/client';
+import {
+  initialAuthSnapshot,
+  loadSession,
+  signInWithPassword,
+  signOut,
+  subscribeToAuth,
+  type AuthSnapshot,
+} from '../services/auth/auth';
+import { checkSchemaCompatibility, type SchemaCompatibility } from '../services/schema/schemaCompatibility';
+import { bootstrapOwnedWorkspace } from '../services/academic/academicSpine';
+import { hasUnsyncedForUser, safeWorkDb } from '../services/safeWork/localQueue';
+import { installReconnectSync, SafeWorkSyncWorker } from '../services/safeWork/syncWorker';
+
+function SignedOut({ client, authError }: { client: SupabaseClient; authError: string | null }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(authError);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(await signInWithPassword(client, email.trim(), password));
+    setBusy(false);
+  }
+
+  return (
+    <main className="app-shell">
+      <section className="auth-card">
+        <p className="eyebrow">Nilai SMP · R3</p>
+        <h1>Masuk</h1>
+        <form onSubmit={submit} className="auth-form">
+          <label>Email<input type="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
+          <label>Kata sandi<input type="password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
+          {error ? <p className="form-error" role="alert">Gagal masuk: {error}</p> : null}
+          <button disabled={busy}>{busy ? 'Memeriksa…' : 'Masuk'}</button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function SignedIn({ client, email, userId }: { client: SupabaseClient; email: string; userId: string }) {
+  const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'assessments' | 'rapid' | 'bulk'>('assessments');
+
+  useEffect(() => {
+    let active = true;
+    void checkSchemaCompatibility(client, EXPECTED_SCHEMA_VERSION).then(result => {
+      if (active) setSchema(result);
+    });
+    return () => { active = false; };
+  }, [client]);
+
+  useEffect(() => {
+    if (schema?.status !== 'compatible') return;
+    let disposed = false;
+    let removeReconnect: (() => void) | undefined;
+    const worker = new SafeWorkSyncWorker(safeWorkDb, client);
+    void bootstrapOwnedWorkspace(client).then(workspace => {
+      if (disposed) return;
+      setWorkspaceId(workspace.id);
+      const namespace = { authUserId: userId, workspaceId: workspace.id };
+      void worker.syncNamespace(namespace.authUserId, namespace.workspaceId);
+      removeReconnect = installReconnectSync(worker, () => disposed ? null : namespace);
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+      removeReconnect?.();
+    };
+  }, [client, schema, userId]);
+
+  async function logout() {
+    if (await hasUnsyncedForUser(safeWorkDb, userId)) {
+      if (!window.confirm('Ada pekerjaan Pending Safe/FAILED/CONFLICT di perangkat ini. Pekerjaan tetap disimpan dalam namespace akun ini dan tidak terlihat oleh akun lain. Tetap keluar?')) return;
+    }
+    setLogoutError(await signOut(client));
+  }
+
+  if (!schema) return <main className="app-shell"><StatusPanel title="Memeriksa kompatibilitas data…"><p>Memverifikasi versi schema.</p></StatusPanel></main>;
+  if (schema.status === 'incompatible') return <main className="app-shell"><StatusPanel title="Database belum kompatibel" tone="error"><p>{schema.reason}</p><button onClick={logout}>Keluar</button></StatusPanel></main>;
+  if (!workspaceId) return <main className="app-shell"><StatusPanel title="Membuka workspace…"><p>Memulihkan konteks guru.</p></StatusPanel></main>;
+
+  return (
+    <main className="teacher-shell">
+      <div className="topbar">
+        <span>{email}</span>
+        <div>
+          <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>{' '}
+          <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => setMode('rapid')}>Rapid Correction</button>{' '}
+          <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>{' '}
+          <button type="button" className="secondary" onClick={logout}>Keluar</button>
+        </div>
+      </div>
+      {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
+      {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
+      {mode === 'rapid' ? <RapidCorrection client={client} userId={userId} workspaceId={workspaceId} /> : null}
+      {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
+    </main>
+  );
+}
+
+export function App() {
+  const configResult = useMemo(() => readBrowserConfig(), []);
+  const client = useMemo(() => configResult.ok ? getSupabaseClient(configResult.config) : null, [configResult]);
+  const [auth, setAuth] = useState<AuthSnapshot>(initialAuthSnapshot);
+
+  useEffect(() => {
+    if (!client) return;
+    let active = true;
+    void loadSession(client).then(snapshot => {
+      if (active) setAuth(snapshot);
+    });
+    const subscription = subscribeToAuth(client, snapshot => {
+      if (active) setAuth(snapshot);
+    });
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [client]);
+
+  if (!configResult.ok) return <main className="app-shell"><StatusPanel title="Konfigurasi belum siap" tone="error"><p>Browser configuration tidak lengkap atau tidak aman.</p><p>Jangan gunakan service-role key di browser.</p></StatusPanel></main>;
+  if (!client || auth.status === 'loading') return <main className="app-shell"><StatusPanel title="Memuat sesi…"><p>Memulihkan sesi Supabase Auth.</p></StatusPanel></main>;
+  if (auth.status === 'signed-out') return <SignedOut client={client} authError={auth.error} />;
+  return <SignedIn client={client} userId={auth.session.user.id} email={auth.session.user.email ?? auth.session.user.id} />;
+}
