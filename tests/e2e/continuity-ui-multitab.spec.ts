@@ -1,10 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const harnessPath='/tests/e2e/fixtures/continuity-ui-harness.tsx';
 const queuePath='/src/services/safeWork/localQueue.ts';
 
-async function addDurableCheckpointWithoutAdvisorySignal(page:any,meetingId:string,opId:string){
-  await page.evaluate(async({queue,meetingId,opId})=>{
+async function addDurableCheckpointWithoutAdvisorySignal(page:Page,meetingId:string,opId:string){
+  await page.evaluate(async({queue,meetingId,opId}:{queue:string;meetingId:string;opId:string})=>{
     const local=await import(queue);
     await local.safeWorkDb.operations.add({
       op_id:opId,
@@ -17,8 +17,8 @@ async function addDurableCheckpointWithoutAdvisorySignal(page:any,meetingId:stri
   },{queue:queuePath,meetingId,opId});
 }
 
-async function markSaved(page:any,opId:string){
-  await page.evaluate(async({queue,opId})=>{
+async function markSaved(page:Page,opId:string){
+  await page.evaluate(async({queue,opId}:{queue:string;opId:string})=>{
     const local=await import(queue);
     await local.markSavedAndMinimize(local.safeWorkDb,opId);
   },{queue:queuePath,opId});
