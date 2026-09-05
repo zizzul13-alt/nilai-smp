@@ -20,6 +20,12 @@ describe('R3.HARDEN-01 contracts',()=>{
     expect(app).not.toContain('.catch(() => {})');
   });
 
+  it('surfaces logout failure while bootstrap recovery actions are visible',()=>{
+    expect(gate).toContain('logoutError: string | null');
+    expect(app).toMatch(/<WorkspaceBootstrapGate[^>]*logoutError=\{logoutError\}/);
+    expect(gate).toContain('Gagal keluar: {logoutError}');
+  });
+
   it('keeps bootstrap lifecycle account-scoped and reuses the App-owned Safe Work worker',()=>{
     expect(app).toContain('key={auth.session.user.id}');
     expect(app).toMatch(/const\s+worker\s*=\s*useMemo\(\(\)=>new\s+SafeWorkSyncWorker\(safeWorkDb,client\)/);
