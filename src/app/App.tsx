@@ -75,7 +75,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
   if (schema.status === 'incompatible') return <main className="app-shell"><StatusPanel title="Database belum kompatibel" tone="error"><p>{schema.reason}</p><button onClick={logout}>Keluar</button></StatusPanel></main>;
 
   return (
-    <WorkspaceBootstrapGate client={client} userId={userId} worker={worker} onLogout={logout}>
+    <WorkspaceBootstrapGate client={client} userId={userId} worker={worker} onLogout={logout} logoutError={logoutError}>
       {workspaceId => (
         <main className="teacher-shell">
           <div className="topbar">
