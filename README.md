@@ -14,10 +14,17 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 - **R3.3 Assessment Workspace:** teacher-visible Assessment creation from an active Class/Period, optional immutable ScoringProfile selection, and current Assessment list.
 - **R3.3 Rapid Correction:** explicit resumable correction sessions, arbitrary paper-order student search, mobile rapid judgement and Pending Safe academic operations.
 - **R3.3 Bulk Assessment:** desktop Bulk Entry plus Nilai SMP-owned XLSX template/import, strict stable Enrollment identity, Preview/Validate before mutation, bounded XLSX parsing, and online atomic Result batch commit with idempotency and revision conflicts.
+- **R3.4 Teaching Continuity Core:** mobile-first Class selection, explicit Start/Continue Meeting, optional canonical Lesson/LessonVersion pinning, durable Checkpoint recovery (`STOPPED AT` + `NEXT STEP`), and explicit Complete/Cancel lifecycle.
 
 **NOT YET IMPLEMENTED**
 
-Today/Continue and pacing; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; fuzzy spreadsheet matching; generic spreadsheet engine.
+Full Today dispatcher; Before Leaving queue; stale long-absence Quick Update; pacing modes/Effective Meetings; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; schedule engine; automatic homework; gamification.
+
+## Continuity laws
+
+UI Session != Teaching Meeting. Browser reload, navigation, logout and close/X never finish a Meeting. `Start Class` creates or reuses one canonical `in_progress` Meeting for the active Class. Completion/cancellation is explicit. A completed Meeting remains historical truth; a later Start creates a new actual occurrence.
+
+Checkpoint is first-class continuity data. `STOPPED AT` is required and `NEXT STEP` is optional. Checkpoint writes follow the Safe Work truth law: React state is transient; Pending Safe is announced only after durable IndexedDB commit; Saved is announced only after server confirmation. Reconnect/auth recovery retries the same operation id, so lost acknowledgements do not duplicate Checkpoints.
 
 ## Input-path laws
 
@@ -49,17 +56,17 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, atomic bulk commit/idempotency/revision contracts, rapid-correction durability, Assessment creation contracts, strict Enrollment identity, browser XLSX round-trip behavior, and malformed/formula/oversized spreadsheet rejection.
+The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, continuity lifecycle/idempotency/checkpoint sequencing, Safe Work interruption recovery, atomic bulk commit/idempotency/revision contracts, rapid-correction durability, Assessment creation contracts, strict Enrollment identity, browser XLSX round-trip behavior, and malformed/formula/oversized spreadsheet rejection.
 
 ## Repository map
 
 ```text
-src/app/                 application/bootstrap and auth gate
-src/components/          Assessment workspace + rapid correction + desktop bulk workflow
+src/app/                 application/bootstrap, auth gate and workspace routing
+src/components/          continuity + Assessment + rapid correction + desktop bulk workflows
 src/config/              browser config and schema-version contract
 src/domain/              canonical TypeScript domain contracts
-src/services/academic/   academic/assessment/correction/bulk boundaries
-src/services/safeWork/   narrow durable rapid-operation queue and sync worker
+src/services/academic/   academic/teaching/assessment/correction/bulk boundaries
+src/services/safeWork/   narrow durable rapid/checkpoint operation queue and sync worker
 supabase/migrations/     append-only canonical database migrations
 tests/database/          real PostgreSQL contract attacks
 tests/unit/              fast static/domain/regression contracts

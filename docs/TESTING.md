@@ -1,10 +1,29 @@
 # Testing Strategy
 
 ## Tiers
-1. **Vitest:** frozen semantic/static architecture contracts plus parser/identity laws.
-2. **Real PostgreSQL:** ordered migration chain plus RLS, revision, idempotency and atomic transaction attacks.
-3. **Playwright:** browser IndexedDB/Rapid Correction behavior and XLSX template round-trip.
+1. **Vitest:** frozen semantic/static architecture contracts plus parser/identity/continuity derivation laws.
+2. **Real PostgreSQL:** ordered migration chain plus RLS, lifecycle, revision, idempotency and atomic transaction attacks.
+3. **Playwright:** browser IndexedDB/Rapid Correction/Continuity interruption behavior and XLSX template round-trip.
 4. **Build/typecheck:** production TypeScript/Vite boundary.
+
+## Teaching Continuity acceptance
+Continuity unit contracts cover no-history, active Meeting priority, historical completed Meeting visibility and deterministic latest Checkpoint reconstruction.
+
+Real PostgreSQL contracts prove:
+- Start Class creates one `in_progress` Meeting;
+- same-op lost-ACK Start replay is idempotent;
+- a different duplicate Start reuses the existing active Meeting;
+- the database invariant rejects a second active Meeting for one Class;
+- checkpoint sequence is deterministic and retry does not duplicate;
+- blank `stopped_at` is rejected;
+- absence of a lifecycle RPC call leaves the Meeting in progress;
+- explicit Complete preserves Checkpoints/history;
+- a later Start creates a new Meeting identity;
+- Cancel is explicit history;
+- optional Lesson/exact LessonVersion context is retained;
+- foreign Class/Meeting/Lesson and anonymous access fail closed.
+
+Playwright continuity tests prove durable checkpoint enqueue survives reload, network/unknown failure retains `PENDING_SAFE`, retry uses the same op_id, server-confirmed save removes local payload, and a fresh browser derivation reconstructs the active Meeting + latest LAST/NEXT context from canonical-shaped data.
 
 ## Rapid Correction acceptance
 Golden 40 paper coverage retains arbitrary physical order, duplicate names, zero, negative, Missing, Excused, Skip and Pending Safe restart semantics.
@@ -27,4 +46,4 @@ npm run test:e2e
 CI uses ephemeral PostgreSQL; no production database or service-role browser credential is required.
 
 ## Still out of scope
-Reporting/finalization, Today/Continue, artifacts, backup/restore, legacy migration, AI, collaboration, full offline, fuzzy matching, generic spreadsheet engine and generic enterprise conflict management.
+Full Today dispatcher, Before Leaving queue, stale long-absence Quick Update, pacing/Effective Meetings, reporting/finalization, artifacts, backup/restore, legacy migration, AI, collaboration, full offline, schedule engine, automatic homework, gamification and generic global search.

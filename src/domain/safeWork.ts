@@ -13,6 +13,11 @@ export type AssessmentJudgementPayload = {
   raw_score:number|null;
   evidence:Record<string,unknown>;
 };
+export type MeetingCheckpointPayload = {
+  meeting_id:string;
+  stopped_at:string;
+  next_step:string|null;
+};
 
 export type AssessmentConflictSnapshot = {
   canonical_state:ResultState|null;
@@ -24,15 +29,16 @@ export type PendingOperation = {
   op_id:string;
   auth_user_id:string;
   workspace_id:string;
-  entity_type:'student'|'assessment_result';
+  entity_type:'student'|'assessment_result'|'meeting_checkpoint';
   entity_id:string;
   causal_key:string;
-  operation_kind:'student.rename'|'assessment.judgement';
-  payload:StudentRenamePayload|AssessmentJudgementPayload;
+  operation_kind:'student.rename'|'assessment.judgement'|'meeting.checkpoint';
+  payload:StudentRenamePayload|AssessmentJudgementPayload|MeetingCheckpointPayload;
   created_at:string;
   attempt_count:number;
   last_attempt_at:string|null;
   status:SafeWorkStatus;
+  /** Revision is meaningful for revision-checked mutations; append-only checkpoint operations use 0. */
   expected_revision:number;
   last_error_code:string|null;
   conflict_snapshot?:AssessmentConflictSnapshot|null;
