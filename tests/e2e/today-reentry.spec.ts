@@ -16,7 +16,7 @@ test('Today dispatches active Meeting directly to the correct Teaching class',as
 test('Today resumes active correction at the exact Assessment without inferring evidence',async({page})=>{
   await mount(page,'correction');
   await expect(page.getByText('Kuis Gerak').first()).toBeVisible();
-  const resume=page.getByRole('button',{name:'RESUME CORRECTION'});await expect(resume).toBeVisible();await resume.click();
+  const resume=page.getByRole('button',{name:'RESUME CORRECTION',exact:true});await expect(resume).toBeVisible();await resume.click();
   expect((await snapshot(page)).nav).toEqual([{surface:'rapid',id:'A1'}]);
 });
 
