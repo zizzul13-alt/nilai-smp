@@ -32,7 +32,7 @@ test('actual TeachingContinuity UI rechecks durable cross-tab work before Comple
   await pageA.evaluate(async path=>{const harness=await import(path);await harness.mountContinuityUiHarness('M1');},harnessPath);
   const ui=pageA.locator('#continuity-test-root');
   const complete=ui.getByRole('button',{name:'Complete Class'});
-  await expect(ui.getByText('VIII A')).toBeVisible();
+  await expect(ui.locator('select')).toHaveValue('C1');
   await expect(ui.getByText('IN PROGRESS')).toBeVisible();
   await expect(complete).toBeEnabled();
 
