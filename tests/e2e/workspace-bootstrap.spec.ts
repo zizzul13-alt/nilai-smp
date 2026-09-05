@@ -9,7 +9,7 @@ async function snapshot(page:any){
   },harnessPath);
 }
 
-test('workspace bootstrap failure is visible and Retry recovers without reload or duplicate side effects',async({page})=>{
+test('workspace bootstrap failure is visible, logout failure is surfaced, and Retry recovers without reload or duplicate side effects',async({page})=>{
   await page.goto('/');
   await page.evaluate(async(path)=>{
     const harness=await import(path);
@@ -22,7 +22,14 @@ test('workspace bootstrap failure is visible and Retry recovers without reload o
   await expect(page.getByTestId('teacher-workspace')).toHaveCount(0);
   await expect(page.getByText(/synthetic bootstrap failure|secret-like detail/i)).toHaveCount(0);
 
-  expect(await snapshot(page)).toMatchObject({bootstrapCalls:1,syncCalls:[],installCalls:0,cleanupCalls:0,retryPending:false});
+  expect(await snapshot(page)).toMatchObject({bootstrapCalls:1,syncCalls:[],installCalls:0,cleanupCalls:0,logoutCalls:0,retryPending:false});
+
+  await page.getByRole('button',{name:'Keluar'}).click();
+  await expect(page.getByRole('alert')).toHaveText('Gagal keluar: synthetic sign-out failure');
+  await expect(page.getByRole('heading',{name:'Tidak dapat membuka workspace'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Coba lagi'})).toBeVisible();
+  await expect(page.getByTestId('teacher-workspace')).toHaveCount(0);
+  expect(await snapshot(page)).toMatchObject({logoutCalls:1,bootstrapCalls:1,installCalls:0});
 
   await page.getByRole('button',{name:'Coba lagi'}).click();
   await expect(page.getByRole('heading',{name:'Membuka workspace…'})).toBeVisible();
@@ -41,6 +48,7 @@ test('workspace bootstrap failure is visible and Retry recovers without reload o
     syncCalls:[{authUserId:'USER-A',workspaceId:'WORKSPACE-A'}],
     installCalls:1,
     cleanupCalls:0,
+    logoutCalls:1,
     retryPending:false,
   });
 
