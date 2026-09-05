@@ -11,8 +11,9 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 - **R3.2 Safe Work:** Dexie/IndexedDB durable recovery queue, Pending Safe truth law, explicit FAILED/CONFLICT states, startup/reconnect recovery and deterministic server/client errors.
 - **R3.1 Teaching Core:** Material, stable Lesson, append-only LessonVersion history, actual Meeting, multiple Checkpoints, Activity and explicit multi-Meeting Activity links.
 - **R3.3 Assessment Core:** stable Assessment, immutable-ruleset ScoringProfile, one current Result per Assessment × Enrollment, explicit Result states and preserved Attempt evidence.
+- **R3.3 Assessment Workspace:** teacher-visible Assessment creation from an active Class/Period, optional immutable ScoringProfile selection, and current Assessment list.
 - **R3.3 Rapid Correction:** explicit resumable correction sessions, arbitrary paper-order student search, mobile rapid judgement and Pending Safe academic operations.
-- **R3.3 Bulk Assessment:** desktop Bulk Entry plus Nilai SMP-owned XLSX template/import, stable Enrollment identity, Preview/Validate before mutation, and online atomic Result/Attempt batch commit with idempotency and revision conflicts.
+- **R3.3 Bulk Assessment:** desktop Bulk Entry plus Nilai SMP-owned XLSX template/import, strict stable Enrollment identity, Preview/Validate before mutation, bounded XLSX parsing, and online atomic Result batch commit with idempotency and revision conflicts.
 
 **NOT YET IMPLEMENTED**
 
@@ -20,9 +21,9 @@ Today/Continue and pacing; reporting/finalization; artifacts; portable backup/re
 
 ## Input-path laws
 
-Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Spreadsheet row != Student identity; template Assessment/Enrollment UUIDs are stable round-trip keys and display name never silently disambiguates duplicates.
+Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Spreadsheet row != Student identity; template Assessment/Enrollment UUIDs are stable round-trip keys and display name/NIS/NISN never silently replace Enrollment identity.
 
-Rapid Correction, Bulk Entry and Excel Import are distinct workflows. Rapid Correction may truthfully use the durable Pending Safe queue. Bulk Import does **not** pretend to be offline: parse/preview is local, Commit requires connectivity, one PostgreSQL transaction accepts all intended mutations or none, and UI says Saved only after server acknowledgement.
+Rapid Correction, Bulk Entry and Excel Import are distinct workflows. Rapid Correction may truthfully use the durable Pending Safe queue. Bulk Import does **not** pretend to be offline: parse/preview is local, Commit requires connectivity, one PostgreSQL transaction accepts all intended mutations or none, and UI says Saved only after server acknowledgement. Switching Assessment invalidates stale client context; post-commit bulk state is rehydrated from server canonical Result truth.
 
 ## Prerequisites and setup
 
@@ -48,20 +49,20 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, atomic bulk commit/idempotency/revision contracts, rapid-correction durability and browser XLSX round-trip behavior.
+The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, atomic bulk commit/idempotency/revision contracts, rapid-correction durability, Assessment creation contracts, strict Enrollment identity, browser XLSX round-trip behavior, and malformed/formula/oversized spreadsheet rejection.
 
 ## Repository map
 
 ```text
 src/app/                 application/bootstrap and auth gate
-src/components/          rapid correction + desktop bulk workflow
+src/components/          Assessment workspace + rapid correction + desktop bulk workflow
 src/config/              browser config and schema-version contract
 src/domain/              canonical TypeScript domain contracts
 src/services/academic/   academic/assessment/correction/bulk boundaries
 src/services/safeWork/   narrow durable rapid-operation queue and sync worker
 supabase/migrations/     append-only canonical database migrations
 tests/database/          real PostgreSQL contract attacks
-tests/unit/              fast static/domain contracts
+tests/unit/              fast static/domain/regression contracts
 tests/e2e/               critical browser acceptance
 legacy/streamlit/        preserved pre-R3 behavior evidence
 ```
