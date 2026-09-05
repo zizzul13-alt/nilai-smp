@@ -8,18 +8,25 @@ import {
   type ContinuityContext,
   type MeetingLifecycleAction,
 } from '../services/academic/teachingCore';
+import { withMeetingContinuityLock, withMeetingLifecyclePreflight } from '../services/academic/continuitySafety';
 import {
   enqueueMeetingCheckpoint,
   pendingForNamespace,
   retryOperation,
   safeWorkDb,
 } from '../services/safeWork/localQueue';
+import { subscribeSafeWorkChanges } from '../services/safeWork/coordination';
 import type { SafeWorkSyncWorker } from '../services/safeWork/syncWorker';
 
 type Props={client:SupabaseClient;worker:SafeWorkSyncWorker;userId:string;workspaceId:string};
 type Notice={kind:'info'|'error';text:string}|null;
 
 function checkpointPayload(op:PendingOperation){return op.payload as MeetingCheckpointPayload;}
+function noticeForPersistedOperation(op:PendingOperation):Notice{
+  if(op.status==='PENDING_SAFE')return{kind:'info',text:`Pending Safe — durable di perangkat, menunggu retry (${op.last_error_code??'belum dikonfirmasi server'}).`};
+  if(op.status==='FAILED')return{kind:'error',text:`Failed — checkpoint tetap durable lokal tetapi server menolak / perlu tindakan (${op.last_error_code??'UNKNOWN'}).`};
+  return{kind:'error',text:`Conflict — checkpoint tetap durable lokal dan perlu tindakan (${op.last_error_code??'REVISION_CONFLICT'}).`};
+}
 
 export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
   const[context,setContext]=useState<ContinuityContext|null>(null);
@@ -35,6 +42,19 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
   const[notice,setNotice]=useState<Notice>(null);
   const stoppedInput=useRef<HTMLInputElement>(null);
 
+  async function refreshPendingOnly(){
+    const pending=await pendingForNamespace(safeWorkDb,userId,workspaceId);
+    setPendingOps(pending);
+    return pending;
+  }
+
+  async function refreshContinuityOnly(){
+    const continuity=await loadContinuityContext(client,workspaceId);
+    setContext(continuity);
+    setClassId(current=>continuity.classes.some(c=>c.id===current)?current:(continuity.classes[0]?.id??''));
+    return continuity;
+  }
+
   async function readSnapshot(sync:boolean){
     if(sync)await worker.syncNamespace(userId,workspaceId);
     const[continuity,pending]=await Promise.all([
@@ -42,13 +62,6 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
       pendingForNamespace(safeWorkDb,userId,workspaceId),
     ]);
     return{continuity,pending};
-  }
-
-  async function refresh(sync=false){
-    const snapshot=await readSnapshot(sync);
-    setContext(snapshot.continuity);
-    setPendingOps(snapshot.pending);
-    setClassId(current=>snapshot.continuity.classes.some(c=>c.id===current)?current:(snapshot.continuity.classes[0]?.id??''));
   }
 
   useEffect(()=>{
@@ -61,9 +74,13 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
     }).catch(error=>{
       if(mounted)setNotice({kind:'error',text:error instanceof Error?error.message:String(error)});
     });
-    // Unmount/reload intentionally performs no Meeting lifecycle mutation.
     return()=>{mounted=false;};
   },[client,userId,workspaceId,worker]);
+
+  useEffect(()=>subscribeSafeWorkChanges(signal=>{
+    if(signal.auth_user_id!==userId||signal.workspace_id!==workspaceId||signal.operation_kind!=='meeting.checkpoint')return;
+    void refreshPendingOnly().catch(()=>{/* Durable preflight still re-reads IndexedDB before lifecycle mutation. */});
+  }),[userId,workspaceId]);
 
   const selected=useMemo(()=>context?.byClass.find(item=>item.classroom.id===classId)??null,[context,classId]);
   const activeMeeting=selected?.activeMeeting??null;
@@ -76,8 +93,8 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
   }),[pendingOps,context,classId]);
   const currentMeetingPending=activeMeeting?selectedClassPending.filter(op=>op.entity_id===activeMeeting.id):[];
   const latestLocal=currentMeetingPending.slice().sort((a,b)=>b.created_at.localeCompare(a.created_at))[0]??null;
-  const visibleStopped=latestLocal?checkpointPayload(latestLocal).stopped_at:selected?.latestCheckpoint?.stopped_at??null;
-  const visibleNext=latestLocal?checkpointPayload(latestLocal).next_step:selected?.latestCheckpoint?.next_step??null;
+  const visibleStopped=latestLocal?checkpointPayload(latestLocal).stopped_at:selected?.latestMeaningfulCheckpoint?.stopped_at??null;
+  const visibleNext=latestLocal?checkpointPayload(latestLocal).next_step:selected?.latestMeaningfulCheckpoint?.next_step??null;
 
   function changeClass(value:string){
     setClassId(value);setLessonId('');setLessonVersionId('');setStartOpId(null);setLifecycleAttempt(null);setNotice(null);
@@ -92,8 +109,9 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
     try{
       const result=await startTeachingMeeting(client,{opId,classId,lessonId:lessonId||null,lessonVersionId:lessonVersionId||null});
       setStartOpId(null);
-      setNotice({kind:'info',text:result.outcome==='continued'?'Meeting aktif sudah ada — konteks yang sama dilanjutkan.':'Class dimulai. Meeting aktual tercatat.'});
-      await refresh(false);
+      const savedText=result.outcome==='continued'?'Meeting aktif sudah ada — konteks yang sama dilanjutkan.':'Class dimulai. Meeting aktual tercatat.';
+      setNotice({kind:'info',text:savedText});
+      try{await refreshContinuityOnly();}catch{setNotice({kind:'info',text:`${savedText} Latest view belum dapat refresh; coba refresh tampilan.`});}
     }catch(error){
       setNotice({kind:'error',text:`${error instanceof Error?error.message:String(error)} Retry Start Class akan memakai operation id yang sama.`});
     }finally{setBusy(false);}
@@ -102,48 +120,93 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
   async function saveCheckpoint(){
     if(!activeMeeting||busy)return;
     setBusy(true);setNotice(null);
+    let op:PendingOperation;
+
+    // Phase 1: durable enqueue. Only after this succeeds may UI claim Pending Safe.
     try{
-      const op=await enqueueMeetingCheckpoint(safeWorkDb,{authUserId:userId,workspaceId,meetingId:activeMeeting.id,stoppedAt,nextStep});
+      op=await withMeetingContinuityLock(userId,workspaceId,activeMeeting.id,()=>enqueueMeetingCheckpoint(safeWorkDb,{authUserId:userId,workspaceId,meetingId:activeMeeting.id,stoppedAt,nextStep}));
       setNotice({kind:'info',text:'Pending Safe — checkpoint sudah durable di perangkat, belum diklaim Saved.'});
-      setPendingOps(await pendingForNamespace(safeWorkDb,userId,workspaceId));
-      await worker.syncNamespace(userId,workspaceId);
-      const remaining=await safeWorkDb.operations.get(op.op_id);
-      if(!remaining){
-        setStoppedAt('');setNextStep('');
-        setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint.'});
-        await refresh(false);
-      }else{
-        setPendingOps(await pendingForNamespace(safeWorkDb,userId,workspaceId));
-        setNotice({kind:remaining.status==='FAILED'?'error':'info',text:remaining.status==='PENDING_SAFE'?'Pending Safe — akan dicoba lagi saat koneksi/auth pulih.':`Failed — checkpoint tetap ada di recovery lokal (${remaining.last_error_code??'UNKNOWN'}).`});
-      }
+      await refreshPendingOnly();
     }catch(error){
-      setNotice({kind:'error',text:`Failed — checkpoint belum aman: ${error instanceof Error?error.message:String(error)}`});
-    }finally{setBusy(false);}
+      setNotice({kind:'error',text:`Failed — checkpoint belum tersimpan aman di perangkat: ${error instanceof Error?error.message:String(error)}`});
+      setBusy(false);
+      return;
+    }
+
+    // Phase 2: sync. Regardless of thrown sync/read errors, durable local truth is preserved.
+    try{await worker.syncNamespace(userId,workspaceId);}catch{/* Inspect exact persisted operation below. */}
+    let remaining:PendingOperation|undefined;
+    try{remaining=await safeWorkDb.operations.get(op.op_id);}catch{
+      setNotice({kind:'info',text:'Pending Safe — durable enqueue berhasil; hasil sync belum dapat dibaca. Recovery lokal tetap ada sampai diverifikasi.'});
+      setBusy(false);
+      return;
+    }
+
+    if(remaining){
+      setNotice(noticeForPersistedOperation(remaining));
+      try{await refreshPendingOnly();}catch{/* Notice above remains truthful. */}
+      setBusy(false);
+      return;
+    }
+
+    // Missing minimized row after sync means server-confirmed Saved.
+    setStoppedAt('');setNextStep('');
+    setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint.'});
+    try{await refreshPendingOnly();}catch{/* Saved truth is not downgraded by a recovery-list read failure. */}
+
+    // Phase 3: canonical read-model refresh is independent from write safety.
+    try{await refreshContinuityOnly();}
+    catch{setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint. Latest view belum dapat refresh; coba refresh tampilan.'});}
+    finally{setBusy(false);}
   }
 
   async function retryCheckpoint(opId:string){
+    if(busy)return;
     setBusy(true);setNotice(null);
     try{
-      await retryOperation(safeWorkDb,opId);
-      await worker.syncNamespace(userId,workspaceId);
+      const before=await safeWorkDb.operations.get(opId);
+      if(!before){
+        setNotice({kind:'info',text:'Saved — server sudah mengonfirmasi checkpoint.'});
+        try{await refreshContinuityOnly();}catch{setNotice({kind:'info',text:'Saved — server sudah mengonfirmasi checkpoint. Latest view belum dapat refresh.'});}
+        return;
+      }
+      if(before.status==='CONFLICT'){
+        setNotice(noticeForPersistedOperation(before));
+        return;
+      }
+      if(before.status==='FAILED')await retryOperation(safeWorkDb,opId);
+      try{await worker.syncNamespace(userId,workspaceId);}catch{/* Persisted status below is authoritative. */}
       const remaining=await safeWorkDb.operations.get(opId);
-      setNotice({kind:remaining?'info':'info',text:remaining?'Checkpoint masih Pending Safe.':'Saved — server mengonfirmasi checkpoint.'});
-      await refresh(false);
-    }catch(error){setNotice({kind:'error',text:error instanceof Error?error.message:String(error)});}finally{setBusy(false);}
+      if(remaining){
+        setNotice(noticeForPersistedOperation(remaining));
+        try{await refreshPendingOnly();}catch{/* Persisted operation status already rendered. */}
+      }else{
+        setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint.'});
+        try{await refreshPendingOnly();}catch{/* Saved remains Saved. */}
+        try{await refreshContinuityOnly();}catch{setNotice({kind:'info',text:'Saved — server mengonfirmasi checkpoint. Latest view belum dapat refresh; coba refresh tampilan.'});}
+      }
+    }catch(error){setNotice({kind:'error',text:`Status checkpoint tidak dapat diverifikasi: ${error instanceof Error?error.message:String(error)}`});}
+    finally{setBusy(false);}
   }
 
   async function changeMeetingStatus(status:MeetingLifecycleAction){
     if(!activeMeeting||busy)return;
-    if(currentMeetingPending.length){setNotice({kind:'error',text:'Checkpoint lokal masih Pending Safe/Failed. Sinkronkan dulu sebelum menutup Meeting.'});return;}
     const attempt=lifecycleAttempt?.meetingId===activeMeeting.id&&lifecycleAttempt.status===status
       ?lifecycleAttempt
       :{meetingId:activeMeeting.id,status,opId:crypto.randomUUID()};
     setLifecycleAttempt(attempt);setBusy(true);setNotice(null);
     try{
-      await setTeachingMeetingStatus(client,{opId:attempt.opId,meetingId:attempt.meetingId,status:attempt.status});
+      const gate=await withMeetingLifecyclePreflight(safeWorkDb,userId,workspaceId,attempt.meetingId,()=>setTeachingMeetingStatus(client,{opId:attempt.opId,meetingId:attempt.meetingId,status:attempt.status}));
+      if(gate.blocked){
+        await refreshPendingOnly();
+        setNotice({kind:'error',text:'Checkpoint belum tersinkron untuk Meeting ini. Selesaikan recovery/sync checkpoint sebelum Complete atau Cancel.'});
+        return;
+      }
       setLifecycleAttempt(null);
-      setNotice({kind:'info',text:status==='completed'?'Meeting selesai secara eksplisit. Riwayat dan checkpoint dipertahankan.':'Meeting dibatalkan secara eksplisit.'});
-      await refresh(false);
+      const savedText=status==='completed'?'Meeting selesai secara eksplisit. Riwayat dan checkpoint dipertahankan.':'Meeting dibatalkan secara eksplisit.';
+      setNotice({kind:'info',text:savedText});
+      try{await refreshContinuityOnly();await refreshPendingOnly();}
+      catch{setNotice({kind:'info',text:`${savedText} Latest view belum dapat refresh; coba refresh tampilan.`});}
     }catch(error){
       setNotice({kind:'error',text:`${error instanceof Error?error.message:String(error)} Retry memakai operation id lifecycle yang sama.`});
     }finally{setBusy(false);}
@@ -165,7 +228,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
 
     {!selected?<div className="continuity-empty"><strong>Belum ada Class aktif.</strong><p>Buat/aktifkan Class melalui data akademik sebelum memulai Meeting.</p></div>:<>
       <div className={`continuity-card continuity-card--${selected.state}`}>
-        <div className="continuity-status"><strong>{selected.classroom.display_name}</strong><span>{activeMeeting?'IN PROGRESS':selected.latestMeeting?selected.latestMeeting.status.toUpperCase():'NO MEETING'}</span></div>
+        <div className="continuity-status"><strong>{selected.classroom.display_name}</strong><span>{activeMeeting?'IN PROGRESS':selected.latestActualMeeting?selected.latestActualMeeting.status.toUpperCase():'NO MEETING'}</span></div>
         <div className="continuity-memory">
           <div><small>LAST</small><strong>{visibleStopped??'Belum ada checkpoint'}</strong></div>
           <div><small>NEXT</small><strong>{visibleNext??'Belum dicatat'}</strong></div>
@@ -192,7 +255,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId}:Props){
         </div>
       </>:<div className="start-card">
         <h2>Start Class</h2>
-        {selected.latestMeeting?<p className="muted">Meeting sebelumnya adalah riwayat. Start Class akan membuat Meeting aktual baru.</p>:<p className="muted">Belum ada Meeting sebelumnya untuk Class ini.</p>}
+        {selected.latestActualMeeting?<p className="muted">Meeting sebelumnya adalah riwayat. Start Class akan membuat Meeting aktual baru tanpa menghapus LAST/NEXT terakhir.</p>:<p className="muted">Belum ada Meeting sebelumnya untuk Class ini.</p>}
         <label className="field-label">Lesson (opsional)
           <select value={lessonId} onChange={e=>changeLesson(e.target.value)}><option value="">Tanpa Lesson</option>{activeLessons.map(l=><option key={l.id} value={l.id}>{l.title}</option>)}</select>
         </label>
