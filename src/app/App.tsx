@@ -5,6 +5,7 @@ import { TeachingContinuity } from '../components/TeachingContinuity';
 import { RapidCorrection } from '../components/RapidCorrection';
 import { BulkAssessment } from '../components/BulkAssessment';
 import { AssessmentManager } from '../components/AssessmentManager';
+import { WorkspaceBootstrapGate } from '../components/WorkspaceBootstrapGate';
 import { readBrowserConfig } from '../config/env';
 import { EXPECTED_SCHEMA_VERSION } from '../config/schema';
 import { getSupabaseClient } from '../services/supabase/client';
@@ -17,9 +18,8 @@ import {
   type AuthSnapshot,
 } from '../services/auth/auth';
 import { checkSchemaCompatibility, type SchemaCompatibility } from '../services/schema/schemaCompatibility';
-import { bootstrapOwnedWorkspace } from '../services/academic/academicSpine';
 import { hasUnsyncedForUser, safeWorkDb } from '../services/safeWork/localQueue';
-import { installReconnectSync, SafeWorkSyncWorker } from '../services/safeWork/syncWorker';
+import { SafeWorkSyncWorker } from '../services/safeWork/syncWorker';
 
 function SignedOut({ client, authError }: { client: SupabaseClient; authError: string | null }) {
   const [email, setEmail] = useState('');
@@ -52,7 +52,6 @@ function SignedOut({ client, authError }: { client: SupabaseClient; authError: s
 
 function SignedIn({ client, email, userId }: { client: SupabaseClient; email: string; userId: string }) {
   const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [mode, setMode] = useState<'continuity'|'assessments'|'rapid'|'bulk'>('continuity');
   const worker = useMemo(()=>new SafeWorkSyncWorker(safeWorkDb,client),[client]);
@@ -65,23 +64,6 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
     return () => { active = false; };
   }, [client]);
 
-  useEffect(() => {
-    if (schema?.status !== 'compatible') return;
-    let disposed = false;
-    let removeReconnect: (() => void) | undefined;
-    void bootstrapOwnedWorkspace(client).then(workspace => {
-      if (disposed) return;
-      setWorkspaceId(workspace.id);
-      const namespace = { authUserId: userId, workspaceId: workspace.id };
-      void worker.syncNamespace(namespace.authUserId, namespace.workspaceId);
-      removeReconnect = installReconnectSync(worker, () => disposed ? null : namespace);
-    }).catch(() => {});
-    return () => {
-      disposed = true;
-      removeReconnect?.();
-    };
-  }, [client, schema, userId, worker]);
-
   async function logout() {
     if (await hasUnsyncedForUser(safeWorkDb, userId)) {
       if (!window.confirm('Ada pekerjaan Pending Safe/FAILED/CONFLICT di perangkat ini. Pekerjaan tetap disimpan dalam namespace akun ini dan tidak terlihat oleh akun lain. Tetap keluar?')) return;
@@ -91,26 +73,29 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
 
   if (!schema) return <main className="app-shell"><StatusPanel title="Memeriksa kompatibilitas data…"><p>Memverifikasi versi schema.</p></StatusPanel></main>;
   if (schema.status === 'incompatible') return <main className="app-shell"><StatusPanel title="Database belum kompatibel" tone="error"><p>{schema.reason}</p><button onClick={logout}>Keluar</button></StatusPanel></main>;
-  if (!workspaceId) return <main className="app-shell"><StatusPanel title="Membuka workspace…"><p>Memulihkan konteks guru.</p></StatusPanel></main>;
 
   return (
-    <main className="teacher-shell">
-      <div className="topbar">
-        <span>{email}</span>
-        <div>
-          <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => setMode('continuity')}>Teaching</button>{' '}
-          <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>{' '}
-          <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => setMode('rapid')}>Rapid Correction</button>{' '}
-          <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>{' '}
-          <button type="button" className="secondary" onClick={logout}>Keluar</button>
-        </div>
-      </div>
-      {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
-      {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
-      {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
-      {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
-      {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
-    </main>
+    <WorkspaceBootstrapGate client={client} userId={userId} worker={worker} onLogout={logout} logoutError={logoutError}>
+      {workspaceId => (
+        <main className="teacher-shell">
+          <div className="topbar">
+            <span>{email}</span>
+            <div>
+              <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => setMode('continuity')}>Teaching</button>{' '}
+              <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>{' '}
+              <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => setMode('rapid')}>Rapid Correction</button>{' '}
+              <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>{' '}
+              <button type="button" className="secondary" onClick={logout}>Keluar</button>
+            </div>
+          </div>
+          {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
+          {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
+          {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
+          {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
+          {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
+        </main>
+      )}
+    </WorkspaceBootstrapGate>
   );
 }
 
@@ -137,5 +122,5 @@ export function App() {
   if (!configResult.ok) return <main className="app-shell"><StatusPanel title="Konfigurasi belum siap" tone="error"><p>Browser configuration tidak lengkap atau tidak aman.</p><p>Jangan gunakan service-role key di browser.</p></StatusPanel></main>;
   if (!client || auth.status === 'loading') return <main className="app-shell"><StatusPanel title="Memuat sesi…"><p>Memulihkan sesi Supabase Auth.</p></StatusPanel></main>;
   if (auth.status === 'signed-out') return <SignedOut client={client} authError={auth.error} />;
-  return <SignedIn client={client} userId={auth.session.user.id} email={auth.session.user.email ?? auth.session.user.id} />;
+  return <SignedIn key={auth.session.user.id} client={client} userId={auth.session.user.id} email={auth.session.user.email ?? auth.session.user.id} />;
 }
