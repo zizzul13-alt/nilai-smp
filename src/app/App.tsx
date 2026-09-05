@@ -108,7 +108,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
       {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
       {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
       {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
-      {mode === 'rapid' ? <RapidCorrection client={client} userId={userId} workspaceId={workspaceId} /> : null}
+      {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} /> : null}
       {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
     </main>
   );
