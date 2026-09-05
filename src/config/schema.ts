@@ -1,1 +1,1 @@
-export const EXPECTED_SCHEMA_VERSION = 'r3.3-bulk-assessment.1';
+export const EXPECTED_SCHEMA_VERSION = 'r3.4-continuity-core.1';
