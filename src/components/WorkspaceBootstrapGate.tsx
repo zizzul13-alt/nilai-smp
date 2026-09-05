@@ -14,6 +14,7 @@ type Props = {
   userId: string;
   worker: SafeWorkSyncWorker;
   onLogout: () => void | Promise<void>;
+  logoutError: string | null;
   children: (workspaceId: string) => ReactNode;
   bootstrap?: typeof bootstrapOwnedWorkspace;
   installReconnect?: typeof installReconnectSync;
@@ -24,6 +25,7 @@ export function WorkspaceBootstrapGate({
   userId,
   worker,
   onLogout,
+  logoutError,
   children,
   bootstrap = bootstrapOwnedWorkspace,
   installReconnect = installReconnectSync,
@@ -61,6 +63,7 @@ export function WorkspaceBootstrapGate({
       <main className="app-shell">
         <StatusPanel title="Tidak dapat membuka workspace" tone="error">
           <p>Data belum berhasil dimuat. Coba lagi saat koneksi atau layanan sudah siap.</p>
+          {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
           <button type="button" onClick={() => setAttempt(value => value + 1)}>Coba lagi</button>{' '}
           <button type="button" className="secondary" onClick={() => void onLogout()}>Keluar</button>
         </StatusPanel>
