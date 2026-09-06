@@ -14,11 +14,13 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 - **R3.3 Assessment Workspace:** teacher-visible Assessment creation from an active Class/Period, optional immutable ScoringProfile selection, and current Assessment list.
 - **R3.3 Rapid Correction:** explicit resumable correction sessions, arbitrary paper-order student search, mobile rapid judgement and Pending Safe academic operations.
 - **R3.3 Bulk Assessment:** desktop Bulk Entry plus Nilai SMP-owned XLSX template/import, strict stable Enrollment identity, Preview/Validate before mutation, bounded XLSX parsing, and online atomic Result batch commit with idempotency and revision conflicts.
-- **R3.4 Teaching Continuity Core:** mobile-first Class selection, explicit Start/Continue Meeting, optional canonical Lesson/LessonVersion pinning, durable Checkpoint recovery (`STOPPED AT` + `NEXT STEP`), and explicit Complete/Cancel lifecycle.
+- **R3.4 Teaching Continuity:** explicit Meeting lifecycle, durable Checkpoints, Today dispatcher, Continue/Before Leaving/re-entry flows, append-only continuity baselines, and explainable RELAXED/NORMAL/COMPRESSED pacing with teacher override.
+- **R3.5 Reporting Core:** versioned Reporting Policy, SIMPLE_MEAN provisional/finalized snapshots, explicit Missing/rounding/KKM semantics, source-consistent finalization, audited reopen, and append-only report history.
+- **R3.5 Artifact Core:** stable Artifact identity, append-only ArtifactVersion history, exact LessonVersion/ReportSnapshot provenance, manual-first canonical content, private checksumed DOCX/PDF object metadata, signed downloads, stale-source detection, and archive-first lifecycle.
 
 **NOT YET IMPLEMENTED**
 
-Full Today dispatcher; Before Leaving queue; stale long-absence Quick Update; pacing modes/Effective Meetings; reporting/finalization; artifacts; portable backup/restore engine; legacy data migration; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; schedule engine; automatic homework; gamification.
+Portable backup/restore engine; legacy data migration into the R3 canonical schema; final Daily Driver integration/production-artifact E2E; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; schedule engine; automatic homework; gamification.
 
 ## Continuity laws
 
@@ -26,15 +28,21 @@ UI Session != Teaching Meeting. Browser reload, navigation, logout and close/X n
 
 Checkpoint is first-class continuity data. `STOPPED AT` is required and `NEXT STEP` is optional. Checkpoint writes follow the Safe Work truth law: React state is transient; Pending Safe is announced only after durable IndexedDB commit; Saved is announced only after server confirmation. Reconnect/auth recovery retries the same operation id, so lost acknowledgements do not duplicate Checkpoints.
 
-## Input-path laws
+## Assessment/reporting laws
 
 Assessment != Result; Result != Attempt. Workflow state != score. `UNCHECKED`, `GRADED`, `MISSING`, and `EXCUSED` are explicit states. `0 != blank`; Missing != 0. MAKEUP != REMEDIAL. Spreadsheet row != Student identity; template Assessment/Enrollment UUIDs are stable round-trip keys and display name/NIS/NISN never silently replace Enrollment identity.
 
-Rapid Correction, Bulk Entry and Excel Import are distinct workflows. Rapid Correction may truthfully use the durable Pending Safe queue. Bulk Import does **not** pretend to be offline: parse/preview is local, Commit requires connectivity, one PostgreSQL transaction accepts all intended mutations or none, and UI says Saved only after server acknowledgement. Switching Assessment invalidates stale client context; post-commit bulk state is rehydrated from server canonical Result truth.
+Rapid Correction, Bulk Entry and Excel Import are distinct workflows. Rapid Correction may truthfully use the durable Pending Safe queue. Bulk Import does **not** pretend to be offline: parse/preview is local, Commit requires connectivity, one PostgreSQL transaction accepts all intended mutations or none, and UI says Saved only after server acknowledgement.
+
+Reporting consumes canonical current Result truth under an explicit versioned policy. Raw Attempt evidence is not silently promoted into report output. `UNCHECKED` blocks finalization; finalized snapshots are append-only and require explicit audited Reopen before correction.
+
+## Artifact laws
+
+Artifact identity != ArtifactVersion != ArtifactObject. Manual content is first-class and AI is optional. Lesson/report provenance always points to an exact immutable source identity. Regeneration creates a new ArtifactVersion rather than overwriting historical content. READY binary objects are private and checksumed; overwriting a READY object on the same version is forbidden.
 
 ## Prerequisites and setup
 
-Node.js 22 LTS (supported Node 22–24), npm, and a Supabase project when exercising real hosted auth/database behavior.
+Node.js 22 LTS (supported Node 22–24), npm, and a Supabase project when exercising real hosted auth/database/storage behavior.
 
 ```bash
 npm ci --no-audit --no-fund
@@ -56,16 +64,17 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, continuity lifecycle/idempotency/checkpoint sequencing, Safe Work interruption recovery, atomic bulk commit/idempotency/revision contracts, rapid-correction durability, Assessment creation contracts, strict Enrollment identity, browser XLSX round-trip behavior, and malformed/formula/oversized spreadsheet rejection.
+The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, continuity lifecycle/idempotency/checkpoint sequencing, Safe Work interruption recovery, atomic bulk commit/idempotency/revision contracts, reporting source consistency, artifact append-only/idempotency/storage metadata contracts, browser UX acceptance, and production build correctness.
 
 ## Repository map
 
 ```text
 src/app/                 application/bootstrap, auth gate and workspace routing
-src/components/          continuity + Assessment + rapid correction + desktop bulk workflows
+src/components/          Today/teaching/assessment/reporting/artifact workspaces
 src/config/              browser config and schema-version contract
 src/domain/              canonical TypeScript domain contracts
-src/services/academic/   academic/teaching/assessment/correction/bulk boundaries
+src/services/academic/   academic/teaching/assessment/correction/reporting boundaries
+src/services/artifacts/  artifact versioning, storage and checksum boundaries
 src/services/safeWork/   narrow durable rapid/checkpoint operation queue and sync worker
 supabase/migrations/     append-only canonical database migrations
 tests/database/          real PostgreSQL contract attacks

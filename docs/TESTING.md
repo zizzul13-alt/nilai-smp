@@ -1,37 +1,39 @@
 # Testing Strategy
 
 ## Tiers
-1. **Vitest:** frozen semantic/static architecture contracts plus parser/identity/continuity derivation laws.
-2. **Real PostgreSQL:** ordered migration chain plus RLS, lifecycle, revision, idempotency and atomic transaction attacks.
-3. **Playwright:** browser IndexedDB/Rapid Correction/Continuity interruption behavior and XLSX template round-trip.
+1. **Vitest:** frozen semantic/static architecture contracts plus identity, derivation, schema/doc drift and storage-integrity laws.
+2. **Real PostgreSQL:** ordered migration chain plus RLS, lifecycle, revision, idempotency, concurrency and atomic transaction attacks.
+3. **Playwright:** browser Safe Work/Teaching/Today/Assessment/Reporting/Artifact workflow acceptance.
 4. **Build/typecheck:** production TypeScript/Vite boundary.
 
-## Teaching Continuity acceptance
-Continuity unit contracts cover no-history, active Meeting priority, historical completed Meeting visibility and deterministic latest Checkpoint reconstruction.
+## Teaching Continuity / Today / Pacing
+Continuity contracts cover active Meeting priority, historical visibility, latest meaningful Checkpoint reconstruction, durable Pending Safe truth, lifecycle locking and stale re-entry without fabricating schedule truth. Today tests cover bounded dispatcher reads, direct Continue/Resume routing, local checkpoint overlay, no-work truth and append-only Start From Today baselines. Pacing tests cover Effective Meetings, teacher override, CORE/Practice/Stretch behavior and real async selection races.
 
-Real PostgreSQL contracts prove:
-- Start Class creates one `in_progress` Meeting;
-- same-op lost-ACK Start replay is idempotent;
-- a different duplicate Start reuses the existing active Meeting;
-- the database invariant rejects a second active Meeting for one Class;
-- checkpoint sequence is deterministic and retry does not duplicate;
-- blank `stopped_at` is rejected;
-- absence of a lifecycle RPC call leaves the Meeting in progress;
-- explicit Complete preserves Checkpoints/history;
-- a later Start creates a new Meeting identity;
-- Cancel is explicit history;
-- optional Lesson/exact LessonVersion context is retained;
-- foreign Class/Meeting/Lesson and anonymous access fail closed.
+## Rapid Correction / Bulk Assessment
+Golden 40 paper coverage retains arbitrary physical order, duplicate names, zero, negative, Missing, Excused, Skip and Pending Safe restart semantics. Bulk tests use stable Enrollment identity, local bounded XLSX parse/preview and online atomic commit. Real PostgreSQL contracts prove all-or-none mutation, explicit Attempt semantics, revision conflicts, idempotent replay, cross-workspace denial and rollback.
 
-Playwright continuity tests prove durable checkpoint enqueue survives reload, network/unknown failure retains `PENDING_SAFE`, retry uses the same op_id, server-confirmed save removes local payload, and a fresh browser derivation reconstructs the active Meeting + latest LAST/NEXT context from canonical-shaped data.
+## Reporting acceptance
+Vitest/static contracts keep versioned Reporting Policy semantics explicit and prevent raw Attempt evidence from becoming reported outcome. Real PostgreSQL torture proves one consistent source snapshot, `UNCHECKED` finalization block, append-only provisional/finalized history, audited Reopen, RLS, idempotency and finalization waiting behind concurrent canonical Result writes. Playwright holds a Class A report request open, switches to Class B, releases A and proves the stale completion cannot overwrite the selected Class.
 
-## Rapid Correction acceptance
-Golden 40 paper coverage retains arbitrary physical order, duplicate names, zero, negative, Missing, Excused, Skip and Pending Safe restart semantics.
+## Artifact acceptance
+Vitest/static contracts prove stable Artifact != ArtifactVersion != ArtifactObject, exact LessonVersion/ReportSnapshot provenance, manual-first operation, stale-source derivation, private storage policy, checksum/size requirements, no overwrite and byte-verification on already-existing PENDING uploads.
 
-## Golden Bulk acceptance
-The bulk suite builds a 40-Enrollment class with duplicate display names and resolves rows by stable Enrollment identity in arbitrary order. Parser contracts prove blank != zero, numeric 0, negative values, explicit Missing/Excused and malformed values. Browser acceptance generates the Nilai SMP XLSX template and parses it back with exact Enrollment identities; malformed workbook rejection is exercised.
+Real PostgreSQL Artifact torture proves:
+- stable Artifact + immutable append-only versions;
+- exact source ownership and cross-workspace rejection;
+- current-version graph integrity;
+- revision conflict instead of overwrite;
+- same-op concurrent append applies once and replays once after the advisory lock;
+- object-kind/MIME validation and 20 MB bound;
+- one object kind per ArtifactVersion;
+- PENDING_UPLOAD has no fake checksum;
+- same-op concurrent confirm makes READY once and replays once;
+- READY retains SHA-256/size/MIME and cannot be directly rewritten;
+- archive preserves all versions/objects and blocks later append;
+- audit history and RLS remain closed;
+- plain PostgreSQL CI safely tolerates absence of Supabase `storage.*` while production migrations configure the private bucket when available.
 
-Real PostgreSQL bulk contracts prove atomic multi-Result commit, graded Attempt creation, zero/negative/Missing semantics, duplicate Enrollment rejection, foreign-workspace rejection, stale-row whole-batch Conflict with canonical snapshot, transaction rollback on a failing row, lost-ACK same-op replay without duplicate Attempts, changed-payload op-id denial, ledger uniqueness and anonymous denial.
+Playwright covers Artifact creation from exact LessonVersion provenance, stale-source warning, append-as-new-version and archive history preservation. Production Supabase Storage byte transfer remains covered by the browser service/static integrity contracts here and becomes part of the real deployment/final Daily Driver smoke rather than being faked as privileged storage in PostgreSQL CI.
 
 ## Commands
 ```bash
@@ -46,4 +48,4 @@ npm run test:e2e
 CI uses ephemeral PostgreSQL; no production database or service-role browser credential is required.
 
 ## Still out of scope
-Full Today dispatcher, Before Leaving queue, stale long-absence Quick Update, pacing/Effective Meetings, reporting/finalization, artifacts, backup/restore, legacy migration, AI, collaboration, full offline, schedule engine, automatic homework, gamification and generic global search.
+Portable backup/restore, legacy migration, final Daily Driver production-artifact E2E, AI, collaboration, full offline, schedule engine, automatic homework, gamification and generic global search.
