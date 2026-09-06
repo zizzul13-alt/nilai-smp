@@ -130,6 +130,20 @@ begin
   end if;
 
   perform pg_advisory_xact_lock(hashtextextended(owned_workspace_id::text||':'||p_class_id::text||':'||p_lesson_id::text,0));
+
+  -- A concurrent retry can have committed while this transaction waited on the pacing lock.
+  -- Re-read the ledger under the same serialized boundary so identical lost-ACK retries replay
+  -- the prior success instead of being misclassified as revision conflicts.
+  select ao.* into prior from public.applied_operations ao where ao.op_id=p_op_id;
+  if found then
+    if prior.workspace_id<>owned_workspace_id or prior.operation_type<>'teaching.pacing-plan' or
+       prior.target_entity_id<>p_lesson_id or prior.request_metadata<>request_meta then
+      raise exception 'op_id scope or payload mismatch' using errcode='P3202';
+    end if;
+    return query select 'saved'::text,prior.result_revision,true,(prior.result_metadata->>'plan_id')::uuid;
+    return;
+  end if;
+
   select p.* into current_plan from public.lesson_pacing_plans p
     where p.workspace_id=owned_workspace_id and p.class_id=p_class_id and p.lesson_id=p_lesson_id for update;
   if found then current_revision:=current_plan.revision; else current_revision:=0; end if;
