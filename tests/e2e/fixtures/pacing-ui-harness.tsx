@@ -5,6 +5,7 @@ import{PacingPanel}from'../../../src/components/PacingPanel';
 
 const WORKSPACE='PACE-W',CLASS='PACE-C',LESSON='PACE-L',VERSION='PACE-V';
 let root:Root|null=null,plan:any=null,activeCorrectionCount=1;
+const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 
 function fakeClient(){
   const client:any={
@@ -27,8 +28,24 @@ function fakeClient(){
   return client as SupabaseClient;
 }
 
+function racePlan(lessonId:string,core:string){return{id:`P-${lessonId}`,workspace_id:WORKSPACE,class_id:CLASS,lesson_id:lessonId,lesson_version_id:null,normal_meetings:3,available_meetings:3,correction_reserve:0,core_targets:[core],practice_targets:['Practice'],stretch_targets:[],minimum_exit_criteria:['Exit'],teacher_mode:null,revision:1,created_at:'2026-09-06T00:00:00Z',updated_at:'2026-09-06T00:00:00Z'};}
+function raceClient(){
+  const plans:Record<string,any>={'PACE-OLD':racePlan('PACE-OLD','OLD CORE'),'PACE-NEW':racePlan('PACE-NEW','NEW CORE')};
+  const client:any={from(table:string){let filters:[string,unknown][]=[];const lesson=()=>String(filters.find(([key])=>key==='lesson_id')?.[1]??'');const builder:any={select(){return builder;},eq(key:string,value:unknown){filters.push([key,value]);return builder;},async maybeSingle(){const id=lesson();await delay(id==='PACE-OLD'?160:10);return{data:plans[id]??null,error:null};},then(resolve:any,reject:any){return Promise.resolve({data:[],error:null}).then(resolve,reject);}};if(table==='lesson_pacing_plans'||table==='correction_sessions')return builder;throw new Error(`unexpected table ${table}`);},async rpc(){return{data:null,error:{message:'race harness is read-only'}};}};
+  return client as SupabaseClient;
+}
+
+function resetRoot(){root?.unmount();document.getElementById('pacing-test-root')?.remove();const host=document.createElement('div');host.id='pacing-test-root';document.body.appendChild(host);root=createRoot(host);}
+
 export function mountPacingHarness(){
-  root?.unmount();document.getElementById('pacing-test-root')?.remove();plan=null;activeCorrectionCount=1;
-  const host=document.createElement('div');host.id='pacing-test-root';document.body.appendChild(host);root=createRoot(host);
-  root.render(createElement(PacingPanel,{client:fakeClient(),workspaceId:WORKSPACE,classId:CLASS,lessonId:LESSON,lessonVersionId:VERSION,actualMeetingCount:2}));
+  resetRoot();plan=null;activeCorrectionCount=1;
+  root!.render(createElement(PacingPanel,{client:fakeClient(),workspaceId:WORKSPACE,classId:CLASS,lessonId:LESSON,lessonVersionId:VERSION,actualMeetingCount:2}));
+}
+
+export async function mountPacingSelectionRace(){
+  resetRoot();const client=raceClient();
+  root!.render(createElement(PacingPanel,{client,workspaceId:WORKSPACE,classId:CLASS,lessonId:'PACE-OLD',lessonVersionId:null,actualMeetingCount:0}));
+  await delay(20);
+  root!.render(createElement(PacingPanel,{client,workspaceId:WORKSPACE,classId:CLASS,lessonId:'PACE-NEW',lessonVersionId:null,actualMeetingCount:0}));
+  await delay(220);
 }
