@@ -80,17 +80,19 @@ declare
   request_meta jsonb;
 begin
   if caller_id is null then raise exception 'authentication required' using errcode='28000'; end if;
-  if p_op_id is null or p_class_id is null or p_lesson_id is null or p_expected_revision<0 then
+  if p_op_id is null or p_class_id is null or p_lesson_id is null or p_expected_revision is null or p_expected_revision<0 then
     raise exception 'invalid pacing operation' using errcode='22023';
   end if;
-  if p_normal_meetings not between 1 and 20 or p_available_meetings not between 0 and 20 or
+  if p_normal_meetings is null or p_available_meetings is null or p_correction_reserve is null or
+     p_normal_meetings not between 1 and 20 or p_available_meetings not between 0 and 20 or
      p_correction_reserve not between 0 and 20 or p_correction_reserve>p_available_meetings then
     raise exception 'invalid pacing capacity' using errcode='22023';
   end if;
   if normalized_mode is not null and normalized_mode not in ('RELAXED','NORMAL','COMPRESSED') then
     raise exception 'invalid pacing mode' using errcode='22023';
   end if;
-  if not public.pacing_text_array_valid(p_core_targets,true) or
+  if p_core_targets is null or p_minimum_exit_criteria is null or
+     not public.pacing_text_array_valid(p_core_targets,true) or
      not public.pacing_text_array_valid(coalesce(p_practice_targets,'[]'::jsonb),false) or
      not public.pacing_text_array_valid(coalesce(p_stretch_targets,'[]'::jsonb),false) or
      not public.pacing_text_array_valid(p_minimum_exit_criteria,true) then
