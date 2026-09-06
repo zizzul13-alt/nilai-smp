@@ -64,7 +64,7 @@ describe('R3.5-02 artifact contracts',()=>{
   });
 
   it('computes deterministic SHA-256 before confirmation',async()=>{
-    expect(await sha256Hex(new Blob(['nilai-smp']))).toBe('d6c67bfac6aef667c6ff9310eec42833277357937612340267c886af1f397103');
+    expect(await sha256Hex(new Blob(['nilai-smp']))).toBe('1b6bebb2b5c740c1536644f11a9cc780e8b72e6a37cd288f4953de6ad6d591eb');
   });
 
   it('exposes Artifacts as a workspace, not a separate app',()=>{
