@@ -4,6 +4,7 @@ import{isArtifactVersionStale,sha256Hex,type ArtifactVersion,type LessonSource}f
 
 const migration=readFileSync('supabase/migrations/202609060004_artifact_core.sql','utf8');
 const hardening=readFileSync('supabase/migrations/202609060005_artifact_integrity_hardening.sql','utf8');
+const governor=readFileSync('supabase/migrations/202609060006_artifact_governor_repairs.sql','utf8');
 const app=readFileSync('src/app/App.tsx','utf8');
 const ui=readFileSync('src/components/Artifacts.tsx','utf8');
 const service=readFileSync('src/services/artifacts/artifacts.ts','utf8');
@@ -35,10 +36,18 @@ describe('R3.5-02 artifact contracts',()=>{
     expect(migration).not.toContain('p_workspace_id');
   });
 
-  it('rechecks AppliedOperation after artifact advisory locks for concurrent lost-ACK replay',()=>{
+  it('rechecks AppliedOperation after advisory locks for concurrent lost-ACK replay',()=>{
     for(const fn of['append_artifact_version_operation','archive_artifact_operation','reserve_artifact_object_operation','confirm_artifact_object_operation'])expect(hardening).toContain(`create or replace function public.${fn}`);
     expect((hardening.match(/select ao\.\* into prior from public\.applied_operations ao where ao\.op_id=p_op_id;/g)??[]).length).toBeGreaterThanOrEqual(8);
-    expect(hardening).toContain(':artifact-object-kind:');
+    expect(governor).toContain("':artifact:'||p_artifact_id::text");
+  });
+
+  it('qualifies revision mutation and serializes reservation with archive',()=>{
+    expect(governor).toContain('update public.artifacts as a');
+    expect(governor).toContain('revision=a.revision+1');
+    expect(governor).not.toContain('revision=revision+1');
+    expect(governor).toContain("if art.status<>'active' then raise exception 'artifact archived'");
+    expect(governor).toContain("reserve_artifact_object_operation");
   });
 
   it('defines private Supabase Storage policy for owner-verifiable pending and ready objects',()=>{
@@ -60,12 +69,32 @@ describe('R3.5-02 artifact contracts',()=>{
     expect(ui).toContain('overwrite dilarang');
   });
 
+  it('preserves artifact operation ids across user retries',()=>{
+    expect(ui).toContain('operationId:crypto.randomUUID()');
+    expect(ui).toContain('opId:draft.operationId');
+    expect(ui).toContain('archiveAttempt');
+    expect(ui).toContain('reservationAttempt');
+  });
+
+  it('binds upload transport MIME to reservation metadata',()=>{
+    expect(service).toContain('reservation:{objectId:string;storagePath:string;mimeType:string}');
+    expect(service).toContain('contentType:reservation.mimeType');
+    expect(service).not.toContain("contentType:file.type||'application/octet-stream'");
+    expect(ui).toContain('mimeType:expectedMime');
+  });
+
   it('verifies an already-uploaded retry byte-for-byte and reuses stable confirm op identity',()=>{
     expect(service).toContain("download(storagePath)");
     expect(service).toContain('existingHash!==expectedHash');
     expect(service).toContain('data.size!==file.size');
     expect(service).toContain('opId:reservation.objectId');
     expect(ui).toContain('Pending upload ini terikat ke ukuran/jenis file sebelumnya.');
+  });
+
+  it('does not expose fresh upload controls for archived artifacts',()=>{
+    expect(ui).toContain("selected.status==='active'");
+    expect(ui).toContain('Artifact archived bersifat read-only.');
+    expect(ui).toContain('toggleArchived');
   });
 
   it('derives stale LessonVersion source without mutating historical artifact versions',()=>{
