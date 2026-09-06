@@ -37,7 +37,7 @@ describe('R3.HARDEN-01 contracts',()=>{
   });
 
   it('keeps runtime and operational docs on the same schema identity',()=>{
-    expect(EXPECTED_SCHEMA_VERSION).toBe('r3.4-pacing-final.1');
+    expect(EXPECTED_SCHEMA_VERSION).toBe('r3.5-reporting-core.1');
     expect(deployment).toContain(EXPECTED_SCHEMA_VERSION);
     expect(troubleshooting).toContain(EXPECTED_SCHEMA_VERSION);
     expect(deployment).not.toContain('must agree on `r3.4-continuity-core.1`');
