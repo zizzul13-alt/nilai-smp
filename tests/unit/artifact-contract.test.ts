@@ -3,8 +3,10 @@ import{readFileSync}from'node:fs';
 import{isArtifactVersionStale,sha256Hex,type ArtifactVersion,type LessonSource}from'../../src/services/artifacts/artifacts';
 
 const migration=readFileSync('supabase/migrations/202609060004_artifact_core.sql','utf8');
+const hardening=readFileSync('supabase/migrations/202609060005_artifact_integrity_hardening.sql','utf8');
 const app=readFileSync('src/app/App.tsx','utf8');
 const ui=readFileSync('src/components/Artifacts.tsx','utf8');
+const service=readFileSync('src/services/artifacts/artifacts.ts','utf8');
 
 describe('R3.5-02 artifact contracts',()=>{
   it('keeps stable Artifact identity separate from append-only versions and objects',()=>{
@@ -33,11 +35,16 @@ describe('R3.5-02 artifact contracts',()=>{
     expect(migration).not.toContain('p_workspace_id');
   });
 
-  it('defines private Supabase Storage policy only for reserved owned objects',()=>{
+  it('rechecks AppliedOperation after artifact advisory locks for concurrent lost-ACK replay',()=>{
+    for(const fn of['append_artifact_version_operation','archive_artifact_operation','reserve_artifact_object_operation','confirm_artifact_object_operation'])expect(hardening).toContain(`create or replace function public.${fn}`);
+    expect((hardening.match(/select ao\.\* into prior from public\.applied_operations ao where ao\.op_id=p_op_id;/g)??[]).length).toBeGreaterThanOrEqual(8);
+    expect(hardening).toContain(':artifact-object-kind:');
+  });
+
+  it('defines private Supabase Storage policy for owner-verifiable pending and ready objects',()=>{
     expect(migration).toContain("values('artifact-files','artifact-files',false,20000000");
     expect(migration).toContain("bucket_id='artifact-files'");
-    expect(migration).toContain("ao.storage_path=name and ao.state='PENDING_UPLOAD'");
-    expect(migration).toContain("ao.storage_path=name and ao.state='READY'");
+    expect(hardening).toContain("ao.storage_path=name and ao.state in ('PENDING_UPLOAD','READY')");
     expect(migration).toContain("if to_regclass('storage.buckets') is not null and to_regclass('storage.objects') is not null");
     expect(migration).not.toMatch(/create policy artifact_file_owner_update/);
     expect(migration).not.toMatch(/create policy artifact_file_owner_delete/);
@@ -49,7 +56,16 @@ describe('R3.5-02 artifact contracts',()=>{
     expect(migration).toContain("sha256 ~ '^[0-9a-f]{64}$'");
     expect(migration).toContain('byte_size<=20000000');
     expect(migration).toContain('artifact_object_version_kind_unique unique(workspace_id,artifact_version_id,object_kind)');
+    expect(hardening).toContain('artifact object MIME does not match kind');
     expect(ui).toContain('overwrite dilarang');
+  });
+
+  it('verifies an already-uploaded retry byte-for-byte and reuses stable confirm op identity',()=>{
+    expect(service).toContain("download(storagePath)");
+    expect(service).toContain('existingHash!==expectedHash');
+    expect(service).toContain('data.size!==file.size');
+    expect(service).toContain('opId:reservation.objectId');
+    expect(ui).toContain('Pending upload ini terikat ke ukuran/jenis file sebelumnya.');
   });
 
   it('derives stale LessonVersion source without mutating historical artifact versions',()=>{
