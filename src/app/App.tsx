@@ -7,6 +7,7 @@ import { RapidCorrection } from '../components/RapidCorrection';
 import { BulkAssessment } from '../components/BulkAssessment';
 import { AssessmentManager } from '../components/AssessmentManager';
 import { Reporting } from '../components/Reporting';
+import { Artifacts } from '../components/Artifacts';
 import { WorkspaceBootstrapGate } from '../components/WorkspaceBootstrapGate';
 import { readBrowserConfig } from '../config/env';
 import { EXPECTED_SCHEMA_VERSION } from '../config/schema';
@@ -52,7 +53,7 @@ function SignedOut({ client, authError }: { client: SupabaseClient; authError: s
   );
 }
 
-type WorkspaceMode='today'|'continuity'|'assessments'|'rapid'|'bulk'|'reporting';
+type WorkspaceMode='today'|'continuity'|'assessments'|'rapid'|'bulk'|'reporting'|'artifacts';
 
 function SignedIn({ client, email, userId }: { client: SupabaseClient; email: string; userId: string }) {
   const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
@@ -95,6 +96,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
               <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => openRapid()}>Rapid Correction</button>{' '}
               <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>{' '}
               <button type="button" className={mode === 'reporting' ? '' : 'secondary'} onClick={() => setMode('reporting')}>Reporting</button>{' '}
+              <button type="button" className={mode === 'artifacts' ? '' : 'secondary'} onClick={() => setMode('artifacts')}>Artifacts</button>{' '}
               <button type="button" className="secondary" onClick={logout}>Keluar</button>
             </div>
           </div>
@@ -105,6 +107,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
           {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialAssessmentId={rapidTarget} /> : null}
           {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
           {mode === 'reporting' ? <Reporting client={client} workspaceId={workspaceId} /> : null}
+          {mode === 'artifacts' ? <Artifacts client={client} workspaceId={workspaceId} /> : null}
         </main>
       )}
     </WorkspaceBootstrapGate>
