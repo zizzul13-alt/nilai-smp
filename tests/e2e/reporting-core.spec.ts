@@ -17,3 +17,25 @@ test('reporting preserves finalized history and requires explicit reopen before 
   await expect(page.getByText('PROVISIONAL',{exact:true})).toBeVisible();
   await expect(page.getByText(/snapshot append-only/)).toBeVisible();
 });
+
+test('old class snapshot completion cannot overwrite the newly selected class',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(async(h:string)=>(await import(h)).mountReportingClassRaceHarness(),harness);
+  const classSelect=page.getByLabel('Class');
+  await expect(classSelect).toHaveValue('REP-C');
+  await expect(page.getByText('Siswa Reporting')).toBeVisible();
+
+  await page.getByRole('button',{name:'Preview provisional'}).click();
+  await page.waitForFunction(()=>(window as Window&{__reportingSnapshotPending?:boolean}).__reportingSnapshotPending===true);
+  await classSelect.selectOption('REP-C-2');
+  await expect(classSelect).toHaveValue('REP-C-2');
+  await expect(page.getByText('Siswa Class B')).toBeVisible();
+  await expect(page.getByText('77',{exact:true})).toBeVisible();
+
+  await page.evaluate(async(h:string)=>(await import(h)).releaseReportingSnapshot(),harness);
+  await page.waitForFunction(()=>(window as Window&{__reportingSnapshotPending?:boolean}).__reportingSnapshotPending!==true);
+  await expect(classSelect).toHaveValue('REP-C-2');
+  await expect(page.getByText('Siswa Class B')).toBeVisible();
+  await expect(page.getByText('77',{exact:true})).toBeVisible();
+  await expect(page.getByText('Siswa Class A Updated')).toHaveCount(0);
+});
