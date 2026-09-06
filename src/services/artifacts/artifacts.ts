@@ -64,9 +64,9 @@ async function verifyExistingUpload(client:SupabaseClient,storagePath:string,fil
   const existingHash=await sha256Hex(data);
   if(data.size!==file.size||existingHash!==expectedHash)throw new Error('Artifact retry ditolak: object yang sudah ada tidak sama byte-for-byte dengan file ini. Buat artifact version baru bila file sumber berubah.');
 }
-export async function uploadArtifactObject(client:SupabaseClient,reservation:{objectId:string;storagePath:string},file:File){
+export async function uploadArtifactObject(client:SupabaseClient,reservation:{objectId:string;storagePath:string;mimeType:string},file:File){
   const hash=await sha256Hex(file);
-  const{error}=await client.storage.from('artifact-files').upload(reservation.storagePath,file,{upsert:false,contentType:file.type||'application/octet-stream'});
+  const{error}=await client.storage.from('artifact-files').upload(reservation.storagePath,file,{upsert:false,contentType:reservation.mimeType});
   if(error){
     if(!/already exists/i.test(error.message))throw new Error(`Artifact upload failed: ${error.message}`);
     await verifyExistingUpload(client,reservation.storagePath,file,hash);
