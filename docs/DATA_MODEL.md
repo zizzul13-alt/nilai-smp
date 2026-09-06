@@ -1,7 +1,7 @@
 # Data Model
 
 ## Status
-R3.1 Academic + Teaching Core, R3.2 Safe Work metadata, R3.3 Assessment Core/Rapid Correction/Bulk Assessment, and the complete R3.4 Teaching Continuity / Today / Pacing layer are implemented.
+R3.1 Academic + Teaching Core, R3.2 Safe Work metadata, R3.3 Assessment Core/Rapid Correction/Bulk Assessment, the complete R3.4 Teaching Continuity / Today / Pacing layer, and R3.5-01 Reporting Core are implemented.
 
 ## Ownership graph
 ```text
@@ -16,6 +16,9 @@ auth.users -> workspaces
   -> scoring_profiles
   -> assessments -> assessment_results(revision) -> assessment_attempts
   -> correction_sessions (workflow progress, not evidence)
+  -> reporting_policies (versioned policy series)
+  -> reporting_cycles -> report_snapshots -> report_snapshot_rows
+  -> audit_events (important academic workflow history)
   -> applied_operations (idempotency metadata, not academic history)
 ```
 Every protected record is workspace-owned; composite FKs defend graph integrity.
@@ -39,6 +42,13 @@ ScoringProfile is an immutable-ruleset identity. Assessment is stable UUID ident
 
 Result state/score laws: UNCHECKED/MISSING/EXCUSED have NULL score; GRADED has non-NULL numeric score, including 0 and negative values. Blank spreadsheet input maps to UNCHECKED/no judgement, never zero or Missing.
 
+## Reporting truth
+Reporting is derived, not a second gradebook. `reporting_policies` are versioned immutable semantic identities. R3.5-01 implements explicit `SIMPLE_MEAN` aggregation with policy-controlled Missing behavior (`EXCLUDE | ZERO`), Remedial behavior (`CURRENT_RESULT | BEST_OF_CURRENT_AND_REMEDIAL`), rounding (`NONE | INTEGER | ONE_DECIMAL`), and an optional KKM threshold stored separately from arithmetic.
+
+A `reporting_cycle` is one Class + Academic Period workflow identity with monotonic revision and `OPEN | FINALIZED` lifecycle. `report_snapshots` are append-only `PROVISIONAL | FINALIZED` calculations and `report_snapshot_rows` preserve student display name, stable Enrollment/Student IDs, reported score, state counts, KKM interpretation, and per-Assessment calculation evidence as it existed at snapshot time.
+
+`UNCHECKED` means unknown evidence and blocks Finalize. `MISSING` and `EXCUSED` remain explicit states and are interpreted only through the chosen policy. A FINALIZED cycle cannot silently recalculate: the teacher must explicitly Reopen with a nonblank reason, which is written to `audit_events`; old finalized snapshots remain untouched. Corrections happen to canonical Result/Attempt data, then a new snapshot is calculated.
+
 ## Spreadsheet identity
 Spreadsheet row != Student identity and header != Assessment identity. The owned template carries `Assessment_ID` and `Enrollment_ID`; NIS/NISN/name are teacher-readable/supporting identity only. Duplicate names are legal. Ambiguous or unmatched rows never commit. Spreadsheet data is untrusted input and never canonical storage.
 
@@ -48,6 +58,8 @@ Spreadsheet row != Student identity and header != Assessment identity. The owned
 `continuity.baseline` appends Quick Update / Start From Today re-entry facts. `teaching.pacing-plan` performs revision-checked Class + Lesson pacing writes. Neither operation rewrites immutable LessonVersion history.
 
 `assessment.judgement` remains the rapid single-Result operation. `assessment.bulk` uses one stable batch op_id targeting one Assessment; request metadata contains the exact canonical batch payload and result metadata stores deterministic summary. No per-row spreadsheet identity is added to the canonical academic graph.
+
+`reporting.policy-create`, `reporting.snapshot`, and `reporting.reopen` are idempotent R3.5 operations. Reporting snapshot retries preserve the same cycle revision outcome; Reopen is an explicit audited workflow change, never an overwrite of snapshot history.
 
 ## Migration chain
 ```text
@@ -61,5 +73,6 @@ r3.0-foundation.1
 -> r3.4-continuity-core.1
 -> r3.4-today-reentry.1
 -> r3.4-pacing-final.1
+-> r3.5-reporting-core.1
 ```
 Migrations remain append-only.
