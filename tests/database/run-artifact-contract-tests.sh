@@ -58,8 +58,8 @@ RESERVE_OP="a6300000-0000-0000-0000-000000000001"
 expect_sqlstate 'PDF reservation rejects mismatched MIME metadata' "$A perform * from public.reserve_artifact_object_operation('a6300000-0000-0000-0000-000000000099','$ART','$V3','PDF','application/octet-stream',1234)" '22023'
 RESERVE_CALL="public.reserve_artifact_object_operation('$RESERVE_OP','$ART','$V3','PDF','application/pdf',1234)"
 expect_value 'reserve creates durable PENDING_UPLOAD metadata' "$A select outcome||':'||replayed from $RESERVE_CALL;" 'saved:false'
-OBJ="$(run "$A select id from public.artifact_objects where artifact_version_id='$V3' and object_kind='PDF';")"; PATH="$(run "$A select storage_path from public.artifact_objects where id='$OBJ';")"
-expect_value 'reservation lost ACK replays exact object' "$A select object_id||':'||storage_path||':'||replayed from $RESERVE_CALL;" "$OBJ:$PATH:true"
+OBJ="$(run "$A select id from public.artifact_objects where artifact_version_id='$V3' and object_kind='PDF';")"; STORAGE_PATH="$(run "$A select storage_path from public.artifact_objects where id='$OBJ';")"
+expect_value 'reservation lost ACK replays exact object' "$A select object_id||':'||storage_path||':'||replayed from $RESERVE_CALL;" "$OBJ:$STORAGE_PATH:true"
 expect_value 'opaque storage path is workspace/artifact/version scoped' "$A select (storage_path like workspace_id::text||'/'||artifact_id::text||'/'||artifact_version_id::text||'/%')::text from public.artifact_objects where id='$OBJ';" 'true'
 expect_value 'reserved object is visibly pending without fake checksum' "$A select state||':'||(sha256 is null)::text from public.artifact_objects where id='$OBJ';" 'PENDING_UPLOAD:true'
 expect_sqlstate 'duplicate object kind cannot silently overwrite same artifact version' "$A perform * from public.reserve_artifact_object_operation('a6300000-0000-0000-0000-000000000002','$ART','$V3','PDF','application/pdf',1234)" 'P3607'
