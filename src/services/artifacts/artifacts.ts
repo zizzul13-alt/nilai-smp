@@ -7,7 +7,7 @@ export type Artifact={id:string;workspace_id:string;artifact_type:ArtifactType;t
 export type ArtifactVersion={id:string;workspace_id:string;artifact_id:string;version_no:number;source_kind:ArtifactSourceKind;lesson_id:string|null;lesson_version_id:string|null;report_snapshot_id:string|null;canonical_text:string;structured_content:Record<string,unknown>;template_key:string|null;generator_provider:string|null;provenance:Record<string,unknown>;created_by:string;created_at:string};
 export type ArtifactObject={id:string;workspace_id:string;artifact_id:string;artifact_version_id:string;object_kind:ArtifactObjectKind;state:'PENDING_UPLOAD'|'READY';storage_path:string;mime_type:string;byte_size:number;sha256:string|null;created_by:string;created_at:string;confirmed_at:string|null};
 export type LessonSource={lesson_id:string;lesson_title:string;lesson_version_id:string;version_number:number;content_text:string};
-export type ReportSource={id:string;class_id:string;snapshot_no:number;kind:'PROVISIONAL'|'FINALIZED';created_at:string};
+export type ReportSource={id:string;cycle_id:string;class_id:string;snapshot_no:number;kind:'PROVISIONAL'|'FINALIZED';created_at:string};
 export type ArtifactWorkspace={artifacts:Artifact[];versions:ArtifactVersion[];objects:ArtifactObject[];lessonSources:LessonSource[];reportSources:ReportSource[]};
 
 export async function loadArtifactWorkspace(client:SupabaseClient,workspaceId:string):Promise<ArtifactWorkspace>{
@@ -17,7 +17,7 @@ export async function loadArtifactWorkspace(client:SupabaseClient,workspaceId:st
     client.from('artifact_objects').select('*').eq('workspace_id',workspaceId).order('created_at',{ascending:false}),
     client.from('lessons').select('id,title').eq('workspace_id',workspaceId).eq('status','active').order('title'),
     client.from('lesson_versions').select('id,lesson_id,version_number,content_text').eq('workspace_id',workspaceId).order('version_number',{ascending:false}),
-    client.from('report_snapshots').select('id,class_id,snapshot_no,kind,created_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}),
+    client.from('report_snapshots').select('id,cycle_id,class_id,snapshot_no,kind,created_at').eq('workspace_id',workspaceId).order('created_at',{ascending:false}),
   ]);
   for(const result of[artifactsResult,versionsResult,objectsResult,lessonsResult,lessonVersionsResult,reportsResult])if(result.error)throw new Error(`Artifact workspace load failed: ${result.error.message}`);
   const lessons=new Map((lessonsResult.data??[]).map((row:any)=>[row.id,row.title]));
@@ -30,10 +30,25 @@ export function latestLessonVersionByLesson(sources:LessonSource[]){
   for(const source of sources){const current=latest.get(source.lesson_id);if(!current||source.version_number>current.version_number)latest.set(source.lesson_id,source);}
   return latest;
 }
-export function isArtifactVersionStale(version:ArtifactVersion,sources:LessonSource[]){
-  if(version.source_kind!=='LESSON_VERSION'||!version.lesson_id||!version.lesson_version_id)return false;
-  const latest=latestLessonVersionByLesson(sources).get(version.lesson_id);
-  return Boolean(latest&&latest.lesson_version_id!==version.lesson_version_id);
+export function latestReportSnapshotByCycle(sources:ReportSource[]){
+  const latest=new Map<string,ReportSource>();
+  for(const source of sources){const current=latest.get(source.cycle_id);if(!current||source.snapshot_no>current.snapshot_no||(source.snapshot_no===current.snapshot_no&&source.created_at>current.created_at))latest.set(source.cycle_id,source);}
+  return latest;
+}
+export function isArtifactVersionStale(version:ArtifactVersion,lessonSources:LessonSource[],reportSources:ReportSource[]=[]){
+  if(version.source_kind==='LESSON_VERSION'){
+    if(!version.lesson_id||!version.lesson_version_id)return false;
+    const latest=latestLessonVersionByLesson(lessonSources).get(version.lesson_id);
+    return Boolean(latest&&latest.lesson_version_id!==version.lesson_version_id);
+  }
+  if(version.source_kind==='REPORT_SNAPSHOT'){
+    if(!version.report_snapshot_id)return false;
+    const source=reportSources.find(item=>item.id===version.report_snapshot_id);
+    if(!source)return false;
+    const latest=latestReportSnapshotByCycle(reportSources).get(source.cycle_id);
+    return Boolean(latest&&latest.id!==source.id);
+  }
+  return false;
 }
 
 export async function createArtifact(client:SupabaseClient,input:{opId:string;artifactType:ArtifactType;title:string;sourceKind:ArtifactSourceKind;lessonId?:string|null;lessonVersionId?:string|null;reportSnapshotId?:string|null;canonicalText:string;structuredContent?:Record<string,unknown>;templateKey?:string|null;generatorProvider?:string|null}){
