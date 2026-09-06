@@ -18,6 +18,7 @@ const classroom={id:CLASS_ID,workspace_id:WORKSPACE_ID,academic_period_id:'P1',i
 function rowsFor(table:string){
   if(table==='classes')return[classroom];
   if(table==='meetings')return[{id:meetingId,workspace_id:WORKSPACE_ID,class_id:CLASS_ID,lesson_id:null,lesson_version_id:null,occurred_at:'2026-09-05T08:00:00Z',status:meetingStatus}];
+  if(table==='continuity_baselines')return[];
   return[];
 }
 
@@ -25,11 +26,15 @@ function fakeClient(){
   return{
     from(table:string){
       const filters:Array<[string,unknown]>=[];
-      const result=()=>({data:rowsFor(table).filter(row=>filters.every(([column,value])=>(row as Record<string,unknown>)[column]===value)),error:null});
+      let take:number|null=null;
+      const rows=()=>rowsFor(table).filter(row=>filters.every(([column,value])=>(row as Record<string,unknown>)[column]===value)).slice(0,take??undefined);
+      const result=()=>({data:rows(),error:null});
       const query:any={
         select:()=>query,
         eq:(column:string,value:unknown)=>{filters.push([column,value]);return query;},
-        order:async()=>result(),
+        order:()=>query,
+        limit:(value:number)=>{take=value;return query;},
+        maybeSingle:async()=>({data:rows()[0]??null,error:null}),
         then:(resolve:(value:unknown)=>unknown,reject:(reason:unknown)=>unknown)=>Promise.resolve(result()).then(resolve,reject),
       };
       return query;

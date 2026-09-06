@@ -37,11 +37,11 @@ describe('R3.HARDEN-01 contracts',()=>{
   });
 
   it('keeps runtime and operational docs on the same schema identity',()=>{
-    expect(EXPECTED_SCHEMA_VERSION).toBe('r3.4-continuity-core.1');
+    expect(EXPECTED_SCHEMA_VERSION).toBe('r3.4-today-reentry.1');
     expect(deployment).toContain(EXPECTED_SCHEMA_VERSION);
     expect(troubleshooting).toContain(EXPECTED_SCHEMA_VERSION);
-    expect(deployment).not.toContain('r3.3-bulk-assessment.1');
-    expect(troubleshooting).not.toContain('r3.3-bulk-assessment.1');
+    expect(deployment).not.toContain('must agree on `r3.4-continuity-core.1`');
+    expect(troubleshooting).not.toContain('expects `r3.4-continuity-core.1`');
   });
 
   it('documents every real migration in repository filename order',()=>{
