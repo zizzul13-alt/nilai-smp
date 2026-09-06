@@ -23,24 +23,26 @@ PY
 pass 'portable manifest includes academic, reporting and artifact metadata'
 
 RESTORE_DB="nilai_smp_restore_test"
-dropdb --if-exists "$RESTORE_DB" >/dev/null 2>&1 || true
-createdb "$RESTORE_DB"
+"${PSQL[@]}" -qc "drop database if exists $RESTORE_DB with (force);"
+"${PSQL[@]}" -qc "create database $RESTORE_DB;"
 RESTORE_URL="${DB_URL%/*}/$RESTORE_DB"; RPSQL=(psql "$RESTORE_URL" -X -v ON_ERROR_STOP=1)
-"${RPSQL[@]}" -f tests/database/bootstrap_supabase_compat.sql >/dev/null
+"${RPSQL[@]}" -f tests/database/bootstrap_supabase_existing_roles.sql >/dev/null
 for migration in $(find supabase/migrations -maxdepth 1 -name '*.sql'|sort);do "${RPSQL[@]}" -f "$migration" >/dev/null;done
 RA="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000a\",\"role\":\"authenticated\"}';"
 "${RPSQL[@]}" -qAtc "$RA select id from public.bootstrap_personal_workspace();" >/dev/null
 
-"${RPSQL[@]}" >/tmp/nilai-restore-result <<'SQL'
-\set ON_ERROR_STOP on
+restore_from_file(){
+  local op_id="$1"
+  "${RPSQL[@]}" -qAt <<SQL
 create temporary table portable_input(payload text);
 \copy portable_input(payload) from '/tmp/nilai-portable-backup-with-checksum.json'
 set role authenticated;
 set request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';
-select outcome||':'||restored_rows||':'||replayed from public.restore_portable_backup_operation('a7000000-0000-4000-8000-000000000001',(select payload::jsonb from portable_input));
+select outcome||':'||restored_rows||':'||replayed from public.restore_portable_backup_operation('$op_id',(select payload::jsonb from portable_input));
 SQL
-RESULT="$(tail -1 /tmp/nilai-restore-result | tr -d '[:space:]')"
-[[ "$RESULT" == restored:*:false ]]||{ cat /tmp/nilai-restore-result >&2;fail "restore-to-empty failed ($RESULT)";};pass 'restore-to-empty applies portable manifest atomically'
+}
+RESULT="$(restore_from_file 'a7000000-0000-4000-8000-000000000001' | tail -1 | tr -d '[:space:]')"
+[[ "$RESULT" == restored:*:false ]]||fail "restore-to-empty failed ($RESULT)";pass 'restore-to-empty applies portable manifest atomically'
 
 TABLES=(academic_years academic_periods classes students enrollments materials lessons lesson_versions meetings checkpoints activities activity_meetings scoring_profiles assessments assessment_results assessment_attempts correction_sessions continuity_baselines lesson_pacing_plans reporting_policies reporting_cycles report_snapshots report_snapshot_rows audit_events artifacts artifact_versions artifact_objects)
 for table in "${TABLES[@]}";do
@@ -56,11 +58,11 @@ CURRENT_LINKS="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.artifacts 
 [[ "$CURRENT_LINKS" == "$ARTS" ]]||fail 'artifact current-version links not reconstructed';pass 'artifact current-version links reconstructed after version restore'
 REPORT_LINKS="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.reporting_cycles c where current_snapshot_id is null or exists(select 1 from public.report_snapshots s where s.id=c.current_snapshot_id and s.cycle_id=c.id);")";CYCLES="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.reporting_cycles;")"
 [[ "$REPORT_LINKS" == "$CYCLES" ]]||fail 'report current snapshot links invalid';pass 'report cycle current-snapshot links reconstructed'
-REPLAY="$("${RPSQL[@]}" -qAtc "$RA select replayed from public.restore_portable_backup_operation('a7000000-0000-4000-8000-000000000001',pg_read_file('/tmp/nilai-portable-backup-with-checksum.json')::jsonb);")"
-[[ "$REPLAY" == 't' ]]||fail 'restore lost-ACK replay not idempotent';pass 'restore operation replays after lost acknowledgement'
-if "${RPSQL[@]}" -qc "$RA select * from public.restore_portable_backup_operation('a7000000-0000-4000-8000-000000000002',pg_read_file('/tmp/nilai-portable-backup-with-checksum.json')::jsonb);" >/tmp/recovery-out 2>/tmp/recovery-err;then fail 'second independent restore unexpectedly merged into non-empty target';fi
+REPLAY="$(restore_from_file 'a7000000-0000-4000-8000-000000000001' | tail -1 | tr -d '[:space:]')"
+[[ "$REPLAY" == restored:*:true ]]||fail 'restore lost-ACK replay not idempotent';pass 'restore operation replays after lost acknowledgement'
+if restore_from_file 'a7000000-0000-4000-8000-000000000002' >/tmp/recovery-out 2>/tmp/recovery-err;then fail 'second independent restore unexpectedly merged into non-empty target';fi
 pass 'restore refuses non-empty target instead of merging histories'
 B_VISIBLE="$("${RPSQL[@]}" -qAtc "$B select count(*) from public.students;")";[[ "$B_VISIBLE" == '0' ]]||fail 'foreign account can see restored rows';pass 'restored graph remains RLS-owned'
 SCHEMA="$("${RPSQL[@]}" -qAtc "$RA select version from public.app_schema_version where id=1;")";[[ "$SCHEMA" == 'r3.6-recovery.1' ]]||fail 'schema identity not advanced';pass 'schema identity advances to r3.6-recovery.1'
-dropdb "$RESTORE_DB" >/dev/null
+"${PSQL[@]}" -qc "drop database if exists $RESTORE_DB with (force);"
 printf '\nR3.6-01 portable backup/restore PostgreSQL acceptance completed successfully.\n'
