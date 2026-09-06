@@ -4,7 +4,7 @@
 Use `.env.local` with browser-safe Supabase URL + publishable key only. Never substitute a service-role key.
 
 ## Database incompatible
-Stop writes and apply ordered migrations through R3.5 Reporting Core: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture -> reporting core. Current runtime expects `r3.5-reporting-core.1`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
+Stop writes and apply ordered migrations through R3.5 Artifact Core: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture -> reporting core -> artifact core -> artifact integrity hardening. Current runtime expects `r3.5-artifact-core.2`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
 
 ## Today read failure / stale context
 A Today read failure is unknown state, not "no work". Use the Today Retry action; do not infer schedule or class activity from missing data.
@@ -30,6 +30,15 @@ A snapshot source is materialized from one PostgreSQL statement so every enrollm
 A FINALIZED reporting cycle is intentionally closed. Do not overwrite or recalculate it in place. If a factual correction is required, use **Reopen**, enter a concrete reason, correct the canonical Result/Attempt evidence, then create a new provisional/finalized snapshot. The old FINALIZED snapshot remains append-only history and the Reopen reason is recorded in `audit_events`.
 
 If a reporting operation reports a revision conflict, reload the latest cycle/snapshot and review before trying again. Do not bypass the RPC by directly editing `reporting_cycles`, `report_snapshots`, or `report_snapshot_rows`.
+
+## Artifact versions / private files
+Artifact identity is stable; every regeneration or factual revision creates a new `ArtifactVersion`. Do not rewrite an older version to make history look current. `STALE SOURCE` means an ArtifactVersion points to an older exact LessonVersion than the latest LessonVersion currently available; it is a warning to create a new version, not permission to mutate history.
+
+Manual artifacts remain valid without AI. Lesson-sourced and report-sourced versions retain exact source IDs and provenance. READY DOCX/PDF objects are private, checksumed and overwrite-resistant. A READY object cannot be replaced on the same version; create a new ArtifactVersion instead.
+
+`PENDING_UPLOAD` means metadata has been reserved but the binary has not yet been confirmed READY. Retry with the exact same file size/kind. If Storage reports that the path already exists, the app downloads that owner-visible private object and verifies the bytes/SHA-256 before confirming; it must never confirm a different local file merely because the path exists. If the pending reservation belongs to a different file, keep the old history and create a new ArtifactVersion rather than forging metadata. Signed download URLs are short-lived and generated only through the authenticated private bucket.
+
+Do not manually edit `artifact_objects`, Storage paths, SHA-256, or READY state. Do not make the `artifact-files` bucket public. Browser Storage UPDATE/DELETE is intentionally absent for artifact objects.
 
 ## Safe Work Pending Safe / FAILED / CONFLICT
 Pending Safe is a Safe Work state, not a Rapid Correction-only concept. It is used by Rapid Correction, Meeting Checkpoint / Teaching Continuity, and other Safe Work operations where applicable.
