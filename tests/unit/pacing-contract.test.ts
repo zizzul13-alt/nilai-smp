@@ -42,18 +42,32 @@ describe('R3.4-03 pacing contracts',()=>{
     expect(countActualLessonMeetings(meetings,'C1','L1')).toBe(2);
   });
 
-  it('keeps pacing class+lesson scoped and server-owned',()=>{
+  it('keeps pacing class+lesson scoped, fail-closed, and replay-safe under the serialized write boundary',()=>{
     expect(migration).toContain('create table public.lesson_pacing_plans');
     expect(migration).toContain('constraint lesson_pacing_class_lesson_unique unique(workspace_id,class_id,lesson_id)');
     expect(migration).toContain('revoke insert,update,delete on public.lesson_pacing_plans from authenticated');
     expect(migration).toContain('create or replace function public.upsert_lesson_pacing_plan_operation');
     expect(migration).toContain('p_expected_revision is null');
+    const lock=migration.indexOf('pg_advisory_xact_lock');
+    const firstLedger=migration.indexOf('select ao.* into prior');
+    const secondLedger=migration.indexOf('select ao.* into prior',firstLedger+1);
+    const revisionRead=migration.indexOf('select p.* into current_plan');
+    expect(firstLedger).toBeGreaterThan(-1);
+    expect(secondLedger).toBeGreaterThan(lock);
+    expect(revisionRead).toBeGreaterThan(secondLedger);
     expect(migration).toContain("'r3.4-pacing-final.1'");
   });
 
   it('preserves existing LessonVersion provenance when editing a pacing plan',()=>{
     expect(panel).toContain('const persistedLessonVersionId=plan?plan.lesson_version_id:lessonVersionId');
     expect(panel).toContain('lessonVersionId:persistedLessonVersionId');
+  });
+
+  it('discards stale pacing loads and save responses across selection epochs',()=>{
+    expect(panel).toContain('loadSeq=useRef(0),selectionEpoch=useRef(0)');
+    expect(panel).toContain('selectionKeyRef.current!==requestedSelection');
+    expect(panel).toContain('loadSeq.current!==seq');
+    expect(panel).toContain('selectionEpoch.current!==saveEpoch');
   });
 
   it('integrates pacing into Teaching without creating a timetable or homework subsystem',()=>{
