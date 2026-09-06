@@ -12,18 +12,33 @@ function List({title,items}:{title:string;items:string[]}){return<div className=
 
 export function PacingPanel({client,workspaceId,classId,lessonId,lessonVersionId,actualMeetingCount}:Props){
   const[state,setState]=useState<LoadState>({status:'loading'}),[editor,setEditor]=useState<Editor|null>(null),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
-  const saveAttempt=useRef<{fingerprint:string;opId:string}|null>(null);
-  async function reload(){
-    try{const[plan,activeCorrectionCount]=await Promise.all([loadLessonPacingPlan(client,workspaceId,classId,lessonId),loadActiveCorrectionCount(client,workspaceId,classId)]);setState({status:'ready',plan,activeCorrectionCount});}
-    catch(error){setState({status:'error',message:error instanceof Error?error.message:String(error)});}
+  const saveAttempt=useRef<{fingerprint:string;opId:string}|null>(null),loadSeq=useRef(0),selectionEpoch=useRef(0);
+  const selectionKey=`${workspaceId}:${classId}:${lessonId}`,selectionKeyRef=useRef(selectionKey);selectionKeyRef.current=selectionKey;
+  async function reload(expectedEpoch=selectionEpoch.current){
+    const requestedSelection=selectionKey;
+    if(selectionKeyRef.current!==requestedSelection||selectionEpoch.current!==expectedEpoch)return;
+    const seq=++loadSeq.current;
+    try{
+      const[plan,activeCorrectionCount]=await Promise.all([loadLessonPacingPlan(client,workspaceId,classId,lessonId),loadActiveCorrectionCount(client,workspaceId,classId)]);
+      if(selectionKeyRef.current!==requestedSelection||selectionEpoch.current!==expectedEpoch||loadSeq.current!==seq)return;
+      setState({status:'ready',plan,activeCorrectionCount});
+    }catch(error){
+      if(selectionKeyRef.current!==requestedSelection||selectionEpoch.current!==expectedEpoch||loadSeq.current!==seq)return;
+      setState({status:'error',message:error instanceof Error?error.message:String(error)});
+    }
   }
-  useEffect(()=>{setEditor(null);setNotice('');saveAttempt.current=null;setState({status:'loading'});void reload();},[client,workspaceId,classId,lessonId]);
+  useEffect(()=>{
+    const epoch=++selectionEpoch.current;++loadSeq.current;
+    setEditor(null);setNotice('');setBusy(false);saveAttempt.current=null;setState({status:'loading'});void reload(epoch);
+    return()=>{if(selectionEpoch.current===epoch){++selectionEpoch.current;++loadSeq.current;}};
+  },[client,workspaceId,classId,lessonId]);
   const plan=state.status==='ready'?state.plan:null;
   const projection=useMemo(()=>plan?projectPacingPlan(plan):null,[plan]);
   const remaining=projection?Math.max(0,projection.effectiveMeetings-actualMeetingCount):0;
   function edit(patch:Partial<Editor>){saveAttempt.current=null;setEditor(current=>current?{...current,...patch}:current);}
   async function save(){
     if(!editor||busy)return;
+    const saveSelection=selectionKey,saveEpoch=selectionEpoch.current;
     const normal=Number(editor.normalMeetings),available=Number(editor.availableMeetings),reserve=Number(editor.correctionReserve),core=splitPacingLines(editor.core),practice=splitPacingLines(editor.practice),stretch=splitPacingLines(editor.stretch),exit=splitPacingLines(editor.exit);
     if(!Number.isInteger(normal)||normal<1||normal>20||!Number.isInteger(available)||available<0||available>20||!Number.isInteger(reserve)||reserve<0||reserve>available){setNotice('Kapasitas pacing tidak valid. Normal 1–20; available 0–20; correction reserve tidak boleh melebihi available.');return;}
     if(core.length===0||exit.length===0){setNotice('CORE dan Minimum Exit Criteria wajib punya minimal satu baris konkret.');return;}
@@ -33,10 +48,12 @@ export function PacingPanel({client,workspaceId,classId,lessonId,lessonVersionId
     setBusy(true);setNotice('');
     try{
       const result=await saveLessonPacingPlan(client,{opId:saveAttempt.current.opId,...payload});
-      if(result.outcome==='conflict'){setNotice('Pacing berubah di tempat lain. Data terbaru dimuat; cek lalu simpan lagi.');saveAttempt.current=null;await reload();return;}
-      saveAttempt.current=null;setEditor(null);setNotice(result.replayed?'Pacing sudah tersimpan sebelumnya; hasil idempotent dipakai kembali.':'Pacing tersimpan. Teacher override tetap eksplisit.');await reload();
-    }catch(error){setNotice(`${error instanceof Error?error.message:String(error)} Retry dengan isi yang sama akan memakai operation id yang sama.`);}
-    finally{setBusy(false);}
+      if(selectionKeyRef.current!==saveSelection||selectionEpoch.current!==saveEpoch)return;
+      if(result.outcome==='conflict'){setNotice('Pacing berubah di tempat lain. Data terbaru dimuat; cek lalu simpan lagi.');saveAttempt.current=null;await reload(saveEpoch);return;}
+      saveAttempt.current=null;setEditor(null);setNotice(result.replayed?'Pacing sudah tersimpan sebelumnya; hasil idempotent dipakai kembali.':'Pacing tersimpan. Teacher override tetap eksplisit.');await reload(saveEpoch);
+    }catch(error){
+      if(selectionKeyRef.current===saveSelection&&selectionEpoch.current===saveEpoch)setNotice(`${error instanceof Error?error.message:String(error)} Retry dengan isi yang sama akan memakai operation id yang sama.`);
+    }finally{if(selectionKeyRef.current===saveSelection&&selectionEpoch.current===saveEpoch)setBusy(false);}
   }
 
   if(state.status==='loading')return<section className="pacing-panel"><p className="muted">Memuat pacing…</p></section>;
