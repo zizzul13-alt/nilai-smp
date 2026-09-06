@@ -58,11 +58,23 @@ export async function confirmArtifactObject(client:SupabaseClient,input:{opId:st
 }
 
 export async function sha256Hex(file:Blob){const bytes=await file.arrayBuffer();const digest=await crypto.subtle.digest('SHA-256',bytes);return[...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
+async function verifyExistingUpload(client:SupabaseClient,storagePath:string,file:File,expectedHash:string){
+  const{data,error}=await client.storage.from('artifact-files').download(storagePath);
+  if(error||!data)throw new Error(`Artifact retry verification failed: ${error?.message??'object missing'}`);
+  const existingHash=await sha256Hex(data);
+  if(data.size!==file.size||existingHash!==expectedHash)throw new Error('Artifact retry ditolak: object yang sudah ada tidak sama byte-for-byte dengan file ini. Buat artifact version baru bila file sumber berubah.');
+}
 export async function uploadArtifactObject(client:SupabaseClient,reservation:{objectId:string;storagePath:string},file:File){
   const hash=await sha256Hex(file);
   const{error}=await client.storage.from('artifact-files').upload(reservation.storagePath,file,{upsert:false,contentType:file.type||'application/octet-stream'});
-  if(error&&!/already exists/i.test(error.message))throw new Error(`Artifact upload failed: ${error.message}`);
-  await confirmArtifactObject(client,{opId:crypto.randomUUID(),objectId:reservation.objectId,sha256:hash,byteSize:file.size});
+  if(error){
+    if(!/already exists/i.test(error.message))throw new Error(`Artifact upload failed: ${error.message}`);
+    await verifyExistingUpload(client,reservation.storagePath,file,hash);
+  }
+  // objectId is itself a stable UUID, so it is also the deterministic confirm operation id.
+  // A lost ACK after confirmation therefore replays the same AppliedOperation instead of
+  // turning a successful READY object into an "already confirmed" false failure.
+  await confirmArtifactObject(client,{opId:reservation.objectId,objectId:reservation.objectId,sha256:hash,byteSize:file.size});
   return hash;
 }
 export async function signedArtifactUrl(client:SupabaseClient,storagePath:string){const{data,error}=await client.storage.from('artifact-files').createSignedUrl(storagePath,120);if(error||!data?.signedUrl)throw new Error(`Artifact download failed: ${error?.message??'signed URL missing'}`);return data.signedUrl;}
