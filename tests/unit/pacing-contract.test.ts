@@ -5,6 +5,7 @@ import type{Meeting}from'../../src/domain/academic';
 
 const migration=readFileSync('supabase/migrations/202609060002_pacing_final_torture.sql','utf8');
 const teaching=readFileSync('src/components/TeachingContinuity.tsx','utf8');
+const panel=readFileSync('src/components/PacingPanel.tsx','utf8');
 
 const base={normal_meetings:4,available_meetings:3,correction_reserve:1,core_targets:['Konsep inti'],practice_targets:['Latihan terpandu','Transfer mandiri'],stretch_targets:['Breadth tambahan'],minimum_exit_criteria:['Dapat menjelaskan konsep'],teacher_mode:null as null|'RELAXED'|'NORMAL'|'COMPRESSED'};
 
@@ -46,7 +47,13 @@ describe('R3.4-03 pacing contracts',()=>{
     expect(migration).toContain('constraint lesson_pacing_class_lesson_unique unique(workspace_id,class_id,lesson_id)');
     expect(migration).toContain('revoke insert,update,delete on public.lesson_pacing_plans from authenticated');
     expect(migration).toContain('create or replace function public.upsert_lesson_pacing_plan_operation');
+    expect(migration).toContain('p_expected_revision is null');
     expect(migration).toContain("'r3.4-pacing-final.1'");
+  });
+
+  it('preserves existing LessonVersion provenance when editing a pacing plan',()=>{
+    expect(panel).toContain('const persistedLessonVersionId=plan?plan.lesson_version_id:lessonVersionId');
+    expect(panel).toContain('lessonVersionId:persistedLessonVersionId');
   });
 
   it('integrates pacing into Teaching without creating a timetable or homework subsystem',()=>{
