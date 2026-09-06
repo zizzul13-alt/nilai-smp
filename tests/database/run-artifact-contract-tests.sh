@@ -5,8 +5,10 @@ pass(){ printf 'PASS: %s\n' "$1"; }; fail(){ printf 'FAIL: %s\n' "$1" >&2; exit 
 expect_value(){ local label="$1" sql="$2" expected="$3" actual; actual="$(run "$sql")"; [[ "$actual" == "$expected" ]]||fail "$label (expected '$expected', got '$actual')"; pass "$label"; }
 expect_fail(){ local label="$1" sql="$2"; if "${PSQL[@]}" -qc "$sql" >/tmp/nilai-artifact-out 2>/tmp/nilai-artifact-err;then fail "$label (unexpected success)";fi;pass "$label";}
 expect_sqlstate(){ local label="$1" sql="$2" expected="$3" actual; actual="$(run "do \$\$ begin begin $sql; exception when others then raise notice 'ARTIFACT_SQLSTATE:%', sqlstate; end; end \$\$;" 2>&1 | sed -n 's/.*ARTIFACT_SQLSTATE://p' | tail -1)"; [[ "$actual" == "$expected" ]]||fail "$label (expected SQLSTATE '$expected', got '$actual')";pass "$label";}
+wait_for_advisory(){ for _ in $(seq 1 30);do [[ "$(run "select count(*) from pg_locks where locktype='advisory' and granted;")" != "0" ]]&&return;sleep 0.05;done;fail 'advisory lock holder did not become visible'; }
 
 "${PSQL[@]}" -f supabase/migrations/202609060004_artifact_core.sql >/dev/null
+"${PSQL[@]}" -f supabase/migrations/202609060005_artifact_integrity_hardening.sql >/dev/null
 A="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000a\",\"role\":\"authenticated\"}';"
 B="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000b\",\"role\":\"authenticated\"}';"
 ANON="set role anon;set request.jwt.claims='{\"role\":\"anon\"}';"
@@ -39,31 +41,55 @@ expect_value 'current_version belongs exact stable artifact' "$A select (v.artif
 expect_value 'version two preserves exact report snapshot source' "$A select source_kind||':'||report_snapshot_id from public.artifact_versions where id='$V2';" "REPORT_SNAPSHOT:$REPORT"
 expect_value 'stale expected revision returns conflict not overwrite' "$A select outcome||':'||revision from public.append_artifact_version_operation('a6200000-0000-0000-0000-000000000002','$ART',1,'MANUAL',null,null,null,'stale','{}',null,null);" 'conflict:2'
 
+# Force two same-op append calls to pass their first ledger read and wait behind the same artifact lock.
+# After the holder releases, exactly one append applies and the other must replay after its post-lock ledger read.
+CONCURRENT_OP="a6200000-0000-0000-0000-000000000010"
+LOCK_SQL="begin;select pg_advisory_xact_lock(hashtextextended((select workspace_id::text from public.artifacts where id='$ART')||':artifact:'||'$ART',0));select pg_sleep(0.8);commit;"
+"${PSQL[@]}" -qAtc "$LOCK_SQL" >/tmp/artifact-lock.out 2>/tmp/artifact-lock.err & LOCK_PID=$!;wait_for_advisory
+CONCURRENT_CALL="$A select outcome||':'||version_no||':'||revision||':'||replayed from public.append_artifact_version_operation('$CONCURRENT_OP','$ART',2,'MANUAL',null,null,null,'Concurrent exact once','{}',null,null);"
+"${PSQL[@]}" -qAtc "$CONCURRENT_CALL" >/tmp/artifact-append-a.out 2>/tmp/artifact-append-a.err & AP1=$!
+"${PSQL[@]}" -qAtc "$CONCURRENT_CALL" >/tmp/artifact-append-b.out 2>/tmp/artifact-append-b.err & AP2=$!
+wait "$LOCK_PID";wait "$AP1"||{ cat /tmp/artifact-append-a.err >&2;fail 'first concurrent append failed';};wait "$AP2"||{ cat /tmp/artifact-append-b.err >&2;fail 'second concurrent append failed';}
+APPEND_RESULTS="$(cat /tmp/artifact-append-a.out /tmp/artifact-append-b.out|sort)"
+[[ "$APPEND_RESULTS" == $'saved:3:3:false\nsaved:3:3:true' ]]||fail "concurrent same-op append did not apply once/replay once ($APPEND_RESULTS)";pass 'concurrent same-op append applies exactly once and replays after lock'
+expect_value 'concurrent replay creates only one new version' "$A select count(*)||':'||max(version_no)||':'||(select revision from public.artifacts where id='$ART') from public.artifact_versions where artifact_id='$ART';" '3:3:3'
+V3="$(run "$A select current_version_id from public.artifacts where id='$ART';")"
+
 RESERVE_OP="a6300000-0000-0000-0000-000000000001"
-RESERVE_CALL="public.reserve_artifact_object_operation('$RESERVE_OP','$ART','$V2','PDF','application/pdf',1234)"
+expect_sqlstate 'PDF reservation rejects mismatched MIME metadata' "$A perform * from public.reserve_artifact_object_operation('a6300000-0000-0000-0000-000000000099','$ART','$V3','PDF','application/octet-stream',1234)" '22023'
+RESERVE_CALL="public.reserve_artifact_object_operation('$RESERVE_OP','$ART','$V3','PDF','application/pdf',1234)"
 expect_value 'reserve creates durable PENDING_UPLOAD metadata' "$A select outcome||':'||replayed from $RESERVE_CALL;" 'saved:false'
-OBJ="$(run "$A select id from public.artifact_objects where artifact_version_id='$V2' and object_kind='PDF';")"; PATH="$(run "$A select storage_path from public.artifact_objects where id='$OBJ';")"
+OBJ="$(run "$A select id from public.artifact_objects where artifact_version_id='$V3' and object_kind='PDF';")"; PATH="$(run "$A select storage_path from public.artifact_objects where id='$OBJ';")"
 expect_value 'reservation lost ACK replays exact object' "$A select object_id||':'||storage_path||':'||replayed from $RESERVE_CALL;" "$OBJ:$PATH:true"
 expect_value 'opaque storage path is workspace/artifact/version scoped' "$A select (storage_path like workspace_id::text||'/'||artifact_id::text||'/'||artifact_version_id::text||'/%')::text from public.artifact_objects where id='$OBJ';" 'true'
 expect_value 'reserved object is visibly pending without fake checksum' "$A select state||':'||(sha256 is null)::text from public.artifact_objects where id='$OBJ';" 'PENDING_UPLOAD:true'
-expect_sqlstate 'duplicate object kind cannot silently overwrite same artifact version' "$A perform * from public.reserve_artifact_object_operation('a6300000-0000-0000-0000-000000000002','$ART','$V2','PDF','application/pdf',1234)" 'P3607'
-HASH="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; CONFIRM_OP="a6400000-0000-0000-0000-000000000001"
-CONFIRM_CALL="public.confirm_artifact_object_operation('$CONFIRM_OP','$OBJ','$HASH',1234)"
-expect_value 'confirm makes object READY only with checksum and exact size' "$A select outcome||':'||replayed from $CONFIRM_CALL;" 'saved:false'
-expect_value 'confirm lost ACK replays prior success' "$A select outcome||':'||replayed from $CONFIRM_CALL;" 'saved:true'
+expect_sqlstate 'duplicate object kind cannot silently overwrite same artifact version' "$A perform * from public.reserve_artifact_object_operation('a6300000-0000-0000-0000-000000000002','$ART','$V3','PDF','application/pdf',1234)" 'P3607'
+
+# Confirmation uses object_id as its stable op_id in the browser. Force two copies behind the object lock:
+# one makes READY, the second must return prior success instead of "already confirmed".
+HASH="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+OBJ_LOCK_SQL="begin;select pg_advisory_xact_lock(hashtextextended((select workspace_id::text from public.artifact_objects where id='$OBJ')||':artifact-object:'||'$OBJ',0));select pg_sleep(0.8);commit;"
+"${PSQL[@]}" -qAtc "$OBJ_LOCK_SQL" >/tmp/artifact-object-lock.out 2>/tmp/artifact-object-lock.err & OLOCK=$!;wait_for_advisory
+CONFIRM_CALL="$A select outcome||':'||replayed from public.confirm_artifact_object_operation('$OBJ','$OBJ','$HASH',1234);"
+"${PSQL[@]}" -qAtc "$CONFIRM_CALL" >/tmp/artifact-confirm-a.out 2>/tmp/artifact-confirm-a.err & CF1=$!
+"${PSQL[@]}" -qAtc "$CONFIRM_CALL" >/tmp/artifact-confirm-b.out 2>/tmp/artifact-confirm-b.err & CF2=$!
+wait "$OLOCK";wait "$CF1"||{ cat /tmp/artifact-confirm-a.err >&2;fail 'first concurrent confirm failed';};wait "$CF2"||{ cat /tmp/artifact-confirm-b.err >&2;fail 'second concurrent confirm failed';}
+CONFIRM_RESULTS="$(cat /tmp/artifact-confirm-a.out /tmp/artifact-confirm-b.out|sort)"
+[[ "$CONFIRM_RESULTS" == $'saved:false\nsaved:true' ]]||fail "concurrent same-op confirm did not apply once/replay once ($CONFIRM_RESULTS)";pass 'concurrent same-op confirm applies exactly once and replays after lock'
+expect_value 'confirm lost ACK replays prior success' "$CONFIRM_CALL" 'saved:true'
 expect_value 'READY object preserves SHA-256 size MIME and confirmed timestamp' "$A select state||':'||sha256||':'||byte_size||':'||mime_type||':'||(confirmed_at is not null)::text from public.artifact_objects where id='$OBJ';" "READY:$HASH:1234:application/pdf:true"
 expect_sqlstate 'confirmation with invalid SHA fails closed' "$A perform * from public.confirm_artifact_object_operation('a6400000-0000-0000-0000-000000000099','$OBJ','bad',1234)" '22023'
 expect_fail 'browser cannot directly rewrite object metadata' "$A update public.artifact_objects set sha256=repeat('f',64) where id='$OBJ';"
 
 ARCHIVE_OP="a6500000-0000-0000-0000-000000000001"
-expect_value 'archive is explicit revisioned lifecycle change' "$A select outcome||':'||revision||':'||replayed from public.archive_artifact_operation('$ARCHIVE_OP','$ART',2);" 'saved:3:false'
-expect_value 'archive lost ACK replays exact result' "$A select outcome||':'||revision||':'||replayed from public.archive_artifact_operation('$ARCHIVE_OP','$ART',2);" 'saved:3:true'
-expect_value 'archive preserves versions and READY object' "$A select a.status||':'||(select count(*) from public.artifact_versions v where v.artifact_id=a.id)||':'||(select count(*) from public.artifact_objects o where o.artifact_id=a.id and o.state='READY') from public.artifacts a where a.id='$ART';" 'archived:2:1'
-expect_sqlstate 'archived artifact cannot append new history' "$A perform * from public.append_artifact_version_operation('a6200000-0000-0000-0000-000000000099','$ART',3,'MANUAL',null,null,null,'nope','{}',null,null)" 'P3605'
+expect_value 'archive is explicit revisioned lifecycle change' "$A select outcome||':'||revision||':'||replayed from public.archive_artifact_operation('$ARCHIVE_OP','$ART',3);" 'saved:4:false'
+expect_value 'archive lost ACK replays exact result' "$A select outcome||':'||revision||':'||replayed from public.archive_artifact_operation('$ARCHIVE_OP','$ART',3);" 'saved:4:true'
+expect_value 'archive preserves versions and READY object' "$A select a.status||':'||(select count(*) from public.artifact_versions v where v.artifact_id=a.id)||':'||(select count(*) from public.artifact_objects o where o.artifact_id=a.id and o.state='READY') from public.artifacts a where a.id='$ART';" 'archived:3:1'
+expect_sqlstate 'archived artifact cannot append new history' "$A perform * from public.append_artifact_version_operation('a6200000-0000-0000-0000-000000000099','$ART',4,'MANUAL',null,null,null,'nope','{}',null,null)" 'P3605'
 expect_fail 'anonymous artifact read denied' "$ANON select * from public.artifacts limit 1;"
 expect_value 'foreign user cannot read artifact object' "$B select count(*) from public.artifact_objects where id='$OBJ';" '0'
-expect_value 'important artifact workflow is audited' "$A select count(*) from public.audit_events where entity_id='$ART' and event_type in('artifact.created','artifact.version.appended','artifact.archived');" '3'
+expect_value 'important artifact workflow is audited' "$A select count(*) from public.audit_events where entity_id='$ART' and event_type in('artifact.created','artifact.version.appended','artifact.archived');" '4'
 expect_value 'plain PostgreSQL CI safely lacks Supabase storage schema' "select (to_regclass('storage.objects') is null)::text;" 'true'
-expect_value 'schema version advances to R3.5 artifact core' "$A select version from public.app_schema_version where id=1;" 'r3.5-artifact-core.1'
+expect_value 'schema version advances through artifact integrity hardening' "$A select version from public.app_schema_version where id=1;" 'r3.5-artifact-core.2'
 
 printf '\nR3.5-02 Artifact Core PostgreSQL matrix completed successfully.\n'
