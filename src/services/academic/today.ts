@@ -25,6 +25,21 @@ export async function loadTodayServer(client:SupabaseClient):Promise<TodayServer
   return{classes:(classQ.data??[]) as TodayClassContext[],correction:((correctionQ.data??[])[0]??null) as TodayCorrection|null};
 }
 
+/** Exact-id recovery lookup. Existing meetings RLS is the ownership authority; foreign ids resolve to no row. */
+export async function resolveMeetingClass(client:SupabaseClient,workspaceId:string,meetingId:string):Promise<string|null>{
+  const{data,error}=await client.from('meetings').select('class_id').eq('workspace_id',workspaceId).eq('id',meetingId).maybeSingle();
+  if(error)throw new Error(`Class untuk checkpoint ini belum dapat ditentukan: ${error.message}`);
+  const classId=(data as{class_id?:unknown}|null)?.class_id;
+  return typeof classId==='string'&&classId?classId:null;
+}
+
+/** pendingForNamespace is created_at ordered; sort again with op_id tie-break so callers get deterministic newest durable fact. */
+export function latestLocalCheckpointForMeeting(safeOps:PendingOperation[],meetingId:string|null){
+  if(!meetingId)return null;
+  const rows=safeOps.filter(op=>op.operation_kind==='meeting.checkpoint'&&op.entity_id===meetingId).slice().sort((a,b)=>a.created_at.localeCompare(b.created_at)||a.op_id.localeCompare(b.op_id));
+  return rows.length?rows[rows.length-1]:null;
+}
+
 function startOfLocalWeek(input:Date){
   const d=new Date(input.getFullYear(),input.getMonth(),input.getDate());
   const day=(d.getDay()+6)%7;
