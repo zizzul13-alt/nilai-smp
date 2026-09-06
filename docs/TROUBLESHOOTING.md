@@ -4,7 +4,7 @@
 Use `.env.local` with browser-safe Supabase URL + publishable key only. Never substitute a service-role key.
 
 ## Database incompatible
-Stop writes and apply ordered migrations through R3.4 pacing final: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture. Current runtime expects `r3.4-pacing-final.1`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
+Stop writes and apply ordered migrations through R3.5 Reporting Core: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture -> reporting core. Current runtime expects `r3.5-reporting-core.1`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
 
 ## Today read failure / stale context
 A Today read failure is unknown state, not "no work". Use the Today Retry action; do not infer schedule or class activity from missing data.
@@ -17,6 +17,15 @@ Pacing is teacher-owned class+lesson intent, not a schedule engine. `Effective M
 The recommendation is deterministic: effective capacity above Normal Meetings suggests RELAXED, equal suggests NORMAL, and below suggests COMPRESSED. A teacher override always wins. COMPRESSED means reduce breadth first: Stretch is deferred before CORE/Practice comprehension and Minimum Exit Criteria. The app never auto-generates homework and never silently marks exit criteria as met.
 
 If active correction sessions are shown, they are workflow evidence only. The app does not guess how many Meetings correction consumes; set Correction reserve explicitly. If a pacing save reports a revision conflict, reload the latest plan, review it, and save a new teacher judgement rather than overwriting a newer revision.
+
+## Reporting provisional / finalized / reopen
+Reporting snapshots are derived from canonical Assessment Result/Attempt data; they are not a second gradebook. A Reporting Policy is versioned and makes `SIMPLE_MEAN`, Missing behavior, Remedial behavior, rounding, and KKM explicit. KKM is a threshold display and is not mixed into the arithmetic formula.
+
+`UNCHECKED` blocks Finalize because unknown evidence cannot be silently converted to zero or ignored. `MISSING` and `EXCUSED` remain explicit states; the selected policy determines how Missing contributes while EXCUSED is excluded in R3.5-01. A provisional snapshot may show UNCHECKED so the teacher can see exactly what is unfinished.
+
+A FINALIZED reporting cycle is intentionally closed. Do not overwrite or recalculate it in place. If a factual correction is required, use **Reopen**, enter a concrete reason, correct the canonical Result/Attempt evidence, then create a new provisional/finalized snapshot. The old FINALIZED snapshot remains append-only history and the Reopen reason is recorded in `audit_events`.
+
+If a reporting operation reports a revision conflict, reload the latest cycle/snapshot and review before trying again. Do not bypass the RPC by directly editing `reporting_cycles`, `report_snapshots`, or `report_snapshot_rows`.
 
 ## Safe Work Pending Safe / FAILED / CONFLICT
 Pending Safe is a Safe Work state, not a Rapid Correction-only concept. It is used by Rapid Correction, Meeting Checkpoint / Teaching Continuity, and other Safe Work operations where applicable.
