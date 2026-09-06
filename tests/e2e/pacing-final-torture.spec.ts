@@ -34,3 +34,10 @@ test('pacing keeps comprehension protected and teacher override wins',async({pag
   await expect(page.getByText(/Recommendation:.*COMPRESSED/)).toBeVisible();
   await expect(page.getByText('STRETCH · IN_SCOPE')).toBeVisible();
 });
+
+test('stale pacing read cannot overwrite a newer lesson selection',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(async(h:string)=>await(await import(h)).mountPacingSelectionRace(),harness);
+  await expect(page.getByText('NEW CORE',{exact:true})).toBeVisible();
+  await expect(page.getByText('OLD CORE',{exact:true})).toHaveCount(0);
+});
