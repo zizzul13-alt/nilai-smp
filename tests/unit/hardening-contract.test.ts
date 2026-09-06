@@ -38,13 +38,13 @@ describe('R3.HARDEN-01 contracts',()=>{
   });
 
   it('keeps runtime and operational docs on the same schema identity',()=>{
-    expect(EXPECTED_SCHEMA_VERSION).toBe('r3.5-artifact-core.3');
+    expect(EXPECTED_SCHEMA_VERSION).toBe('r3.6-recovery.1');
     expect(architecture).toContain(EXPECTED_SCHEMA_VERSION);
     expect(deployment).toContain(EXPECTED_SCHEMA_VERSION);
     expect(troubleshooting).toContain(EXPECTED_SCHEMA_VERSION);
-    expect(architecture).not.toContain('r3.5-artifact-core.2');
-    expect(deployment).not.toContain('must agree on `r3.4-continuity-core.1`');
-    expect(troubleshooting).not.toContain('expects `r3.4-continuity-core.1`');
+    expect(architecture).not.toContain('Current branch compatibility is `r3.5-artifact-core.3`');
+    expect(deployment).not.toContain('must agree on `r3.5-artifact-core.3`');
+    expect(troubleshooting).not.toContain('Current runtime expects `r3.5-artifact-core.3`');
   });
 
   it('documents every real migration in repository filename order',()=>{
