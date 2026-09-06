@@ -3,7 +3,7 @@ import{createRoot,type Root}from'react-dom/client';
 import type{SupabaseClient}from'@supabase/supabase-js';
 import{Today}from'../../../src/components/Today';
 import{RapidCorrection}from'../../../src/components/RapidCorrection';
-import{enqueueMeetingCheckpoint,markOperation,safeWorkDb}from'../../../src/services/safeWork/localQueue';
+import{enqueueMeetingCheckpoint,markOperation,markSavedAndMinimize,safeWorkDb}from'../../../src/services/safeWork/localQueue';
 import type{TodayClassContext,TodayCorrection}from'../../../src/services/academic/today';
 
 const USER='TODAY-U',WORKSPACE='TODAY-W';let root:Root|null=null;let classes:TodayClassContext[]=[];let correction:TodayCorrection|null=null;let nav:{surface:'continuity'|'rapid';id?:string}[]=[];let baselineWrites:{kind:string;classId:string;stoppedAt:string;nextStep:string|null}[]=[];let originalCheckpoint:{stoppedAt:string|null;nextStep:string|null}|null=null;let meetingRows:{id:string;workspace_id:string;class_id:string}[]=[];let rapidTables:Record<string,any[]>={};let activeClient:SupabaseClient|null=null;let followRapid=false;
@@ -66,6 +66,11 @@ export async function mountTodayHarness(name:string,options:HarnessOptions={}){
   const checkpoint=options.checkpoint??(options.pending?{meetingId:'M1',stoppedAt:'Local Pending',nextStep:'Belum sync',status:'PENDING_SAFE' as const}:null);if(checkpoint){const op=await enqueueMeetingCheckpoint(safeWorkDb,{authUserId:USER,workspaceId:WORKSPACE,meetingId:checkpoint.meetingId,stoppedAt:checkpoint.stoppedAt,nextStep:checkpoint.nextStep,opId:'d1000000-0000-0000-0000-000000000001'});if(checkpoint.status&&checkpoint.status!=='PENDING_SAFE')await markOperation(safeWorkDb,op.op_id,{status:checkpoint.status,last_error_code:checkpoint.status==='FAILED'?'TEST_FAILED':'REVISION_CONFLICT'});}
   const host=document.createElement('div');host.id='today-test-root';document.body.appendChild(host);root=createRoot(host);activeClient=fakeClient(Boolean(options.failReads));
   root.render(createElement(Today,{client:activeClient,userId:USER,workspaceId:WORKSPACE,onOpenContinuity:(id?:string)=>nav.push({surface:'continuity',id}),onOpenRapid:(id?:string)=>{nav.push({surface:'rapid',id});if(followRapid)renderRapid(id);}}));
+}
+export async function simulateCheckpointSavedToServer(stoppedAt='Canonical Saved',nextStep='Canonical next'){
+  classes=classes.map(item=>item.active_meeting_id==='M1'?{...item,active_checkpoint_id:'CP-SAVED',active_checkpoint_stopped_at:stoppedAt,active_checkpoint_next_step:nextStep,active_checkpoint_recorded_at:'2099-01-01T00:00:00Z',latest_checkpoint_id:'CP-SAVED',latest_checkpoint_meeting_id:'M1',latest_checkpoint_stopped_at:stoppedAt,latest_checkpoint_next_step:nextStep,latest_checkpoint_recorded_at:'2099-01-01T00:00:00Z',effective_source:'checkpoint',effective_stopped_at:stoppedAt,effective_next_step:nextStep,effective_recorded_at:'2099-01-01T00:00:00Z'}:item);
+  const op=await safeWorkDb.operations.get('d1000000-0000-0000-0000-000000000001');if(!op)throw new Error('checkpoint fixture operation missing');
+  await markSavedAndMinimize(safeWorkDb,op.op_id);
 }
 export async function forceRapidStaleCursorAndRefresh(cursor='E9'){const session=rapidTables.correction_sessions?.find((row:any)=>row.id==='S1');if(session)session.current_enrollment_id=cursor;activeClient=fakeClient(false);renderRapid('A1');}
 export async function remountTodayWithoutPending(name:string){return mountTodayHarness(name);}

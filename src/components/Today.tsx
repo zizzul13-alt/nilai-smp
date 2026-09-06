@@ -8,17 +8,46 @@ import{classifyReentryAge,deriveTodayModel,latestLocalCheckpointForMeeting,loadT
 type Props={client:SupabaseClient;userId:string;workspaceId:string;onOpenContinuity:(classId?:string)=>void;onOpenRapid:(assessmentId?:string)=>void};
 type LoadState={status:'loading'}|{status:'error'}|{status:'ready';snapshot:TodayServerSnapshot;ops:Awaited<ReturnType<typeof pendingForNamespace>>};
 type Editor={classId:string;kind:ReentryKind;stoppedAt:string;nextStep:string};
+const CHECKPOINT_RECONCILE_WARNING='Status checkpoint berubah. Today belum dapat menyelaraskan konteks server; konteks lokal terakhir tetap ditampilkan.';
 
 export function Today({client,userId,workspaceId,onOpenContinuity,onOpenRapid}:Props){
   const[state,setState]=useState<LoadState>({status:'loading'}),[editor,setEditor]=useState<Editor|null>(null),[notice,setNotice]=useState('');
   const baselineAttempt=useRef<{fingerprint:string;opId:string}|null>(null);
+  const localRefreshSeq=useRef(0),checkpointRefreshSeq=useRef(0);
   const refresh=useCallback(async()=>{
     setState({status:'loading'});setNotice('');
     try{const[snapshot,ops]=await Promise.all([loadTodayServer(client),pendingForNamespace(safeWorkDb,userId,workspaceId)]);setState({status:'ready',snapshot,ops});}
     catch{setState({status:'error'});}
   },[client,userId,workspaceId]);
   useEffect(()=>{void refresh();},[refresh]);
-  useEffect(()=>subscribeSafeWorkChanges(signal=>{if(signal.auth_user_id===userId&&signal.workspace_id===workspaceId&&state.status==='ready')void pendingForNamespace(safeWorkDb,userId,workspaceId).then(ops=>setState(current=>current.status==='ready'?{...current,ops}:current));}),[state.status,userId,workspaceId]);
+  useEffect(()=>subscribeSafeWorkChanges(signal=>{
+    if(signal.auth_user_id!==userId||signal.workspace_id!==workspaceId||state.status!=='ready')return;
+
+    const localSeq=++localRefreshSeq.current;
+    void pendingForNamespace(safeWorkDb,userId,workspaceId).then(ops=>{
+      if(localRefreshSeq.current!==localSeq)return;
+      setState(current=>{
+        if(current.status!=='ready')return current;
+        if(signal.operation_kind!=='meeting.checkpoint')return{...current,ops};
+        const prior=current.ops.find(op=>op.op_id===signal.op_id);
+        if(!prior||ops.some(op=>op.op_id===signal.op_id))return{...current,ops};
+        return{...current,ops:[...ops,prior].sort((a,b)=>a.created_at.localeCompare(b.created_at))};
+      });
+    });
+
+    if(signal.operation_kind!=='meeting.checkpoint')return;
+    const checkpointSeq=++checkpointRefreshSeq.current;
+    void loadTodayServer(client).then(async snapshot=>{
+      if(checkpointRefreshSeq.current!==checkpointSeq)return;
+      const ops=await pendingForNamespace(safeWorkDb,userId,workspaceId);
+      if(checkpointRefreshSeq.current!==checkpointSeq)return;
+      ++localRefreshSeq.current;
+      setState(current=>current.status==='ready'?{status:'ready',snapshot,ops}:current);
+      setNotice(current=>current===CHECKPOINT_RECONCILE_WARNING?'':current);
+    }).catch(()=>{
+      if(checkpointRefreshSeq.current===checkpointSeq)setNotice(CHECKPOINT_RECONCILE_WARNING);
+    });
+  }),[client,state.status,userId,workspaceId]);
 
   const model=useMemo(()=>state.status==='ready'?deriveTodayModel(state.snapshot,state.ops):null,[state]);
   const classes=state.status==='ready'?state.snapshot.classes:[];

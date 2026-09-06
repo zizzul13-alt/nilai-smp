@@ -84,6 +84,19 @@ for(const status of['PENDING_SAFE','FAILED','CONFLICT']as const)test(`active Mee
   await expect(page.getByText(/Saved/)).toHaveCount(0);
 });
 
+test('Today reconciles bounded canonical checkpoint when Pending Safe becomes Saved',async({page})=>{
+  await mount(page,'pending',{pending:true});
+  await expect(page.getByText('Local Pending',{exact:true})).toBeVisible();
+  await expect(page.getByText('Belum sync',{exact:true})).toBeVisible();
+  await expect(page.getByText(/PENDING SAFE · belum terkonfirmasi server/)).toBeVisible();
+  await page.evaluate(async(h:string)=>{const mod=await import(h);await mod.simulateCheckpointSavedToServer('Canonical Saved','Canonical next');},harness);
+  await expect(page.getByText('Canonical Saved',{exact:true})).toBeVisible();
+  await expect(page.getByText('Canonical next',{exact:true})).toBeVisible();
+  await expect(page.getByText('Server LAST',{exact:true})).toHaveCount(0);
+  await expect(page.getByText(/PENDING SAFE · belum terkonfirmasi server/)).toHaveCount(0);
+  await expect(page.getByText(/1 Pending Safe/)).toHaveCount(0);
+});
+
 test('checkpoint for an older Meeting stays recovery attention and cannot overlay active Meeting',async({page})=>{
   await mount(page,'active',{checkpoint:{meetingId:'M-old',stoppedAt:'Local old',nextStep:'Old next',status:'PENDING_SAFE'},meetingMap:{'M-old':'C1'}});
   await expect(page.getByText('Halaman 37',{exact:true}).first()).toBeVisible();
