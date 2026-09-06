@@ -1,7 +1,7 @@
 # Architecture
 
 ## Status
-R3.0 Foundation, R3.1 Academic Spine + Teaching Core, R3.2 Safe Work, R3.3 Assessment Core/Rapid Correction/Bulk Assessment, R3.4 Teaching Continuity/Today/Pacing, R3.5 Reporting Core and R3.5 Artifact Core are implemented on this branch. Portable backup/restore, legacy migration, final Daily Driver integration, collaboration, AI and full offline remain later R3/out-of-scope work.
+R3.0 Foundation, R3.1 Academic Spine + Teaching Core, R3.2 Safe Work, R3.3 Assessment Core/Rapid Correction/Bulk Assessment, R3.4 Teaching Continuity/Today/Pacing, R3.5 Reporting + Artifacts, and R3.6 portable Recovery Core are implemented on this branch. Legacy migration and final Daily Driver integration remain later R3 work; collaboration, AI and full offline remain out of scope.
 
 ## Target boundaries
 ```text
@@ -15,6 +15,7 @@ Browser / React + Vite
   Bulk Entry / XLSX -> local Preview -> online atomic bulk RPC
   Reporting -> versioned policy -> provisional/finalized append-only snapshot RPC
   Artifacts -> stable Artifact -> append-only ArtifactVersion -> private ArtifactObject
+  Recovery -> owned portable export -> checksum -> restore-to-empty -> artifact byte confirmation
     Supabase browser client
       Auth + Data API + narrow RPCs + private Storage
         PostgreSQL + RLS + constraints
@@ -28,7 +29,7 @@ Delivery: Cloudflare Workers Static Assets
 Supabase/PostgreSQL is canonical operational truth. UI sessions, spreadsheet files and Dexie are not canonical teaching/academic databases. Supabase Storage is a private binary object store referenced by canonical ArtifactObject metadata; Storage itself does not define document identity or provenance.
 
 ## Ownership and compatibility
-`auth.users -> workspaces -> all protected records` remains the ownership root. RLS derives `auth.uid()` and workspace-aware FKs reject cross-workspace composition. Narrow RPCs accept no browser-supplied workspace owner. Browser code receives no elevated credential. Current branch compatibility is `r3.5-artifact-core.3`, owned by the ordered migration chain through artifact integrity hardening and governor repairs.
+`auth.users -> workspaces -> all protected records` remains the ownership root. RLS derives `auth.uid()` and workspace-aware FKs reject cross-workspace composition. Narrow RPCs accept no browser-supplied workspace owner. Browser code receives no elevated credential. Current branch compatibility is `r3.6-recovery.1`, owned by the ordered migration chain through portable recovery.
 
 ## Teaching continuity boundary
 UI Session != Teaching Meeting. A Meeting is an actual teaching occurrence. Browser reload, route change, logout, component unmount and close/X do not change Meeting lifecycle. `start_teaching_meeting_operation()` serializes a Class start, enforces/reuses one `in_progress` Meeting, validates optional owned Lesson/LessonVersion context and records stable op-id replay metadata. The partial unique index on `(workspace_id,class_id)` for `status='in_progress'` is the database invariant behind the same rule.
@@ -63,5 +64,10 @@ Artifact source staleness is derived, never written back into historical Artifac
 
 Artifact object reservation is idempotent and workspace-owned. Object paths are workspace/artifact/version scoped. PDF/DOCX/OTHER MIME shape and 20 MB size limit are validated. A PENDING_UPLOAD object is not READY and has no checksum. READY requires SHA-256 + exact size. Storage upload uses `upsert:false`; an already-existing PENDING path is downloaded and byte-for-byte checked before confirmation, and confirmation reuses the object UUID as stable operation identity so a lost ACK replays prior success. The private Storage select policy exposes only the owner's PENDING/READY reserved object; browser UPDATE/DELETE is not granted.
 
+## Recovery boundary
+Portable recovery is product-level portability, not a claim that provider snapshots are sufficient. `export_portable_backup()` emits only the signed-in owner's canonical graph. The browser adds exact READY Storage bytes, validates per-object SHA-256 and a whole-manifest checksum, and can emit a separate XLSX human escape view.
+
+`restore_portable_backup_operation()` is all-or-nothing for canonical rows and is allowed only when the target personal workspace is empty. Stable domain UUIDs remain stable while workspace ownership is remapped to the authenticated account. Circular current pointers are restored only after append-only history exists. ArtifactObject metadata comes back as PENDING_UPLOAD; the browser must restore exact bytes with `upsert:false` and the existing confirmation RPC before READY truth is restored. A deterministic operation id derived from the verified manifest makes lost-ACK restore replayable rather than duplicative.
+
 ## Legacy
-`legacy/streamlit/` remains behavior evidence only and cannot redefine R3 canonical identities or architecture. Its conversion into the canonical R3 graph belongs to R3.6 and must use extract -> normalize -> validate -> dry-run -> migrate rather than destructive in-place mutation.
+`legacy/streamlit/` remains behavior evidence only and cannot redefine R3 canonical identities or architecture. Its conversion into the canonical R3 graph belongs to the next R3.6 package and must use extract -> normalize -> validate -> dry-run -> migrate rather than destructive in-place mutation.
