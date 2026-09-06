@@ -11,8 +11,8 @@ as $$
     and (not p_require_nonempty or jsonb_array_length(p_value)>0)
     and not exists(
       select 1
-      from jsonb_array_elements(p_value) item
-      where jsonb_typeof(item)<>'string' or btrim(item #>> '{}')=''
+      from jsonb_array_elements(p_value) as elem(value)
+      where jsonb_typeof(value)<>'string' or btrim(value #>> '{}')=''
     );
 $$;
 revoke all on function public.pacing_text_array_valid(jsonb,boolean) from public,anon,authenticated;
