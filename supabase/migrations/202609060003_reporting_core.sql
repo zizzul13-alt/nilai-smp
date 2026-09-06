@@ -1,5 +1,5 @@
 -- R3.5-01 Reporting Core.
--- Reporting is derived from canonical Assessment Result/Attempt truth through an explicit, versioned policy.
+-- Reporting is derived from canonical Assessment Result truth through an explicit, versioned policy.
 -- Finalization is intentional and reopenable; snapshots remain append-only historical evidence.
 
 create table public.audit_events (
@@ -25,7 +25,8 @@ create table public.reporting_policies (
   aggregation text not null default 'SIMPLE_MEAN' check(aggregation='SIMPLE_MEAN'),
   missing_policy text not null default 'EXCLUDE' check(missing_policy in ('EXCLUDE','ZERO')),
   excused_policy text not null default 'EXCLUDE' check(excused_policy='EXCLUDE'),
-  remedial_policy text not null default 'CURRENT_RESULT' check(remedial_policy in ('CURRENT_RESULT','BEST_OF_CURRENT_AND_REMEDIAL')),
+  -- R3.5-01 reports the current interpreted Result only. Raw Attempt evidence is never promoted to a report outcome.
+  remedial_policy text not null default 'CURRENT_RESULT' check(remedial_policy='CURRENT_RESULT'),
   rounding_mode text not null default 'NONE' check(rounding_mode in ('NONE','INTEGER','ONE_DECIMAL')),
   kkm numeric,
   status text not null default 'active' check(status in ('active','archived')),
@@ -79,13 +80,16 @@ create table public.report_snapshots (
   constraint report_snapshot_policy_period_fk foreign key(workspace_id,reporting_policy_id,academic_period_id)
     references public.reporting_policies(workspace_id,id,academic_period_id) on delete restrict,
   constraint report_snapshot_workspace_id_unique unique(workspace_id,id),
+  constraint report_snapshot_workspace_id_cycle_unique unique(workspace_id,id,cycle_id),
+  constraint report_snapshot_workspace_id_class_unique unique(workspace_id,id,class_id),
   constraint report_snapshot_cycle_sequence_unique unique(workspace_id,cycle_id,snapshot_no)
 );
 create index report_snapshots_workspace_cycle_created_idx on public.report_snapshots(workspace_id,cycle_id,created_at desc);
 
+-- The current snapshot must belong to this exact reporting cycle, not merely the same workspace.
 alter table public.reporting_cycles
-  add constraint reporting_cycle_current_snapshot_fk foreign key(workspace_id,current_snapshot_id)
-  references public.report_snapshots(workspace_id,id) on delete restrict;
+  add constraint reporting_cycle_current_snapshot_fk foreign key(workspace_id,current_snapshot_id,id)
+  references public.report_snapshots(workspace_id,id,cycle_id) on delete restrict;
 
 create table public.report_snapshot_rows (
   id uuid primary key default gen_random_uuid(),
@@ -105,8 +109,8 @@ create table public.report_snapshot_rows (
   unchecked_count integer not null check(unchecked_count>=0),
   included_count integer not null check(included_count>=0),
   calculation jsonb not null default '{}'::jsonb check(jsonb_typeof(calculation)='object'),
-  constraint report_snapshot_row_snapshot_fk foreign key(workspace_id,snapshot_id)
-    references public.report_snapshots(workspace_id,id) on delete restrict,
+  constraint report_snapshot_row_snapshot_class_fk foreign key(workspace_id,snapshot_id,class_id)
+    references public.report_snapshots(workspace_id,id,class_id) on delete restrict,
   constraint report_snapshot_row_enrollment_fk foreign key(workspace_id,enrollment_id,class_id)
     references public.enrollments(workspace_id,id,class_id) on delete restrict,
   constraint report_snapshot_row_student_fk foreign key(workspace_id,student_id)
@@ -159,7 +163,7 @@ declare
 begin
   if caller_id is null then raise exception 'authentication required' using errcode='28000'; end if;
   if p_op_id is null or p_academic_period_id is null or btrim(coalesce(p_name,''))='' then raise exception 'invalid reporting policy' using errcode='22023'; end if;
-  if p_missing_policy not in ('EXCLUDE','ZERO') or p_remedial_policy not in ('CURRENT_RESULT','BEST_OF_CURRENT_AND_REMEDIAL') or p_rounding_mode not in ('NONE','INTEGER','ONE_DECIMAL') then
+  if p_missing_policy not in ('EXCLUDE','ZERO') or p_remedial_policy<>'CURRENT_RESULT' or p_rounding_mode not in ('NONE','INTEGER','ONE_DECIMAL') then
     raise exception 'invalid reporting policy semantics' using errcode='22023';
   end if;
   select w.id into owned_workspace_id from public.workspaces w where w.owner_user_id=caller_id;
@@ -187,7 +191,7 @@ begin
   end if;
   select coalesce(max(rp.version_no),0)+1 into next_version from public.reporting_policies rp where rp.workspace_id=owned_workspace_id and rp.policy_key=series_key;
   insert into public.reporting_policies(workspace_id,academic_period_id,policy_key,version_no,name,aggregation,missing_policy,excused_policy,remedial_policy,rounding_mode,kkm)
-  values(owned_workspace_id,p_academic_period_id,series_key,next_version,btrim(p_name),'SIMPLE_MEAN',p_missing_policy,'EXCLUDE',p_remedial_policy,p_rounding_mode,p_kkm)
+  values(owned_workspace_id,p_academic_period_id,series_key,next_version,btrim(p_name),'SIMPLE_MEAN',p_missing_policy,'EXCLUDE','CURRENT_RESULT',p_rounding_mode,p_kkm)
   returning * into new_policy;
 
   insert into public.audit_events(workspace_id,actor_user_id,event_type,entity_type,entity_id,metadata)
@@ -215,19 +219,10 @@ declare
   snapshot public.report_snapshots;
   prior public.applied_operations;
   request_meta jsonb;
+  source_snapshot jsonb;
   next_snapshot integer;
   assessment_total integer;
   enrollment_total integer;
-  e record;
-  raw_average numeric;
-  final_score numeric;
-  assessment_states jsonb;
-  assessed integer;
-  graded integer;
-  missing integer;
-  excused integer;
-  unchecked integer;
-  included integer;
   incomplete_rows integer;
 begin
   if caller_id is null then raise exception 'authentication required' using errcode='28000'; end if;
@@ -264,63 +259,121 @@ begin
     raise exception 'reporting cycle is finalized; reopen before recalculation' using errcode='P3507';
   end if;
 
-  select count(*) into assessment_total from public.assessments a where a.workspace_id=owned_workspace_id and a.class_id=p_class_id and a.academic_period_id=period_id and a.status in ('active','archived');
-  select count(*) into enrollment_total from public.enrollments en where en.workspace_id=owned_workspace_id and en.class_id=p_class_id and en.status<>'archived';
+  -- A FINALIZED snapshot is a closure boundary. Block canonical source mutations until this transaction commits,
+  -- so a write cannot race after source capture but before the cycle is marked FINALIZED.
+  if p_finalize then
+    lock table public.classes, public.assessments, public.assessment_results, public.enrollments, public.students in share mode;
+  end if;
+
+  -- Materialize the complete report source in ONE SQL statement. Under PostgreSQL READ COMMITTED this statement
+  -- observes one MVCC snapshot, so different enrollments cannot mix old/new committed Result or membership states.
+  with assessment_source as materialized (
+    select a.id,a.title,a.created_at
+    from public.assessments a
+    where a.workspace_id=owned_workspace_id and a.class_id=p_class_id and a.academic_period_id=period_id and a.status in ('active','archived')
+  ), enrollment_source as materialized (
+    select en.id enrollment_id,en.student_id,en.status enrollment_status,s.display_name
+    from public.enrollments en
+    join public.students s on s.workspace_id=en.workspace_id and s.id=en.student_id
+    where en.workspace_id=owned_workspace_id and en.class_id=p_class_id and en.status<>'archived'
+  ), cell_source as materialized (
+    select e.enrollment_id,e.student_id,e.enrollment_status,e.display_name,
+      a.id assessment_id,a.title,a.created_at,
+      case when a.id is null then null else coalesce(r.state,'UNCHECKED') end state,
+      r.score current_score,
+      case
+        when r.state='GRADED' then r.score
+        when r.state='MISSING' and policy.missing_policy='ZERO' then 0::numeric
+        else null::numeric
+      end included_value
+    from enrollment_source e
+    left join assessment_source a on true
+    left join public.assessment_results r
+      on a.id is not null and r.workspace_id=owned_workspace_id and r.assessment_id=a.id and r.enrollment_id=e.enrollment_id
+  ), row_source as materialized (
+    select enrollment_id,student_id,enrollment_status,display_name,
+      count(assessment_id)::integer assessment_count,
+      count(*) filter(where assessment_id is not null and state='GRADED')::integer graded_count,
+      count(*) filter(where assessment_id is not null and state='MISSING')::integer missing_count,
+      count(*) filter(where assessment_id is not null and state='EXCUSED')::integer excused_count,
+      count(*) filter(where assessment_id is not null and state='UNCHECKED')::integer unchecked_count,
+      count(included_value)::integer included_count,
+      avg(included_value) raw_average,
+      coalesce(
+        jsonb_agg(jsonb_build_object(
+          'assessment_id',assessment_id,'title',title,'state',state,'value',included_value,'current_score',current_score
+        ) order by created_at,assessment_id) filter(where assessment_id is not null),
+        '[]'::jsonb
+      ) entries
+    from cell_source
+    group by enrollment_id,student_id,enrollment_status,display_name
+  )
+  select jsonb_build_object(
+    'assessment_total',(select count(*) from assessment_source),
+    'enrollment_total',(select count(*) from enrollment_source),
+    'rows',coalesce((select jsonb_agg(jsonb_build_object(
+      'enrollment_id',enrollment_id,
+      'student_id',student_id,
+      'enrollment_status',enrollment_status,
+      'student_display_name',display_name,
+      'assessment_count',assessment_count,
+      'graded_count',graded_count,
+      'missing_count',missing_count,
+      'excused_count',excused_count,
+      'unchecked_count',unchecked_count,
+      'included_count',included_count,
+      'raw_average',raw_average,
+      'entries',entries
+    ) order by display_name,enrollment_id) from row_source),'[]'::jsonb)
+  ) into source_snapshot;
+
+  assessment_total:=(source_snapshot->>'assessment_total')::integer;
+  enrollment_total:=(source_snapshot->>'enrollment_total')::integer;
+  select count(*) into incomplete_rows
+  from jsonb_to_recordset(source_snapshot->'rows') as rr(unchecked_count integer)
+  where rr.unchecked_count>0;
+
   if p_finalize and assessment_total=0 then raise exception 'cannot finalize without reportable assessments' using errcode='P3508'; end if;
   if p_finalize and enrollment_total=0 then raise exception 'cannot finalize without reportable enrollments' using errcode='P3509'; end if;
+  if p_finalize and incomplete_rows>0 then raise exception 'cannot finalize while UNCHECKED evidence remains' using errcode='P3506'; end if;
 
   select coalesce(max(rs.snapshot_no),0)+1 into next_snapshot from public.report_snapshots rs where rs.workspace_id=owned_workspace_id and rs.cycle_id=cycle.id;
   insert into public.report_snapshots(workspace_id,cycle_id,class_id,academic_period_id,reporting_policy_id,snapshot_no,kind,assessment_count,enrollment_count,source_summary,created_by)
   values(owned_workspace_id,cycle.id,p_class_id,period_id,p_reporting_policy_id,next_snapshot,case when p_finalize then 'FINALIZED' else 'PROVISIONAL' end,assessment_total,enrollment_total,
-    jsonb_build_object('aggregation',policy.aggregation,'missing_policy',policy.missing_policy,'excused_policy',policy.excused_policy,'remedial_policy',policy.remedial_policy,'rounding_mode',policy.rounding_mode,'kkm',policy.kkm),caller_id)
+    jsonb_build_object(
+      'aggregation',policy.aggregation,
+      'missing_policy',policy.missing_policy,
+      'excused_policy',policy.excused_policy,
+      'remedial_policy','CURRENT_RESULT',
+      'rounding_mode',policy.rounding_mode,
+      'kkm',policy.kkm,
+      'source_consistency','ONE_STATEMENT_MVCC',
+      'finalize_source_lock',p_finalize
+    ),caller_id)
   returning * into snapshot;
 
-  for e in
-    select en.id as enrollment_id,en.student_id,en.status as enrollment_status,s.display_name
-    from public.enrollments en join public.students s on s.workspace_id=en.workspace_id and s.id=en.student_id
-    where en.workspace_id=owned_workspace_id and en.class_id=p_class_id and en.status<>'archived'
-    order by s.display_name,en.id
-  loop
-    select
-      count(*)::integer,
-      count(*) filter(where x.state='GRADED')::integer,
-      count(*) filter(where x.state='MISSING')::integer,
-      count(*) filter(where x.state='EXCUSED')::integer,
-      count(*) filter(where x.state='UNCHECKED')::integer,
-      count(x.included_value)::integer,
-      avg(x.included_value),
-      coalesce(jsonb_agg(jsonb_build_object('assessment_id',x.assessment_id,'title',x.title,'state',x.state,'value',x.included_value,'current_score',x.current_score,'best_remedial_score',x.best_remedial_score) order by x.created_at,x.assessment_id),'[]'::jsonb)
-    into assessed,graded,missing,excused,unchecked,included,raw_average,assessment_states
-    from (
-      select a.id assessment_id,a.title,a.created_at,coalesce(r.state,'UNCHECKED') state,r.score current_score,rem.best_remedial_score,
-        case
-          when r.state='GRADED' then case when policy.remedial_policy='BEST_OF_CURRENT_AND_REMEDIAL' and rem.best_remedial_score is not null then greatest(r.score,rem.best_remedial_score) else r.score end
-          when r.state='MISSING' and policy.missing_policy='ZERO' then 0::numeric
-          else null::numeric
-        end included_value
-      from public.assessments a
-      left join public.assessment_results r on r.workspace_id=a.workspace_id and r.assessment_id=a.id and r.enrollment_id=e.enrollment_id
-      left join lateral (
-        select max(at.raw_score) best_remedial_score from public.assessment_attempts at
-        where r.id is not null and at.workspace_id=r.workspace_id and at.result_id=r.id and at.attempt_kind='REMEDIAL' and at.raw_score is not null
-      ) rem on true
-      where a.workspace_id=owned_workspace_id and a.class_id=p_class_id and a.academic_period_id=period_id and a.status in ('active','archived')
-    ) x;
-
-    if raw_average is null then final_score:=null;
-    elsif policy.rounding_mode='INTEGER' then final_score:=round(raw_average);
-    elsif policy.rounding_mode='ONE_DECIMAL' then final_score:=round(raw_average,1);
-    else final_score:=raw_average; end if;
-
-    insert into public.report_snapshot_rows(workspace_id,snapshot_id,class_id,enrollment_id,student_id,student_display_name,enrollment_status,reported_score,meets_kkm,assessment_count,graded_count,missing_count,excused_count,unchecked_count,included_count,calculation)
-    values(owned_workspace_id,snapshot.id,p_class_id,e.enrollment_id,e.student_id,e.display_name,e.enrollment_status,final_score,
-      case when final_score is null or policy.kkm is null then null else final_score>=policy.kkm end,
-      assessed,graded,missing,excused,unchecked,included,
-      jsonb_build_object('raw_average',raw_average,'rounding_mode',policy.rounding_mode,'entries',assessment_states));
-  end loop;
-
-  select count(*) into incomplete_rows from public.report_snapshot_rows rr where rr.workspace_id=owned_workspace_id and rr.snapshot_id=snapshot.id and rr.unchecked_count>0;
-  if p_finalize and incomplete_rows>0 then raise exception 'cannot finalize while UNCHECKED evidence remains' using errcode='P3506'; end if;
+  insert into public.report_snapshot_rows(
+    workspace_id,snapshot_id,class_id,enrollment_id,student_id,student_display_name,enrollment_status,
+    reported_score,meets_kkm,assessment_count,graded_count,missing_count,excused_count,unchecked_count,included_count,calculation
+  )
+  select owned_workspace_id,snapshot.id,p_class_id,r.enrollment_id,r.student_id,r.student_display_name,r.enrollment_status,
+    scored.final_score,
+    case when scored.final_score is null or policy.kkm is null then null else scored.final_score>=policy.kkm end,
+    r.assessment_count,r.graded_count,r.missing_count,r.excused_count,r.unchecked_count,r.included_count,
+    jsonb_build_object('raw_average',r.raw_average,'rounding_mode',policy.rounding_mode,'entries',r.entries)
+  from jsonb_to_recordset(source_snapshot->'rows') as r(
+    enrollment_id uuid,student_id uuid,enrollment_status text,student_display_name text,
+    assessment_count integer,graded_count integer,missing_count integer,excused_count integer,unchecked_count integer,included_count integer,
+    raw_average numeric,entries jsonb
+  )
+  cross join lateral (
+    select case
+      when r.raw_average is null then null::numeric
+      when policy.rounding_mode='INTEGER' then round(r.raw_average)
+      when policy.rounding_mode='ONE_DECIMAL' then round(r.raw_average,1)
+      else r.raw_average
+    end final_score
+  ) scored;
 
   update public.reporting_cycles rc set reporting_policy_id=p_reporting_policy_id,status=case when p_finalize then 'FINALIZED' else 'OPEN' end,current_snapshot_id=snapshot.id,revision=rc.revision+1,updated_at=now()
   where rc.id=cycle.id returning * into cycle;
