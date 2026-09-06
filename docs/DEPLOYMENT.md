@@ -33,12 +33,15 @@ Apply every source-controlled migration strictly in filename order:
 202609050003_continuity_write_boundary.sql
 202609060001_today_reentry.sql
 202609060002_pacing_final_torture.sql
+202609060003_reporting_core.sql
 ```
 
-The final migration-owned `app_schema_version` and `src/config/schema.ts` must agree on `r3.4-pacing-final.1` before deploying the matching frontend. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
+The final migration-owned `app_schema_version` and `src/config/schema.ts` must agree on `r3.5-reporting-core.1` before deploying the matching frontend. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
 
 Today uses bounded ownership-derived PostgreSQL RPC reads plus local IndexedDB Safe Work summary; it does not download Teaching Core history. Re-entry baselines are append-only facts and do not rewrite Meeting/Checkpoint history.
 
 R3.4 pacing plans are canonical class+lesson teacher judgements. `Effective Meetings = Available Meetings - Correction reserve`; the app never converts timetable rows into actual Meetings. `RELAXED / NORMAL / COMPRESSED` recommendation is explainable from that explicit capacity, while an explicit teacher mode override wins. COMPRESSED reduces breadth first; CORE, Practice for comprehension, and Minimum Exit Criteria remain visible. Pacing plans do not rewrite immutable LessonVersion content and do not create homework automatically.
+
+R3.5 Reporting Core derives provisional/final report snapshots from canonical Assessment Result truth under an explicit versioned policy. Reporting uses `SIMPLE_MEAN` in this package; Missing, rounding, and KKM semantics are explicit policy fields rather than hidden UI rules. Remedial reporting is deliberately `CURRENT_RESULT`: raw Attempt evidence is never promoted automatically into a reported outcome. Snapshot rows are materialized from one PostgreSQL source statement, and FINALIZE serializes against concurrent canonical source writes before closure. `UNCHECKED` blocks Finalize. Finalized cycles require an explicit audited Reopen before recalculation; old snapshots remain append-only history.
 
 Safe Work requires IndexedDB for durable Pending Safe operations, including Rapid Correction and Teaching Continuity meeting checkpoints. Bulk Import additionally requires normal browser File/Blob, DOMParser and DecompressionStream support for bounded XLSX parsing, and live server connectivity at Commit. No spreadsheet/server secret is embedded in generated templates.
