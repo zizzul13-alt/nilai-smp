@@ -109,10 +109,18 @@ describe('R3.4 continuity contracts',()=>{
   });
 
   it('UI keeps durable enqueue, persisted sync status, and canonical refresh as separate safety phases',()=>{
-    expect(ui).toContain('Phase 1: durable enqueue only');
-    expect(ui).toContain('Phase 2: sync');
-    expect(ui).toContain('Phase 3: canonical read-model refresh');
-    expect(ui).toContain('checkpointSafetyNotice(remaining)');
+    const enqueue=ui.indexOf('enqueueMeetingCheckpoint');
+    const pendingSafe=ui.indexOf("Pending Safe — checkpoint sudah durable di perangkat",enqueue);
+    const sync=ui.indexOf('worker.syncNamespace(userId,workspaceId)',pendingSafe);
+    const persistedRead=ui.indexOf('safeWorkDb.operations.get(op.op_id)',sync);
+    const safetyNotice=ui.indexOf('checkpointSafetyNotice(remaining)',persistedRead);
+    const canonicalRefresh=ui.indexOf('refreshContinuityOnly()',safetyNotice);
+    expect(enqueue).toBeGreaterThan(-1);
+    expect(pendingSafe).toBeGreaterThan(enqueue);
+    expect(sync).toBeGreaterThan(pendingSafe);
+    expect(persistedRead).toBeGreaterThan(sync);
+    expect(safetyNotice).toBeGreaterThan(persistedRead);
+    expect(canonicalRefresh).toBeGreaterThan(safetyNotice);
     expect(ui).toContain('withCheckpointRefreshFailure');
     expect(ui).toContain('Failed — checkpoint belum tersimpan aman di perangkat');
   });

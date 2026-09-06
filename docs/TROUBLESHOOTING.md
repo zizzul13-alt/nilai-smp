@@ -4,12 +4,19 @@
 Use `.env.local` with browser-safe Supabase URL + publishable key only. Never substitute a service-role key.
 
 ## Database incompatible
-Stop writes and apply ordered migrations through Today + Re-entry: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry. Current runtime expects `r3.4-today-reentry.1`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
+Stop writes and apply ordered migrations through R3.4 pacing final: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture. Current runtime expects `r3.4-pacing-final.1`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
 
 ## Today read failure / stale context
 A Today read failure is unknown state, not "no work". Use the Today Retry action; do not infer schedule or class activity from missing data.
 
 Re-entry freshness uses local calendar weeks rather than an hour timer: continuity from the current or immediately previous local calendar week is treated as recent; context older than the start of the previous local week is stale. Stale context remains visible as historical truth and offers Quick Update / Start From Today. Both append a new continuity baseline; neither edits or deletes historical Meetings, Checkpoints, unfinished correction sessions, or Safe Work.
+
+## Pacing / Effective Meetings
+Pacing is teacher-owned class+lesson intent, not a schedule engine. `Effective Meetings = Available Meetings - Correction reserve`. Only actual `in_progress` / `completed` Meetings count as observed Meetings; planned, cancelled, or archived Meeting rows do not become evidence.
+
+The recommendation is deterministic: effective capacity above Normal Meetings suggests RELAXED, equal suggests NORMAL, and below suggests COMPRESSED. A teacher override always wins. COMPRESSED means reduce breadth first: Stretch is deferred before CORE/Practice comprehension and Minimum Exit Criteria. The app never auto-generates homework and never silently marks exit criteria as met.
+
+If active correction sessions are shown, they are workflow evidence only. The app does not guess how many Meetings correction consumes; set Correction reserve explicitly. If a pacing save reports a revision conflict, reload the latest plan, review it, and save a new teacher judgement rather than overwriting a newer revision.
 
 ## Safe Work Pending Safe / FAILED / CONFLICT
 Pending Safe is a Safe Work state, not a Rapid Correction-only concept. It is used by Rapid Correction, Meeting Checkpoint / Teaching Continuity, and other Safe Work operations where applicable.
