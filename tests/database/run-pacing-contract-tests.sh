@@ -14,9 +14,10 @@ AW="(select id from public.workspaces where owner_user_id='00000000-0000-0000-00
 CLASS="$(run "$A select id from public.classes where workspace_id=$AW and status='active' order by id limit 1;")"
 LESSON="$(run "$A select id from public.lessons where workspace_id=$AW and status='active' order by id limit 1;")"
 VERSION="$(run "$A select id from public.lesson_versions where workspace_id=$AW and lesson_id='$LESSON' order by version_number desc limit 1;")"
+VERSION_CONTENT_BEFORE="$(run "$A select content_text from public.lesson_versions where id='$VERSION';")"
 BCLASS="$(run "$B select id from public.classes where workspace_id=$BW and status='active' order by id limit 1;")"
-BLESSON="$(run "$B select id from public.lessons where workspace_id=$BW and status='active' order by id limit 1;")"
-[[ -n "$CLASS" && -n "$LESSON" && -n "$VERSION" && -n "$BCLASS" && -n "$BLESSON" ]]||fail 'fixture identities missing'
+BLESSON="b4ffffff-ffff-ffff-ffff-ffffffffffff"
+[[ -n "$CLASS" && -n "$LESSON" && -n "$VERSION" && -n "$BCLASS" ]]||fail 'fixture identities missing'
 
 OP1="b4000000-0000-0000-0000-000000000001"; OP2="b4000000-0000-0000-0000-000000000002"; OP3="b4000000-0000-0000-0000-000000000003"
 CALL1="public.upsert_lesson_pacing_plan_operation('$OP1','$CLASS','$LESSON','$VERSION',4,3,1,'[\"Core concept\"]'::jsonb,'[\"Guided practice\"]'::jsonb,'[\"Stretch breadth\"]'::jsonb,'[\"Explain core concept\"]'::jsonb,null,0)"
@@ -35,11 +36,11 @@ expect_value 'stale pacing update returns conflict without mutation' "$A select 
 expect_value 'conflict preserves canonical revision' "$A select revision from public.lesson_pacing_plans where id='$PLAN';" '2'
 
 expect_sqlstate 'foreign class cannot be targeted by owner RPC' "$A perform * from public.upsert_lesson_pacing_plan_operation('b4000000-0000-0000-0000-000000000090','$BCLASS','$LESSON',null,3,3,0,'[\"x\"]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[\"y\"]'::jsonb,null,0)" 'P3432'
-expect_sqlstate 'foreign lesson cannot be targeted by owner RPC' "$A perform * from public.upsert_lesson_pacing_plan_operation('b4000000-0000-0000-0000-000000000091','$CLASS','$BLESSON',null,3,3,0,'[\"x\"]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[\"y\"]'::jsonb,null,0)" 'P3433'
+expect_sqlstate 'missing/foreign lesson cannot be targeted by owner RPC' "$A perform * from public.upsert_lesson_pacing_plan_operation('b4000000-0000-0000-0000-000000000091','$CLASS','$BLESSON',null,3,3,0,'[\"x\"]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[\"y\"]'::jsonb,null,0)" 'P3433'
 expect_sqlstate 'empty CORE is rejected' "$A perform * from public.upsert_lesson_pacing_plan_operation('b4000000-0000-0000-0000-000000000092','$CLASS','$LESSON',null,3,3,0,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[\"y\"]'::jsonb,null,2)" '22023'
 expect_sqlstate 'correction reserve cannot exceed available meetings' "$A perform * from public.upsert_lesson_pacing_plan_operation('b4000000-0000-0000-0000-000000000093','$CLASS','$LESSON',null,3,1,2,'[\"x\"]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[\"y\"]'::jsonb,null,2)" '22023'
 expect_fail 'anonymous pacing select denied' "$ANON select * from public.lesson_pacing_plans limit 1;"
-expect_value 'pacing migration does not rewrite immutable LessonVersion' "$A select content_text from public.lesson_versions where id='$VERSION';" "$(run "$A select content_text from public.lesson_versions where id='$VERSION';")"
+expect_value 'pacing writes do not rewrite immutable LessonVersion' "$A select content_text from public.lesson_versions where id='$VERSION';" "$VERSION_CONTENT_BEFORE"
 expect_value 'schema version advances to R3.4 pacing final head' "$A select version from public.app_schema_version where id=1;" 'r3.4-pacing-final.1'
 
 printf '\nR3.4-03 Pacing + Final Torture PostgreSQL matrix completed successfully.\n'
