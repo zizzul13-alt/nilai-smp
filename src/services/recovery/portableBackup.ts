@@ -20,6 +20,24 @@ function withoutChecksum(value:PortableBackup|Record<string,unknown>){const{chec
 function bytesToBase64(bytes:Uint8Array){let binary='';const chunk=0x8000;for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));return btoa(binary);}
 function base64ToBytes(value:string){const binary=atob(value);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes;}
 
+export function assertArtifactPayloadCompleteness(backup:Pick<PortableBackup,'tables'|'artifact_payloads'>){
+  const objects=(backup.tables.artifact_objects??[]) as JsonRow[];
+  const objectMap=new Map<string,JsonRow>();
+  for(const object of objects){const id=String(object.id??'');if(!id||objectMap.has(id))throw new Error('Metadata ArtifactObject backup memiliki identity kosong/duplikat.');objectMap.set(id,object);}
+  const payloadIds=new Set<string>();
+  for(const payload of backup.artifact_payloads){
+    if(!payload.object_id||payloadIds.has(payload.object_id))throw new Error(`Payload artifact duplikat/tanpa identity: ${payload.object_id||'unknown'}.`);
+    payloadIds.add(payload.object_id);
+    const meta=objectMap.get(payload.object_id);
+    if(!meta)throw new Error(`Payload artifact ${payload.object_id} tidak punya metadata canonical.`);
+    if(meta.state!=='READY')throw new Error(`Payload artifact ${payload.object_id} tidak boleh ada untuk object ${String(meta.state)}.`);
+  }
+  for(const[id,meta]of objectMap){
+    if(meta.state==='READY'&&!payloadIds.has(id))throw new Error(`Backup tidak lengkap: READY ArtifactObject ${id} tidak memiliki payload.`);
+    if(meta.state!=='READY'&&payloadIds.has(id))throw new Error(`Backup tidak valid: object ${id} belum READY tetapi memiliki payload.`);
+  }
+}
+
 export async function generatePortableBackup(client:SupabaseClient):Promise<PortableBackup>{
   const{data,error}=await client.rpc('export_portable_backup');
   if(error)throw new Error(`Backup export gagal: ${error.message}`);
@@ -37,6 +55,7 @@ export async function generatePortableBackup(client:SupabaseClient):Promise<Port
     payloads.push({object_id:objectId,storage_path:storagePath,mime_type:mime,byte_size:blob.size,sha256:hash,base64:bytesToBase64(new Uint8Array(await blob.arrayBuffer()))});
   }
   const unsigned={...raw,artifact_payloads:payloads};
+  assertArtifactPayloadCompleteness(unsigned);
   const checksum=await textSha256(canonicalJson(unsigned));
   const backup={...unsigned,checksum_sha256:checksum} as PortableBackup;
   if(new Blob([JSON.stringify(backup)]).size>PORTABLE_BACKUP_MAX_BYTES)throw new Error('Backup portable melebihi batas 80 MB. Kurangi artifact binary lama atau gunakan backup bertahap sebelum mencoba lagi.');
@@ -48,12 +67,14 @@ export async function verifyPortableBackup(input:unknown):Promise<PortableBackup
   if(!/^[0-9a-f]{64}$/.test(backup.checksum_sha256))throw new Error('Checksum manifest tidak valid.');
   const manifestHash=await textSha256(canonicalJson(withoutChecksum(backup)));
   if(manifestHash!==backup.checksum_sha256)throw new Error('Checksum backup tidak cocok. File berubah/rusak; restore dibatalkan.');
+  assertArtifactPayloadCompleteness(backup);
   const objects=new Map((backup.tables.artifact_objects??[]).map(row=>[String(row.id),row]));
   for(const payload of backup.artifact_payloads){
-    const meta=objects.get(payload.object_id);if(!meta)throw new Error(`Payload artifact ${payload.object_id} tidak punya metadata canonical.`);
+    const meta=objects.get(payload.object_id)!;
     const bytes=base64ToBytes(payload.base64);if(bytes.byteLength!==payload.byte_size||Number(meta.byte_size)!==payload.byte_size)throw new Error(`Ukuran payload ${payload.object_id} tidak cocok.`);
     const hash=await sha256Hex(new Blob([bytes]));if(hash!==payload.sha256||String(meta.sha256)!==hash)throw new Error(`Checksum payload ${payload.object_id} tidak cocok.`);
     if(String(meta.storage_path)!==payload.storage_path)throw new Error(`Storage path payload ${payload.object_id} tidak cocok.`);
+    if(String(meta.mime_type)!==payload.mime_type)throw new Error(`MIME payload ${payload.object_id} tidak cocok.`);
   }
   return backup;
 }
