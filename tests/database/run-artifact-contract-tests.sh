@@ -9,6 +9,7 @@ wait_for_advisory(){ for _ in $(seq 1 30);do [[ "$(run "select count(*) from pg_
 
 "${PSQL[@]}" -f supabase/migrations/202609060004_artifact_core.sql >/dev/null
 "${PSQL[@]}" -f supabase/migrations/202609060005_artifact_integrity_hardening.sql >/dev/null
+"${PSQL[@]}" -f supabase/migrations/202609060006_artifact_governor_repairs.sql >/dev/null
 A="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000a\",\"role\":\"authenticated\"}';"
 B="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000b\",\"role\":\"authenticated\"}';"
 ANON="set role anon;set request.jwt.claims='{\"role\":\"anon\"}';"
@@ -41,8 +42,6 @@ expect_value 'current_version belongs exact stable artifact' "$A select (v.artif
 expect_value 'version two preserves exact report snapshot source' "$A select source_kind||':'||report_snapshot_id from public.artifact_versions where id='$V2';" "REPORT_SNAPSHOT:$REPORT"
 expect_value 'stale expected revision returns conflict not overwrite' "$A select outcome||':'||revision from public.append_artifact_version_operation('a6200000-0000-0000-0000-000000000002','$ART',1,'MANUAL',null,null,null,'stale','{}',null,null);" 'conflict:2'
 
-# Force two same-op append calls to pass their first ledger read and wait behind the same artifact lock.
-# After the holder releases, exactly one append applies and the other must replay after its post-lock ledger read.
 CONCURRENT_OP="a6200000-0000-0000-0000-000000000010"
 LOCK_SQL="begin;select pg_advisory_xact_lock(hashtextextended((select workspace_id::text from public.artifacts where id='$ART')||':artifact:'||'$ART',0));select pg_sleep(0.8);commit;"
 "${PSQL[@]}" -qAtc "$LOCK_SQL" >/tmp/artifact-lock.out 2>/tmp/artifact-lock.err & LOCK_PID=$!;wait_for_advisory
@@ -65,8 +64,10 @@ expect_value 'opaque storage path is workspace/artifact/version scoped' "$A sele
 expect_value 'reserved object is visibly pending without fake checksum' "$A select state||':'||(sha256 is null)::text from public.artifact_objects where id='$OBJ';" 'PENDING_UPLOAD:true'
 expect_sqlstate 'duplicate object kind cannot silently overwrite same artifact version' "$A perform * from public.reserve_artifact_object_operation('a6300000-0000-0000-0000-000000000002','$ART','$V3','PDF','application/pdf',1234)" 'P3607'
 
-# Confirmation uses object_id as its stable op_id in the browser. Force two copies behind the object lock:
-# one makes READY, the second must return prior success instead of "already confirmed".
+PENDING_DOCX_OP="a6300000-0000-0000-0000-000000000010"
+expect_value 'reserve a second pending object before archive' "$A select outcome||':'||replayed from public.reserve_artifact_object_operation('$PENDING_DOCX_OP','$ART','$V3','DOCX','application/vnd.openxmlformats-officedocument.wordprocessingml.document',2);" 'saved:false'
+PENDING_DOCX="$(run "$A select id from public.artifact_objects where artifact_version_id='$V3' and object_kind='DOCX';")"
+
 HASH="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 OBJ_LOCK_SQL="begin;select pg_advisory_xact_lock(hashtextextended((select workspace_id::text from public.artifact_objects where id='$OBJ')||':artifact-object:'||'$OBJ',0));select pg_sleep(0.8);commit;"
 "${PSQL[@]}" -qAtc "$OBJ_LOCK_SQL" >/tmp/artifact-object-lock.out 2>/tmp/artifact-object-lock.err & OLOCK=$!;wait_for_advisory
@@ -86,10 +87,14 @@ expect_value 'archive is explicit revisioned lifecycle change' "$A select outcom
 expect_value 'archive lost ACK replays exact result' "$A select outcome||':'||revision||':'||replayed from public.archive_artifact_operation('$ARCHIVE_OP','$ART',3);" 'saved:4:true'
 expect_value 'archive preserves versions and READY object' "$A select a.status||':'||(select count(*) from public.artifact_versions v where v.artifact_id=a.id)||':'||(select count(*) from public.artifact_objects o where o.artifact_id=a.id and o.state='READY') from public.artifacts a where a.id='$ART';" 'archived:3:1'
 expect_sqlstate 'archived artifact cannot append new history' "$A perform * from public.append_artifact_version_operation('a6200000-0000-0000-0000-000000000099','$ART',4,'MANUAL',null,null,null,'nope','{}',null,null)" 'P3605'
+expect_sqlstate 'archived artifact cannot reserve a new binary object' "$A perform * from public.reserve_artifact_object_operation('a6300000-0000-0000-0000-000000000099','$ART','$V3','OTHER','application/octet-stream',1)" 'P3605'
+DOCX_HASH="abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+expect_value 'already-reserved pending object may be confirmed after archive' "$A select outcome||':'||replayed from public.confirm_artifact_object_operation('$PENDING_DOCX','$PENDING_DOCX','$DOCX_HASH',2);" 'saved:false'
+expect_value 'post-archive confirmation changes only reserved object state' "$A select a.status||':'||o.state from public.artifacts a join public.artifact_objects o on o.artifact_id=a.id where a.id='$ART' and o.id='$PENDING_DOCX';" 'archived:READY'
 expect_fail 'anonymous artifact read denied' "$ANON select * from public.artifacts limit 1;"
 expect_value 'foreign user cannot read artifact object' "$B select count(*) from public.artifact_objects where id='$OBJ';" '0'
 expect_value 'important artifact workflow is audited' "$A select count(*) from public.audit_events where entity_id='$ART' and event_type in('artifact.created','artifact.version.appended','artifact.archived');" '4'
 expect_value 'plain PostgreSQL CI safely lacks Supabase storage schema' "select (to_regclass('storage.objects') is null)::text;" 'true'
-expect_value 'schema version advances through artifact integrity hardening' "$A select version from public.app_schema_version where id=1;" 'r3.5-artifact-core.2'
+expect_value 'schema version advances through governor artifact repairs' "$A select version from public.app_schema_version where id=1;" 'r3.5-artifact-core.3'
 
 printf '\nR3.5-02 Artifact Core PostgreSQL matrix completed successfully.\n'
