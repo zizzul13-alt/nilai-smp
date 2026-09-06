@@ -17,7 +17,7 @@ test('artifact create, stale provenance, append version and archive preserve his
   await page.getByLabel('Exact source').selectOption('LESSON:ART-L:ART-LV2');
   await page.getByLabel('Canonical text').fill('RPP revised from exact Lesson v2');
   await page.getByRole('button',{name:'Simpan version baru'}).click();
-  await expect(page.getByText(/v2$/)).toBeVisible();
+  await expect(page.locator('.artifact-current .continuity-status span')).toHaveText('v2');
   await expect(page.getByText(/History: 2 version/)).toBeVisible();
   await expect(page.getByText('STALE SOURCE')).toHaveCount(0);
   page.on('dialog',dialog=>void dialog.accept());
