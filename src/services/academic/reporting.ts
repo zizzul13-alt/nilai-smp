@@ -4,7 +4,7 @@ import type{AcademicClass}from'../../domain/academic';
 export type ReportingPolicy={
   id:string;workspace_id:string;academic_period_id:string;policy_key:string;version_no:number;name:string;
   aggregation:'SIMPLE_MEAN';missing_policy:'EXCLUDE'|'ZERO';excused_policy:'EXCLUDE';
-  remedial_policy:'CURRENT_RESULT'|'BEST_OF_CURRENT_AND_REMEDIAL';rounding_mode:'NONE'|'INTEGER'|'ONE_DECIMAL';
+  remedial_policy:'CURRENT_RESULT';rounding_mode:'NONE'|'INTEGER'|'ONE_DECIMAL';
   kkm:number|null;status:'active'|'archived';created_at:string;
 };
 export type ReportingCycle={
