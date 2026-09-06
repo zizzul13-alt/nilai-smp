@@ -1,6 +1,6 @@
 import{describe,expect,it}from'vitest';
 import{readFileSync}from'node:fs';
-import{isArtifactVersionStale,sha256Hex,type ArtifactVersion,type LessonSource}from'../../src/services/artifacts/artifacts';
+import{isArtifactVersionStale,sha256Hex,type ArtifactVersion,type LessonSource,type ReportSource}from'../../src/services/artifacts/artifacts';
 
 const migration=readFileSync('supabase/migrations/202609060004_artifact_core.sql','utf8');
 const hardening=readFileSync('supabase/migrations/202609060005_artifact_integrity_hardening.sql','utf8');
@@ -106,6 +106,28 @@ describe('R3.5-02 artifact contracts',()=>{
     expect(isArtifactVersionStale(version,sources)).toBe(true);
     expect(isArtifactVersionStale({...version,lesson_version_id:'V2'},sources)).toBe(false);
     expect(isArtifactVersionStale({...version,source_kind:'MANUAL',lesson_id:null,lesson_version_id:null},sources)).toBe(false);
+  });
+
+  it('derives stale ReportSnapshot only within the same reporting cycle',()=>{
+    const reports:ReportSource[]=[
+      {id:'R2',cycle_id:'CY-A',class_id:'C1',snapshot_no:2,kind:'FINALIZED',created_at:'2026-09-06T02:00:00Z'},
+      {id:'R1',cycle_id:'CY-A',class_id:'C1',snapshot_no:1,kind:'PROVISIONAL',created_at:'2026-09-06T01:00:00Z'},
+      {id:'R9',cycle_id:'CY-B',class_id:'C1',snapshot_no:9,kind:'FINALIZED',created_at:'2026-09-07T01:00:00Z'},
+      {id:'R8',cycle_id:'CY-C',class_id:'C2',snapshot_no:8,kind:'FINALIZED',created_at:'2026-09-07T01:00:00Z'},
+    ];
+    const oldVersion={source_kind:'REPORT_SNAPSHOT',report_snapshot_id:'R1'} as ArtifactVersion;
+    const latestVersion={source_kind:'REPORT_SNAPSHOT',report_snapshot_id:'R2'} as ArtifactVersion;
+    expect(isArtifactVersionStale(oldVersion,[],reports)).toBe(true);
+    expect(isArtifactVersionStale(latestVersion,[],reports)).toBe(false);
+    expect(isArtifactVersionStale({...oldVersion,report_snapshot_id:'R9'},[],reports)).toBe(false);
+    expect(isArtifactVersionStale({...oldVersion,report_snapshot_id:'R8'},[],reports)).toBe(false);
+    expect(isArtifactVersionStale({...oldVersion,source_kind:'MANUAL',report_snapshot_id:null},[],reports)).toBe(false);
+  });
+
+  it('loads report cycle identity for deterministic artifact staleness',()=>{
+    expect(service).toContain("select('id,cycle_id,class_id,snapshot_no,kind,created_at')");
+    expect(service).toContain('latestReportSnapshotByCycle');
+    expect(ui).toContain('isArtifactVersionStale(current,data.lessonSources,data.reportSources)');
   });
 
   it('computes deterministic SHA-256 before confirmation',async()=>{
