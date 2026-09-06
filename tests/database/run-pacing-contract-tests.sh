@@ -42,6 +42,22 @@ expect_sqlstate 'correction reserve cannot exceed available meetings' "$A perfor
 expect_sqlstate 'null expected revision is rejected before mutation' "$A perform * from public.upsert_lesson_pacing_plan_operation('b4000000-0000-0000-0000-000000000094','$CLASS','$LESSON','$VERSION',4,3,1,'[\"Core concept\"]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[\"Explain core concept\"]'::jsonb,null,null)" '22023'
 expect_value 'null revision rejection preserves canonical revision' "$A select revision from public.lesson_pacing_plans where id='$PLAN';" '2'
 expect_sqlstate 'null required capacity is rejected deterministically' "$A perform * from public.upsert_lesson_pacing_plan_operation('b4000000-0000-0000-0000-000000000095','$CLASS','$LESSON','$VERSION',null,3,1,'[\"Core concept\"]'::jsonb,'[]'::jsonb,'[]'::jsonb,'[\"Explain core concept\"]'::jsonb,null,2)" '22023'
+
+# Hold the same class+lesson advisory key so two identical retries both pass the pre-lock
+# ledger lookup before either can apply. Once released, one applies and the other must replay.
+CONCURRENT_OP="b4000000-0000-0000-0000-000000000096"
+CONCURRENT_CALL="public.upsert_lesson_pacing_plan_operation('$CONCURRENT_OP','$CLASS','$LESSON','$VERSION',4,4,1,'[\"Core concept\"]'::jsonb,'[\"Guided practice\"]'::jsonb,'[\"Stretch breadth\"]'::jsonb,'[\"Explain core concept\"]'::jsonb,'NORMAL',2)"
+LOCK_KEY="hashtextextended(($AW)::text||':'||'$CLASS'::text||':'||'$LESSON'::text,0)"
+(run "select pg_advisory_lock($LOCK_KEY); select pg_sleep(2); select pg_advisory_unlock($LOCK_KEY);") >/tmp/pacing-lock-holder & LOCK_PID=$!
+sleep 0.35
+(run "$A select outcome||':'||revision||':'||replayed from $CONCURRENT_CALL;") >/tmp/pacing-concurrent-a & CALL_A_PID=$!
+(run "$A select outcome||':'||revision||':'||replayed from $CONCURRENT_CALL;") >/tmp/pacing-concurrent-b & CALL_B_PID=$!
+wait "$CALL_A_PID"; wait "$CALL_B_PID"; wait "$LOCK_PID"
+CONCURRENT_RESULTS="$(cat /tmp/pacing-concurrent-a /tmp/pacing-concurrent-b | sort | tr '\n' '|')"
+[[ "$CONCURRENT_RESULTS" == 'saved:3:false|saved:3:true|' ]]||fail "concurrent same-op retry did not replay deterministically ($CONCURRENT_RESULTS)"
+pass 'concurrent same-op retry replays prior success after lock'
+expect_value 'concurrent retry mutates canonical pacing exactly once' "$A select revision from public.lesson_pacing_plans where id='$PLAN';" '3'
+
 expect_fail 'anonymous pacing select denied' "$ANON select * from public.lesson_pacing_plans limit 1;"
 expect_value 'pacing writes do not rewrite immutable LessonVersion' "$A select content_text from public.lesson_versions where id='$VERSION';" "$VERSION_CONTENT_BEFORE"
 expect_value 'schema version advances to R3.4 pacing final head' "$A select version from public.app_schema_version where id=1;" 'r3.4-pacing-final.1'
