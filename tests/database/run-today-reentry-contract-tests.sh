@@ -18,6 +18,9 @@ expect_value 'Today foreign Class invisible' "$B select count(*) from public.rea
 expect_value 'A cannot receive B Class from ownership-derived Today RPC' "$A select count(*) from public.read_today_class_contexts() where class_id='$BCLASS';" '0'
 expect_value 'active Meeting selected for owned Class' "$A select (active_meeting_id is not null)::text from public.read_today_class_contexts() where class_id='$CLASS';" 'true'
 expect_value 'latest meaningful checkpoint survives active Meeting boundary' "$A select latest_checkpoint_stopped_at||':'||latest_checkpoint_next_step from public.read_today_class_contexts() where class_id='$CLASS';" 'Halaman 39:Latihan 4'
+RECOVERY_MEETING="$(run "$A select active_meeting_id from public.read_today_class_contexts() where class_id='$CLASS';")"
+expect_value 'owner exact Meeting recovery lookup returns Class identity' "$A select class_id from public.meetings where id='$RECOVERY_MEETING';" "$CLASS"
+expect_value 'foreign exact Meeting recovery lookup discloses no Class identity' "$B select count(*) from public.meetings where id='$RECOVERY_MEETING';" '0'
 
 # A fixed-size class window remains bounded even when Meeting history grows by 1,000 rows.
 run "insert into public.meetings(workspace_id,class_id,occurred_at,status) select $AW,'$CLASS','2020-01-01T00:00:00Z'::timestamptz+(g||' hours')::interval,'completed' from generate_series(1,1000) g;"
@@ -25,7 +28,6 @@ expect_value 'historical volume does not expand Today response beyond fixed boun
 expect_value 'historical volume does not displace active Meeting selection' "$A select (active_meeting_id is not null)::text from public.read_today_class_contexts() where class_id='$CLASS';" 'true'
 expect_value 'historical volume does not break cross-Meeting checkpoint selection' "$A select latest_checkpoint_stopped_at from public.read_today_class_contexts() where class_id='$CLASS';" 'Halaman 39'
 
-# Create a deterministic newest active correction session. Workflow progress remains separate from academic evidence.
 ASS="a6000000-0000-0000-0000-000000000001"; SES="a7000000-0000-0000-0000-000000000001"; PERIOD="$(run "select academic_period_id from public.classes where id='$CLASS';")"
 run "insert into public.assessments(id,workspace_id,class_id,academic_period_id,title,status) values('$ASS',$AW,'$CLASS','$PERIOD','Today Resume Assessment','active') on conflict(id) do nothing; insert into public.correction_sessions(id,workspace_id,assessment_id,class_id,status,started_at,updated_at) values('$SES',$AW,'$ASS','$CLASS','active','2099-01-01T00:00:00Z','2099-01-01T00:00:00Z') on conflict(id) do nothing;"
 expect_value 'active CorrectionSession appears with Assessment and Class identity' "$A select assessment_id||':'||assessment_title||':'||class_id from public.read_today_active_correction();" "$ASS:Today Resume Assessment:$CLASS"
