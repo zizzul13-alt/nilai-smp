@@ -8,8 +8,8 @@ type State={artifacts:any[];versions:any[];objects:any[];applied:Map<string,any>
 type Options={loseCreateAckOnce?:boolean;loseAppendAckOnce?:boolean};
 function fakeClient(state:State,options:Options={}){
   const lessons=[{id:L,title:'Gerak Lurus',workspace_id:W,status:'active'}];
-  const lessonVersions=[{id:V2,lesson_id:L,version_number:2,content_text:'Lesson terbaru v2'},{id:V1,lesson_id:L,version_number:1,content_text:'Lesson lama v1'}];
-  const reports=[{id:R,class_id:'C',snapshot_no:2,kind:'FINALIZED',created_at:'2026-09-06T00:00:00Z'}];
+  const lessonVersions=[{id:V2,workspace_id:W,lesson_id:L,version_number:2,content_text:'Lesson terbaru v2'},{id:V1,workspace_id:W,lesson_id:L,version_number:1,content_text:'Lesson lama v1'}];
+  const reports=[{id:R,workspace_id:W,class_id:'C',snapshot_no:2,kind:'FINALIZED',created_at:'2026-09-06T00:00:00Z'}];
   const client:any={
     from(table:string){let filters:[string,unknown][]=[];const source=()=>table==='artifacts'?state.artifacts:table==='artifact_versions'?state.versions:table==='artifact_objects'?state.objects:table==='lessons'?lessons:table==='lesson_versions'?lessonVersions:table==='report_snapshots'?reports:[];const execute=()=>source().filter((row:any)=>filters.every(([key,value])=>row[key]===value));const builder:any={select(){return builder;},eq(key:string,value:unknown){filters.push([key,value]);return builder;},order(){return builder;},then(resolve:any,reject:any){return Promise.resolve({data:execute(),error:null}).then(resolve,reject);}};return builder;},
     async rpc(name:string,args:Record<string,any>){
