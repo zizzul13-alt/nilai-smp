@@ -1,1 +1,1 @@
-export const EXPECTED_SCHEMA_VERSION = 'r3.5-artifact-core.3';
+export const EXPECTED_SCHEMA_VERSION = 'r3.6-recovery.1';
