@@ -28,7 +28,7 @@ Delivery: Cloudflare Workers Static Assets
 Supabase/PostgreSQL is canonical operational truth. UI sessions, spreadsheet files and Dexie are not canonical teaching/academic databases. Supabase Storage is a private binary object store referenced by canonical ArtifactObject metadata; Storage itself does not define document identity or provenance.
 
 ## Ownership and compatibility
-`auth.users -> workspaces -> all protected records` remains the ownership root. RLS derives `auth.uid()` and workspace-aware FKs reject cross-workspace composition. Narrow RPCs accept no browser-supplied workspace owner. Browser code receives no elevated credential. Current branch compatibility is `r3.5-artifact-core.2`, owned by the ordered migration chain through artifact integrity hardening.
+`auth.users -> workspaces -> all protected records` remains the ownership root. RLS derives `auth.uid()` and workspace-aware FKs reject cross-workspace composition. Narrow RPCs accept no browser-supplied workspace owner. Browser code receives no elevated credential. Current branch compatibility is `r3.5-artifact-core.3`, owned by the ordered migration chain through artifact integrity hardening and governor repairs.
 
 ## Teaching continuity boundary
 UI Session != Teaching Meeting. A Meeting is an actual teaching occurrence. Browser reload, route change, logout, component unmount and close/X do not change Meeting lifecycle. `start_teaching_meeting_operation()` serializes a Class start, enforces/reuses one `in_progress` Meeting, validates optional owned Lesson/LessonVersion context and records stable op-id replay metadata. The partial unique index on `(workspace_id,class_id)` for `status='in_progress'` is the database invariant behind the same rule.
@@ -58,6 +58,8 @@ Reporting is a derived, explainable layer over canonical Result truth. Reporting
 
 ## Artifact boundary
 Artifact is stable teacher-document identity. ArtifactVersion is append-only canonical document content with exact MANUAL, LessonVersion or ReportSnapshot provenance. ArtifactObject is private binary metadata for a specific version. Regeneration means append a new ArtifactVersion; an older canonical version and READY object are never overwritten.
+
+Artifact source staleness is derived, never written back into historical ArtifactVersion rows. LessonVersion staleness is scoped to the same Lesson. ReportSnapshot staleness is scoped to the same ReportingCycle: an artifact sourced from snapshot N becomes stale only when a newer snapshot for that same cycle exists. A newer snapshot in another cycle or class does not invalidate the exact historical source.
 
 Artifact object reservation is idempotent and workspace-owned. Object paths are workspace/artifact/version scoped. PDF/DOCX/OTHER MIME shape and 20 MB size limit are validated. A PENDING_UPLOAD object is not READY and has no checksum. READY requires SHA-256 + exact size. Storage upload uses `upsert:false`; an already-existing PENDING path is downloaded and byte-for-byte checked before confirmation, and confirmation reuses the object UUID as stable operation identity so a lost ACK replays prior success. The private Storage select policy exposes only the owner's PENDING/READY reserved object; browser UPDATE/DELETE is not granted.
 
