@@ -10,7 +10,7 @@ test('artifact create, stale provenance, append version and archive preserve his
   await page.getByLabel('Exact source').selectOption('LESSON:ART-L:ART-LV1');
   await expect(page.getByLabel('Canonical text')).toHaveValue('Lesson lama v1');
   await page.getByRole('button',{name:'Simpan artifact'}).click();
-  await expect(page.getByText(/RPP · RPP Gerak/).first()).toBeVisible();
+  await expect(page.locator('.artifact-current').getByText('RPP · RPP Gerak',{exact:true})).toBeVisible();
   await expect(page.getByText(/v1 · STALE SOURCE/)).toBeVisible();
   await expect(page.getByText(/History: 1 version/)).toBeVisible();
   await page.getByRole('button',{name:'Buat versi baru'}).click();
@@ -23,10 +23,10 @@ test('artifact create, stale provenance, append version and archive preserve his
   page.on('dialog',dialog=>void dialog.accept());
   await page.getByRole('button',{name:'Archive'}).click();
   await expect(page.getByText(/di-archive/)).toBeVisible();
-  await expect(page.getByText(/RPP · RPP Gerak/)).toHaveCount(0);
+  await expect(page.locator('.artifact-current')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Upload private object'})).toHaveCount(0);
   await page.getByLabel('Tampilkan archived').check();
-  await expect(page.getByText(/RPP · RPP Gerak/).first()).toBeVisible();
+  await expect(page.locator('.artifact-current').getByText('RPP · RPP Gerak',{exact:true})).toBeVisible();
   await expect(page.getByText('Artifact archived bersifat read-only. Object READY lama tetap dapat dibuka; object baru tidak dapat ditambahkan.')).toBeVisible();
   await expect(page.getByRole('button',{name:'Upload private object'})).toHaveCount(0);
 });
@@ -40,7 +40,7 @@ test('lost ACK retries reuse create and append operation identity without duplic
   await page.getByRole('button',{name:'Simpan artifact'}).click();
   await expect(page.getByRole('alert')).toContainText('simulated lost ACK after create commit');
   await page.getByRole('button',{name:'Simpan artifact'}).click();
-  await expect(page.getByText(/RPP · RPP Retry/).first()).toBeVisible();
+  await expect(page.locator('.artifact-current').getByText('RPP · RPP Retry',{exact:true})).toBeVisible();
   expect(await page.evaluate(async(h:string)=>(await import(h)).artifactHarnessCounts(),harness)).toEqual({artifacts:1,versions:1,operations:1});
 
   await page.getByRole('button',{name:'Buat versi baru'}).click();
