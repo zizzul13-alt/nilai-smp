@@ -4,7 +4,7 @@
 Use `.env.local` with browser-safe Supabase URL + publishable key only. Never substitute a service-role key.
 
 ## Database incompatible
-Stop writes and apply ordered migrations through R3.5 Artifact Core: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture -> reporting core -> artifact core -> artifact integrity hardening. Current runtime expects `r3.5-artifact-core.2`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
+Stop writes and apply ordered migrations through R3.5 Artifact Core: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture -> reporting core -> artifact core -> artifact integrity hardening -> artifact governor repairs. Current runtime expects `r3.5-artifact-core.3`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
 
 ## Today read failure / stale context
 A Today read failure is unknown state, not "no work". Use the Today Retry action; do not infer schedule or class activity from missing data.
@@ -36,7 +36,11 @@ Artifact identity is stable; every regeneration or factual revision creates a ne
 
 Manual artifacts remain valid without AI. Lesson-sourced and report-sourced versions retain exact source IDs and provenance. READY DOCX/PDF objects are private, checksumed and overwrite-resistant. A READY object cannot be replaced on the same version; create a new ArtifactVersion instead.
 
-`PENDING_UPLOAD` means metadata has been reserved but the binary has not yet been confirmed READY. Retry with the exact same file size/kind. If Storage reports that the path already exists, the app downloads that owner-visible private object and verifies the bytes/SHA-256 before confirming; it must never confirm a different local file merely because the path exists. If the pending reservation belongs to a different file, keep the old history and create a new ArtifactVersion rather than forging metadata. Signed download URLs are short-lived and generated only through the authenticated private bucket.
+Artifact create/version operations retain one client operation ID for the whole user retry attempt. If the server commits and the response is lost, retrying the same draft must replay the same server operation instead of creating duplicate history. Archive retries likewise reuse their in-flight operation ID until acknowledgement or a real conflict.
+
+`PENDING_UPLOAD` means metadata has been reserved but the binary has not yet been confirmed READY. Retry with the exact same file size/kind. Upload transport uses the MIME type already bound by the reservation, not browser-provided `File.type`. If Storage reports that the path already exists, the app downloads that owner-visible private object and verifies the bytes/SHA-256 before confirming; it must never confirm a different local file merely because the path exists. If the pending reservation belongs to a different file, keep the old history and create a new ArtifactVersion rather than forging metadata. Signed download URLs are short-lived and generated only through the authenticated private bucket.
+
+Archive closes new ArtifactVersion and new ArtifactObject reservation creation. An object that was already reserved while the Artifact was active may finish its existing PENDING_UPLOAD confirmation after Archive; that confirmation cannot create a new reservation or rewrite an existing READY object.
 
 Do not manually edit `artifact_objects`, Storage paths, SHA-256, or READY state. Do not make the `artifact-files` bucket public. Browser Storage UPDATE/DELETE is intentionally absent for artifact objects.
 
