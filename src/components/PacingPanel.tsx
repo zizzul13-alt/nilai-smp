@@ -27,7 +27,8 @@ export function PacingPanel({client,workspaceId,classId,lessonId,lessonVersionId
     const normal=Number(editor.normalMeetings),available=Number(editor.availableMeetings),reserve=Number(editor.correctionReserve),core=splitPacingLines(editor.core),practice=splitPacingLines(editor.practice),stretch=splitPacingLines(editor.stretch),exit=splitPacingLines(editor.exit);
     if(!Number.isInteger(normal)||normal<1||normal>20||!Number.isInteger(available)||available<0||available>20||!Number.isInteger(reserve)||reserve<0||reserve>available){setNotice('Kapasitas pacing tidak valid. Normal 1–20; available 0–20; correction reserve tidak boleh melebihi available.');return;}
     if(core.length===0||exit.length===0){setNotice('CORE dan Minimum Exit Criteria wajib punya minimal satu baris konkret.');return;}
-    const payload={classId,lessonId,lessonVersionId,normalMeetings:normal,availableMeetings:available,correctionReserve:reserve,coreTargets:core,practiceTargets:practice,stretchTargets:stretch,minimumExitCriteria:exit,teacherMode:editor.teacherMode||null,expectedRevision:plan?.revision??0};
+    const persistedLessonVersionId=plan?plan.lesson_version_id:lessonVersionId;
+    const payload={classId,lessonId,lessonVersionId:persistedLessonVersionId,normalMeetings:normal,availableMeetings:available,correctionReserve:reserve,coreTargets:core,practiceTargets:practice,stretchTargets:stretch,minimumExitCriteria:exit,teacherMode:editor.teacherMode||null,expectedRevision:plan?.revision??0};
     const fingerprint=JSON.stringify(payload);if(saveAttempt.current?.fingerprint!==fingerprint)saveAttempt.current={fingerprint,opId:crypto.randomUUID()};
     setBusy(true);setNotice('');
     try{
