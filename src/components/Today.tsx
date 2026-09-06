@@ -12,13 +12,27 @@ type Editor={classId:string;kind:ReentryKind;stoppedAt:string;nextStep:string};
 export function Today({client,userId,workspaceId,onOpenContinuity,onOpenRapid}:Props){
   const[state,setState]=useState<LoadState>({status:'loading'}),[editor,setEditor]=useState<Editor|null>(null),[notice,setNotice]=useState('');
   const baselineAttempt=useRef<{fingerprint:string;opId:string}|null>(null);
+  const checkpointRefreshSeq=useRef(0);
   const refresh=useCallback(async()=>{
     setState({status:'loading'});setNotice('');
     try{const[snapshot,ops]=await Promise.all([loadTodayServer(client),pendingForNamespace(safeWorkDb,userId,workspaceId)]);setState({status:'ready',snapshot,ops});}
     catch{setState({status:'error'});}
   },[client,userId,workspaceId]);
   useEffect(()=>{void refresh();},[refresh]);
-  useEffect(()=>subscribeSafeWorkChanges(signal=>{if(signal.auth_user_id===userId&&signal.workspace_id===workspaceId&&state.status==='ready')void pendingForNamespace(safeWorkDb,userId,workspaceId).then(ops=>setState(current=>current.status==='ready'?{...current,ops}:current));}),[state.status,userId,workspaceId]);
+  useEffect(()=>subscribeSafeWorkChanges(signal=>{
+    if(signal.auth_user_id!==userId||signal.workspace_id!==workspaceId||state.status!=='ready')return;
+    if(signal.operation_kind==='meeting.checkpoint'){
+      const seq=++checkpointRefreshSeq.current;
+      void Promise.all([loadTodayServer(client),pendingForNamespace(safeWorkDb,userId,workspaceId)]).then(([snapshot,ops])=>{
+        if(checkpointRefreshSeq.current!==seq)return;
+        setState(current=>current.status==='ready'?{status:'ready',snapshot,ops}:current);
+      }).catch(()=>{
+        if(checkpointRefreshSeq.current===seq)setNotice('Status checkpoint berubah. Today belum dapat menyelaraskan konteks server; konteks lokal terakhir tetap ditampilkan.');
+      });
+      return;
+    }
+    void pendingForNamespace(safeWorkDb,userId,workspaceId).then(ops=>setState(current=>current.status==='ready'?{...current,ops}:current));
+  }),[client,state.status,userId,workspaceId]);
 
   const model=useMemo(()=>state.status==='ready'?deriveTodayModel(state.snapshot,state.ops):null,[state]);
   const classes=state.status==='ready'?state.snapshot.classes:[];
