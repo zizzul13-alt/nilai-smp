@@ -19,9 +19,13 @@ The recommendation is deterministic: effective capacity above Normal Meetings su
 If active correction sessions are shown, they are workflow evidence only. The app does not guess how many Meetings correction consumes; set Correction reserve explicitly. If a pacing save reports a revision conflict, reload the latest plan, review it, and save a new teacher judgement rather than overwriting a newer revision.
 
 ## Reporting provisional / finalized / reopen
-Reporting snapshots are derived from canonical Assessment Result/Attempt data; they are not a second gradebook. A Reporting Policy is versioned and makes `SIMPLE_MEAN`, Missing behavior, Remedial behavior, rounding, and KKM explicit. KKM is a threshold display and is not mixed into the arithmetic formula.
+Reporting snapshots are derived from canonical Assessment `Result` truth; they are not a second gradebook. A Reporting Policy is versioned and makes `SIMPLE_MEAN`, Missing behavior, rounding, and KKM explicit. KKM is a threshold display and is not mixed into the arithmetic formula.
+
+R3.5-01 uses `CURRENT_RESULT` for remedial reporting. A REMEDIAL/MAKEUP/CORRECTION `Attempt.raw_score` remains raw evidence and is never automatically promoted into a reported outcome, even when that raw value is higher than the current Result score. Richer remedial reporting must wait for an explicit comparable interpreted outcome instead of guessing from Attempt evidence or ScoringProfile JSON.
 
 `UNCHECKED` blocks Finalize because unknown evidence cannot be silently converted to zero or ignored. `MISSING` and `EXCUSED` remain explicit states; the selected policy determines how Missing contributes while EXCUSED is excluded in R3.5-01. A provisional snapshot may show UNCHECKED so the teacher can see exactly what is unfinished.
+
+A snapshot source is materialized from one PostgreSQL statement so every enrollment row comes from one committed MVCC source view. Finalization additionally serializes against concurrent Class/Assessment/Result/Enrollment/Student source writes until the transaction commits. If Finalize waits briefly while another academic write is committing, let it finish; do not bypass the RPC.
 
 A FINALIZED reporting cycle is intentionally closed. Do not overwrite or recalculate it in place. If a factual correction is required, use **Reopen**, enter a concrete reason, correct the canonical Result/Attempt evidence, then create a new provisional/finalized snapshot. The old FINALIZED snapshot remains append-only history and the Reopen reason is recorded in `audit_events`.
 
