@@ -45,7 +45,9 @@ describe('P1 hosted Supabase readiness contracts',()=>{
     for(const token of[
       'set transaction read only',
       'AND NOT c.relrowsecurity',
-      "grantee = 'anon'",
+      "grantee IN ('anon','PUBLIC')",
+      'p.prosecdef',
+      "has_function_privilege('anon', p.oid, 'EXECUTE')",
       "bucket_limit IS DISTINCT FROM 20000000",
       'artifact_file_owner_insert',
       'artifact_file_owner_select',
