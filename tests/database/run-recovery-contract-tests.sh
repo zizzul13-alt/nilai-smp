@@ -19,8 +19,9 @@ p='/tmp/nilai-portable-backup.json'
 x=json.load(open(p)); x['checksum_sha256']='a'*64
 open('/tmp/nilai-portable-backup-with-checksum.json','w').write(json.dumps(x,separators=(',',':')))
 assert 'artifact_objects' in x['tables'] and 'assessment_results' in x['tables'] and 'report_snapshots' in x['tables']
+assert 'applied_operations' not in x['tables']
 PY
-pass 'portable manifest includes academic, reporting and artifact metadata'
+pass 'portable manifest includes canonical history but excludes transient AppliedOperation replay metadata'
 
 RESTORE_DB="nilai_smp_restore_test"
 "${PSQL[@]}" -qc "drop database if exists $RESTORE_DB with (force);"
@@ -53,12 +54,25 @@ done
 pass 'restore preserves canonical row cardinality across full graph'
 SRC_IDS="$(run "$A select string_agg(id::text,',' order by id) from public.students;")";DST_IDS="$("${RPSQL[@]}" -qAtc "$RA select string_agg(id::text,',' order by id) from public.students;")"
 [[ "$SRC_IDS" == "$DST_IDS" ]]||fail 'stable Student IDs changed during restore';pass 'restore preserves stable domain IDs'
+SRC_WS="$(run "$A select id from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000a';")";DST_WS="$("${RPSQL[@]}" -qAtc "$RA select id from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000a';")"
+[[ "$SRC_WS" != "$DST_WS" ]]||fail 'separate recovery database unexpectedly reused source workspace identity';pass 'recovery target uses a distinct personal workspace identity'
+OBJ_ID="$(run "$A select id from public.artifact_objects order by id limit 1;")"
+if [[ -n "$OBJ_ID" ]];then
+  SRC_PATH="$(run "$A select storage_path from public.artifact_objects where id='$OBJ_ID';")";DST_PATH="$("${RPSQL[@]}" -qAtc "$RA select storage_path from public.artifact_objects where id='$OBJ_ID';")"
+  [[ "$SRC_PATH" != "$DST_PATH" ]]||fail 'ArtifactObject storage path was not rewritten for recovery target'
+  [[ "$DST_PATH" == "$DST_WS/"* ]]||fail 'restored ArtifactObject path is not scoped to target workspace'
+fi
+pass 'ArtifactObject storage paths are deterministically rewritten to target workspace scope'
+BAD_SCOPE="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.artifact_objects where storage_path not like workspace_id::text||'/'||artifact_id::text||'/'||artifact_version_id::text||'/%';")"
+[[ "$BAD_SCOPE" == '0' ]]||fail 'restored ArtifactObject path violates canonical storage scope';pass 'all restored artifact paths satisfy canonical scope constraint'
 READY_SRC="$(run "$A select count(*) from public.artifact_objects where state='READY';")";PENDING_DST="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.artifact_objects where state='PENDING_UPLOAD';")"
 [[ "$READY_SRC" -le "$PENDING_DST" ]]||fail 'restored artifact metadata falsely remained READY';pass 'restored artifact bytes require re-confirmation before READY'
 CURRENT_LINKS="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.artifacts a join public.artifact_versions v on v.id=a.current_version_id and v.artifact_id=a.id;")";ARTS="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.artifacts;")"
 [[ "$CURRENT_LINKS" == "$ARTS" ]]||fail 'artifact current-version links not reconstructed';pass 'artifact current-version links reconstructed after version restore'
 REPORT_LINKS="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.reporting_cycles c where current_snapshot_id is null or exists(select 1 from public.report_snapshots s where s.id=c.current_snapshot_id and s.cycle_id=c.id);")";CYCLES="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.reporting_cycles;")"
 [[ "$REPORT_LINKS" == "$CYCLES" ]]||fail 'report current snapshot links invalid';pass 'report cycle current-snapshot links reconstructed'
+TARGET_OPS="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.applied_operations;")"
+[[ "$TARGET_OPS" == '1' ]]||fail "recovery target should start a fresh retry ledger with only restore op, got $TARGET_OPS";pass 'old AppliedOperation replay metadata is not transported into recovery target'
 REPLAY="$(restore_from_file 'a7000000-0000-4000-8000-000000000001' | tail -1 | tr -d '[:space:]')"
 [[ "$REPLAY" == restored:*:true ]]||fail 'restore lost-ACK replay not idempotent';pass 'restore operation replays after lost acknowledgement'
 if restore_from_file 'a7000000-0000-4000-8000-000000000002' >/tmp/recovery-out 2>/tmp/recovery-err;then fail 'second independent restore unexpectedly merged into non-empty target';fi
