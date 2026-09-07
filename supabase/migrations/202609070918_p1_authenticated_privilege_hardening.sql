@@ -3,7 +3,13 @@
 -- public objects. R3 migrations explicitly closed anon access, but several authenticated
 -- tables retained default TRUNCATE/REFERENCES/TRIGGER privileges and two read-only tables
 -- retained default DML. Normalize the existing canonical surface and make future public
--- objects deny-by-default unless a migration grants the exact browser capability.
+-- objects created by the Nilai SMP migration owner deny-by-default unless a migration
+-- grants the exact browser capability.
+--
+-- Hosted ownership proof established before this migration: every canonical R3 public
+-- table and every Nilai SMP public function is owned by `postgres`. Managed Supabase roles
+-- (for example `supabase_admin`) own platform objects/defaults and are intentionally not
+-- mutated by an application migration.
 --
 -- Compatibility stays r3.6-recovery.1: this changes privilege boundaries only.
 
@@ -18,18 +24,6 @@ alter default privileges for role postgres
   revoke execute on functions from public, anon, authenticated;
 alter default privileges for role postgres in schema public
   revoke execute on functions from public, anon, authenticated;
-
--- Some hosted Supabase tooling may create objects as supabase_admin. Keep the same
--- future-object law when that managed role exists; plain PostgreSQL CI does not define it.
-do $$
-begin
-  if exists(select 1 from pg_roles where rolname='supabase_admin') then
-    execute 'alter default privileges for role supabase_admin in schema public revoke all on tables from anon, authenticated';
-    execute 'alter default privileges for role supabase_admin in schema public revoke all on sequences from anon, authenticated';
-    execute 'alter default privileges for role supabase_admin revoke execute on functions from public, anon, authenticated';
-    execute 'alter default privileges for role supabase_admin in schema public revoke execute on functions from public, anon, authenticated';
-  end if;
-end $$;
 
 -- Start from no browser table capability, then rebuild the exact intended authenticated
 -- surface. This also removes inherited Supabase default TRUNCATE/REFERENCES/TRIGGER grants.
