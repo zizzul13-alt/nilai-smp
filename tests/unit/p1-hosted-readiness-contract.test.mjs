@@ -54,14 +54,20 @@ describe('P1 hosted Supabase readiness contracts',()=>{
   it('closes existing and future browser privilege bleed without a schema compatibility bump',()=>{
     expect(hardening).toContain('alter default privileges for role postgres in schema public');
     expect(hardening).toContain('revoke all on tables from anon, authenticated');
-    expect(hardening).toContain('revoke execute on functions from public, anon, authenticated');
+    expect(hardening).toMatch(/alter default privileges for role postgres\s+revoke execute on functions from public, anon, authenticated/);
+    expect(hardening).toContain('alter default privileges for role postgres in schema public\n  revoke execute on functions from public, anon, authenticated');
+    expect(hardening).toContain("alter default privileges for role supabase_admin revoke execute on functions from public, anon, authenticated");
     expect(hardening).toContain('revoke all on table');
     expect(hardening).toContain('public.applied_operations');
     expect(hardening).toContain('public.continuity_baselines');
     expect(hardening).toContain("version='r3.6-recovery.1'");
     expect(hardening).not.toContain("values(1,'r3.7");
+    expect(verifier).toContain('missing_global_function_acl');
+    expect(verifier).toContain("d.defaclnamespace=0");
     expect(verifier).toContain('default_acl_exposure');
     expect(verifier).toContain("privilege_type IN ('TRUNCATE','REFERENCES','TRIGGER')");
+    expect(harness).toContain('closes PUBLIC EXECUTE on functions created after hardening');
+    expect(harness).toContain('rejects global future-function PUBLIC EXECUTE exposure');
     expect(harness).toContain('rejects authenticated TRUNCATE on canonical table');
     expect(harness).toContain('rejects future-table authenticated default ACL exposure');
   });
@@ -77,6 +83,7 @@ describe('P1 hosted Supabase readiness contracts',()=>{
       'set transaction read only',
       'AND NOT c.relrowsecurity',
       "grantee IN ('anon','PUBLIC')",
+      'missing_global_function_acl',
       'default_acl_exposure',
       'forbidden_global_privileges',
       'p.prosecdef',
