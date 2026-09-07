@@ -50,7 +50,8 @@ describe('P1 hosted Supabase readiness contracts',()=>{
       'artifact_file_owner_select',
       "cmd IN ('UPDATE','DELETE')",
     ])expect(verifier).toContain(token);
-    expect(runbook).toContain('db diff` itself is not sufficient');
+    expect(runbook).toContain('This is useful but **not sufficient** for P1.');
+    expect(runbook).toContain('Storage bucket changes');
     expect(runbook).toContain('P1_HOSTED_TRUTH PASS');
   });
 
@@ -64,5 +65,7 @@ describe('P1 hosted Supabase readiness contracts',()=>{
   it('keeps the first-production governor linked to this P1 evidence package',()=>{
     expect(readiness).toContain('# P1 — Hosted Supabase schema truth');
     expect(readiness).toContain('HOSTED_SCHEMA_TRUTH = PASS');
+    expect(readiness).toContain('docs/HOSTED_SUPABASE_P1.md');
+    expect(readiness).toContain('supabase/verification/p1_hosted_truth.sql');
   });
 });
