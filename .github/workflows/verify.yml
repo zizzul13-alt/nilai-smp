@@ -43,6 +43,11 @@ jobs:
         run: npm run test:db
       - name: Production build
         run: npm run build
+      - name: Cloudflare candidate dry-run
+        env:
+          VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder_not_real
+        run: npm run candidate:preflight
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Foundation E2E
