@@ -34,11 +34,12 @@ describe('R3.7-01 Daily Driver integration',()=>{
     expect(app).toContain('Artifacts');
     expect(app).toContain('Recovery');
   });
-  it('makes Safe Work visible outside individual correction/teaching surfaces',()=>{
+  it('makes Safe Work visible without claiming Saved from queue absence',()=>{
     expect(app).toContain('<SafeWorkSummary');
     expect(safeSummary).toContain('PENDING_SAFE');
     expect(safeSummary).toContain('FAILED');
     expect(safeSummary).toContain('CONFLICT');
-    expect(safeSummary).toContain('Saved · tidak ada kerja lokal tertunda');
+    expect(safeSummary).toContain('Tidak ada Pending Safe / FAILED / CONFLICT');
+    expect(safeSummary).not.toContain('Saved ·');
   });
 });
