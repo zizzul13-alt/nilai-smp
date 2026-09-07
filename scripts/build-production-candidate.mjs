@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const allowedViteVars = new Set(['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY']);
@@ -69,13 +69,30 @@ if (!existsSync('dist/index.html')) {
   process.exit(3);
 }
 
+function stripSourceMaps(dir) {
+  let removed = 0;
+  for (const entry of readdirSync(dir)) {
+    const path = join(dir, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) removed += stripSourceMaps(path);
+    else if (/\.map$/i.test(entry)) {
+      rmSync(path);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+const removedSourceMaps = stripSourceMaps('dist');
+console.log(`P4_SOURCEMAPS_STRIPPED count=${removedSourceMaps}`);
+
 function textFiles(dir) {
   const out = [];
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
     const stat = statSync(path);
     if (stat.isDirectory()) out.push(...textFiles(path));
-    else if (/\.(html|js|mjs|css|json|txt|map)$/i.test(entry)) out.push(path);
+    else if (/\.(html|js|mjs|css|json|txt)$/i.test(entry)) out.push(path);
   }
   return out;
 }
