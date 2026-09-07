@@ -29,46 +29,42 @@ set search_path=pg_catalog,public,auth
 as $$
 declare
   caller_id uuid:=auth.uid();
-  owned_workspace_id uuid;
-  schema_version text;
   table_name text;
-  table_rows jsonb;
-  all_tables jsonb:='{}'::jsonb;
+  first_table boolean:=true;
+  query_text text;
+  backup jsonb;
 begin
   if caller_id is null then raise exception 'authentication required' using errcode='42501'; end if;
 
-  -- One portable backup must describe one canonical point in time. SHARE locks block
-  -- concurrent INSERT/UPDATE/DELETE while this short metadata export is assembled.
-  lock table public.workspaces,public.app_schema_version,
-    public.academic_years,public.academic_periods,public.classes,public.students,public.enrollments,
-    public.materials,public.lessons,public.lesson_versions,public.meetings,public.checkpoints,public.activities,public.activity_meetings,
-    public.scoring_profiles,public.assessments,public.assessment_results,public.assessment_attempts,public.correction_sessions,
-    public.continuity_baselines,public.lesson_pacing_plans,
-    public.reporting_policies,public.reporting_cycles,public.report_snapshots,public.report_snapshot_rows,public.audit_events,
-    public.artifacts,public.artifact_versions,public.artifact_objects
-  in share mode;
-
-  select w.id into owned_workspace_id from public.workspaces w where w.owner_user_id=caller_id;
-  if owned_workspace_id is null then raise exception 'workspace missing' using errcode='P3201'; end if;
-  select version into schema_version from public.app_schema_version where id=1;
-  if schema_version<>'r3.6-recovery.1' then raise exception 'portable export schema mismatch: %',schema_version using errcode='P3702'; end if;
+  -- Build one SELECT containing every canonical table subquery. Under READ COMMITTED a
+  -- single SQL statement sees one MVCC snapshot, so the export is source-consistent
+  -- without relation-level locks that would block other workspaces or invert lock order.
+  query_text:='select jsonb_build_object('
+    ||'''format'',''nilai-smp-portable-backup'','
+    ||'''format_version'',1,'
+    ||'''source_schema_version'',sv.version,'
+    ||'''exported_at'',clock_timestamp(),'
+    ||'''source_workspace_id'',w.id,'
+    ||'''tables'',jsonb_build_object(';
 
   foreach table_name in array public.portable_backup_table_names() loop
-    execute format(
-      'select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from public.%I t where workspace_id=$1',
-      table_name
-    ) into table_rows using owned_workspace_id;
-    all_tables:=all_tables||jsonb_build_object(table_name,table_rows);
+    if not first_table then query_text:=query_text||','; end if;
+    first_table:=false;
+    query_text:=query_text||format(
+      '%L,(select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from public.%I t where t.workspace_id=w.id)',
+      table_name,table_name
+    );
   end loop;
 
-  return jsonb_build_object(
-    'format','nilai-smp-portable-backup',
-    'format_version',1,
-    'source_schema_version',schema_version,
-    'exported_at',clock_timestamp(),
-    'source_workspace_id',owned_workspace_id,
-    'tables',all_tables
-  );
+  query_text:=query_text
+    ||')) from public.workspaces w cross join public.app_schema_version sv '
+    ||'where w.owner_user_id=$1 and sv.id=1 and sv.version=''r3.6-recovery.1''';
+
+  execute query_text into backup using caller_id;
+  if backup is null then
+    raise exception 'portable export unavailable for owned workspace/schema' using errcode='P3702';
+  end if;
+  return backup;
 end;
 $$;
 revoke all on function public.export_portable_backup() from public,anon;
