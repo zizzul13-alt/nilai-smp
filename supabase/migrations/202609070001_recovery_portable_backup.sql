@@ -1,6 +1,8 @@
 -- R3.6 Recovery: portable canonical backup + restore-to-empty.
 -- The server owns canonical row export/import; binary Storage bytes are attached and
 -- verified by the browser layer before object metadata is confirmed READY again.
+-- AppliedOperation is retry metadata, not academic history, and is intentionally not
+-- transported: restore creates fresh idempotency records in the target workspace.
 
 create or replace function public.portable_backup_table_names()
 returns text[]
@@ -14,7 +16,7 @@ as $$
     'scoring_profiles','assessments','assessment_results','assessment_attempts','correction_sessions',
     'continuity_baselines','lesson_pacing_plans',
     'reporting_policies','reporting_cycles','report_snapshots','report_snapshot_rows','audit_events',
-    'artifacts','artifact_versions','artifact_objects','applied_operations'
+    'artifacts','artifact_versions','artifact_objects'
   ]::text[];
 $$;
 revoke all on function public.portable_backup_table_names() from public,anon,authenticated;
@@ -35,7 +37,7 @@ declare
 begin
   if caller_id is null then raise exception 'authentication required' using errcode='42501'; end if;
   select w.id into owned_workspace_id from public.workspaces w where w.owner_user_id=caller_id;
-  if owned_workspace_id is null then raise exception 'workspace missing'; end if;
+  if owned_workspace_id is null then raise exception 'workspace missing' using errcode='P3201'; end if;
   select version into schema_version from public.app_schema_version where id=1;
 
   foreach table_name in array public.portable_backup_table_names() loop
@@ -109,13 +111,12 @@ begin
 
   -- Restore is intentionally all-or-nothing and only into an empty canonical workspace.
   foreach table_name in array public.portable_backup_table_names() loop
-    if table_name='applied_operations' then continue; end if;
     execute format('select count(*) from public.%I where workspace_id=$1',table_name) into affected_rows using owned_workspace_id;
     if affected_rows<>0 then raise exception 'restore target is not empty: %',table_name using errcode='P3701'; end if;
   end loop;
 
   foreach table_name in array public.portable_backup_table_names() loop
-    if table_name in ('applied_operations','report_snapshots','report_snapshot_rows','artifact_versions','artifact_objects') then continue; end if;
+    if table_name in ('report_snapshots','report_snapshot_rows','artifact_versions','artifact_objects') then continue; end if;
     table_rows:=coalesce(p_manifest->'tables'->table_name,'[]'::jsonb);
     if jsonb_typeof(table_rows)<>'array' then raise exception 'invalid table payload: %',table_name using errcode='22023'; end if;
     select coalesce(jsonb_agg(
@@ -152,23 +153,24 @@ begin
 
   table_rows:=coalesce(p_manifest->'tables'->'artifact_objects','[]'::jsonb);
   if jsonb_typeof(table_rows)<>'array' then raise exception 'invalid table payload: artifact_objects' using errcode='22023'; end if;
-  select coalesce(jsonb_agg(value||jsonb_build_object('workspace_id',owned_workspace_id,'created_by',caller_id,'state','PENDING_UPLOAD','sha256',null,'confirmed_at',null)),'[]'::jsonb)
-    into normalized_rows from jsonb_array_elements(table_rows);
+  select coalesce(jsonb_agg(
+    value
+    ||jsonb_build_object(
+      'workspace_id',owned_workspace_id,
+      'created_by',caller_id,
+      'state','PENDING_UPLOAD',
+      'sha256',null,
+      'confirmed_at',null,
+      'storage_path',
+        owned_workspace_id::text||'/'||(value->>'artifact_id')||'/'||(value->>'artifact_version_id')||'/'||(value->>'id')||
+        case value->>'object_kind' when 'PDF' then '.pdf' when 'DOCX' then '.docx' else '.bin' end
+    )
+  ),'[]'::jsonb) into normalized_rows from jsonb_array_elements(table_rows);
   insert into public.artifact_objects select * from jsonb_populate_recordset(null::public.artifact_objects,normalized_rows);
   get diagnostics affected_rows=row_count; total_rows:=total_rows+affected_rows;
   update public.artifacts a set current_version_id=(x.value->>'current_version_id')::uuid
     from jsonb_array_elements(coalesce(p_manifest->'tables'->'artifacts','[]'::jsonb)) x(value)
     where a.workspace_id=owned_workspace_id and a.id=(x.value->>'id')::uuid and nullif(x.value->>'current_version_id','') is not null;
-
-  -- AppliedOperation history is recovery metadata. Preserve old operation IDs after all academic rows exist,
-  -- remapping ownership to this personal workspace; the restore operation itself is inserted last.
-  table_rows:=coalesce(p_manifest->'tables'->'applied_operations','[]'::jsonb);
-  if jsonb_typeof(table_rows)<>'array' then raise exception 'invalid table payload: applied_operations' using errcode='22023'; end if;
-  select coalesce(jsonb_agg(value||jsonb_build_object('workspace_id',owned_workspace_id)),'[]'::jsonb)
-    into normalized_rows from jsonb_array_elements(table_rows);
-  insert into public.applied_operations select * from jsonb_populate_recordset(null::public.applied_operations,normalized_rows)
-    on conflict(op_id) do nothing;
-  get diagnostics affected_rows=row_count; total_rows:=total_rows+affected_rows;
 
   insert into public.applied_operations(op_id,workspace_id,operation_type,target_entity_type,target_entity_id,request_metadata,result_revision,result_metadata)
   values(p_op_id,owned_workspace_id,'recovery.restore','workspace',owned_workspace_id,request_meta,1,jsonb_build_object('restored_rows',total_rows));
