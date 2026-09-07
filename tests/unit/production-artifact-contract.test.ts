@@ -1,7 +1,7 @@
 import{describe,expect,it}from'vitest';
 import{readFileSync}from'node:fs';
 
-const pkg=JSON.parse(readFileSync('package.json','utf8')) as{scripts:Record<string,string>};
+const pkg=readFileSync('package.json','utf8');
 const sourcePlaywright=readFileSync('playwright.config.ts','utf8');
 const productionPlaywright=readFileSync('playwright.production.config.ts','utf8');
 const wrangler=readFileSync('wrangler.jsonc','utf8');
@@ -9,10 +9,9 @@ const workflow=readFileSync('.github/workflows/verify.yml','utf8');
 
 describe('R3.7-02 production artifact E2E',()=>{
   it('preserves source-instrumented E2E and adds a separate production lane',()=>{
-    expect(pkg.scripts['test:e2e']).toBe('playwright test');
+    expect(pkg).toContain('"test:e2e":"playwright test"');
     expect(sourcePlaywright).toContain("command:'npm run dev -- --host 127.0.0.1 --port 4173'");
-    expect(pkg.scripts['test:e2e:production']).toContain('npm run build');
-    expect(pkg.scripts['test:e2e:production']).toContain('playwright.production.config.ts');
+    expect(pkg).toContain('"test:e2e:production":"npm run build && playwright test --config playwright.production.config.ts"');
   });
   it('serves built dist through preview only in the production lane',()=>{
     expect(productionPlaywright).toContain("testDir:'./tests/e2e-production'");
