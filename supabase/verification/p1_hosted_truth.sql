@@ -21,7 +21,8 @@ DECLARE
   actual_migrations text[];
   actual_schema_version text;
   unprotected_tables text[];
-  anon_grants text[];
+  anonymous_table_grants text[];
+  exposed_definer_functions text[];
   forbidden_dml text[];
   bucket_public boolean;
   bucket_limit bigint;
@@ -68,14 +69,29 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL public tables without RLS: %', unprotected_tables;
   END IF;
 
-  SELECT array_agg(table_name || ':' || privilege_type ORDER BY table_name, privilege_type)
-    INTO anon_grants
+  -- PUBLIC grants are inherited by anon/authenticated, so they are anonymous exposure too.
+  SELECT array_agg(grantee || ':' || table_name || ':' || privilege_type ORDER BY grantee, table_name, privilege_type)
+    INTO anonymous_table_grants
     FROM information_schema.role_table_grants
    WHERE table_schema = 'public'
-     AND grantee = 'anon';
+     AND grantee IN ('anon','PUBLIC');
 
-  IF coalesce(cardinality(anon_grants), 0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL anonymous public-table grants present: %', anon_grants;
+  IF coalesce(cardinality(anonymous_table_grants), 0) > 0 THEN
+    RAISE EXCEPTION 'P1_FAIL anonymous/PUBLIC public-table grants present: %', anonymous_table_grants;
+  END IF;
+
+  -- SECURITY DEFINER functions are privileged mutation/read boundaries. None may remain
+  -- executable by anon, including through PostgreSQL's PUBLIC role inheritance.
+  SELECT array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text)
+    INTO exposed_definer_functions
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.prosecdef
+     AND has_function_privilege('anon', p.oid, 'EXECUTE');
+
+  IF coalesce(cardinality(exposed_definer_functions), 0) > 0 THEN
+    RAISE EXCEPTION 'P1_FAIL anonymous EXECUTE remains on SECURITY DEFINER functions: %', exposed_definer_functions;
   END IF;
 
   -- These tables are intentionally read-only from the authenticated Data API.
@@ -183,7 +199,7 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL forbidden browser Storage UPDATE/DELETE policies present: %', forbidden_storage_policies;
   END IF;
 
-  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=17 schema=r3.6-recovery.1 RLS=all-public anon-grants=none artifact-files=private owner-policies=exact-shape';
+  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=17 schema=r3.6-recovery.1 RLS=all-public anonymous-grants=none definer-rpcs=closed artifact-files=private owner-policies=exact-shape';
 END
 $$;
 
