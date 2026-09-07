@@ -5,7 +5,7 @@ test('serves the built SPA artifact on deep re-entry without Vite dev runtime',a
   expect(response?.ok()).toBe(true);
   await expect(page.getByRole('heading',{name:'Konfigurasi belum siap'})).toBeVisible();
 
-  const scripts=await page.locator('script[src]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLScriptElement).src));
+  const scripts=await page.locator('script[src]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('src')??''));
   expect(scripts.some(src=>src.includes('/assets/'))).toBe(true);
   expect(scripts.every(src=>!src.includes('/@vite/client')&&!src.includes('/src/main.tsx'))).toBe(true);
 });
