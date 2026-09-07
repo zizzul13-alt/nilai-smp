@@ -1,6 +1,6 @@
 # Deployment
 
-Static delivery foundation is implemented; production cutover remains separately governed.
+Static delivery foundation and R3.7 production-artifact verification are implemented; production cutover remains separately governed.
 
 ## Clean build
 ```bash
@@ -11,7 +11,10 @@ npm run test:db
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:e2e:production
 ```
+The existing source-instrumented E2E lane is retained for direct browser module/IndexedDB/concurrency torture. The production lane separately rebuilds and serves only `dist/` through `vite preview`, with mobile + desktop deep-SPA acceptance. Both are required; neither substitutes for the other.
+
 Only browser-safe `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` may reach the client. Never expose service-role/database/deployment credentials.
 
 ## Delivery
@@ -40,7 +43,7 @@ Apply every source-controlled migration strictly in filename order:
 202609070001_recovery_portable_backup.sql
 ```
 
-The final migration-owned `app_schema_version` and `src/config/schema.ts` must agree on `r3.6-recovery.1` before deploying the matching frontend. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
+The final migration-owned `app_schema_version` and `src/config/schema.ts` must agree on `r3.6-recovery.1` before deploying the matching frontend. R3.7 Daily Driver/production-artifact work is schema-neutral. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
 
 Today uses bounded ownership-derived PostgreSQL RPC reads plus local IndexedDB Safe Work summary; it does not download Teaching Core history. Re-entry baselines are append-only facts and do not rewrite Meeting/Checkpoint history.
 
@@ -53,3 +56,5 @@ R3.5 Artifact Core stores stable Artifact identity separately from append-only A
 R3.6 Recovery creates a portable JSON backup from owned canonical rows and exact READY artifact bytes. Whole-manifest and per-object SHA-256 must verify before restore. Restore is allowed only into an empty canonical workspace, keeps stable domain UUIDs, remaps personal workspace ownership to the authenticated user, and restores binary metadata as PENDING until exact bytes are uploaded and confirmed. The same verified manifest derives the same restore operation identity so a lost acknowledgement/reload can replay safely. The Recovery workspace also emits an XLSX human escape view; that spreadsheet is not canonical round-trip storage.
 
 Safe Work requires IndexedDB for durable Pending Safe operations, including Rapid Correction and Teaching Continuity meeting checkpoints. Bulk Import additionally requires normal browser File/Blob, DOMParser and DecompressionStream support for bounded XLSX parsing, and live server connectivity at Commit. No spreadsheet/server secret is embedded in generated templates.
+
+Production-artifact CI is not hosted-environment proof. Before cutover, real Supabase Auth/RLS/private Storage, signed downloads, exact Artifact byte transfer, portable backup with real READY bytes, restore-to-empty, actual Cloudflare deployment, mobile smoke, desktop Bulk smoke and a known-good rollback target must still pass.
