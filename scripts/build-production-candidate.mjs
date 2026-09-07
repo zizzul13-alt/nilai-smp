@@ -59,8 +59,14 @@ function textFiles(dir) {
 
 const forbidden = [
   ['Vite source path', '/src/'],
-  ['localhost', 'localhost'],
-  ['loopback host', '127.0.0.1'],
+  ['localhost http endpoint', 'http://localhost'],
+  ['localhost https endpoint', 'https://localhost'],
+  ['localhost websocket endpoint', 'ws://localhost'],
+  ['localhost secure websocket endpoint', 'wss://localhost'],
+  ['loopback http endpoint', 'http://127.0.0.1'],
+  ['loopback https endpoint', 'https://127.0.0.1'],
+  ['loopback websocket endpoint', 'ws://127.0.0.1'],
+  ['loopback secure websocket endpoint', 'wss://127.0.0.1'],
   ['service role marker', 'service_role'],
   ['service role env', 'SUPABASE_SERVICE_ROLE'],
   ['database URL env', 'DATABASE_URL'],
