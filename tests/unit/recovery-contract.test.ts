@@ -25,7 +25,7 @@ describe('R3.6 portable recovery contracts',()=>{
     expect(exportSql).not.toMatch(/\block\s+table\b/i);
     expect(exportSql).toContain('single SQL statement sees one MVCC snapshot');
     expect(exportSql).toContain('execute query_text into backup using caller_id');
-    expect(exportSql).toContain("'tables',jsonb_build_object(");
+    expect(exportSql).toContain("'''tables'',jsonb_build_object(");
     expect(exportSql).toContain('foreach table_name in array public.portable_backup_table_names() loop');
     expect(exportSql.match(/execute\s+/g)).toHaveLength(1);
   });
