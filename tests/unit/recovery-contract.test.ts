@@ -18,11 +18,16 @@ describe('R3.6 portable recovery contracts',()=>{
     expect(sql).not.toContain('p_workspace_id');
     for(const table of['students','enrollments','assessment_results','assessment_attempts','report_snapshots','artifact_versions','artifact_objects'])expect(sql).toContain(`'${table}'`);
   });
-  it('takes a write-blocking canonical snapshot before iterating export tables',()=>{
-    const lock=sql.indexOf('lock table public.workspaces,public.app_schema_version');
-    const loop=sql.indexOf('foreach table_name in array public.portable_backup_table_names() loop');
-    expect(lock).toBeGreaterThan(-1);expect(lock).toBeLessThan(loop);expect(sql).toContain('in share mode');
-    for(const table of REQUIRED_PORTABLE_TABLES)expect(sql.slice(lock,loop)).toContain(`public.${table}`);
+  it('assembles every canonical table inside one MVCC statement without relation-level locks',()=>{
+    const exportStart=sql.indexOf('create or replace function public.export_portable_backup()');
+    const restoreStart=sql.indexOf('create or replace function public.restore_portable_backup_operation');
+    const exportSql=sql.slice(exportStart,restoreStart);
+    expect(exportSql).not.toMatch(/\block\s+table\b/i);
+    expect(exportSql).toContain('single SQL statement sees one MVCC snapshot');
+    expect(exportSql).toContain('execute query_text into backup using caller_id');
+    expect(exportSql).toContain("'tables',jsonb_build_object(");
+    expect(exportSql).toContain('foreach table_name in array public.portable_backup_table_names() loop');
+    expect(exportSql.match(/execute\s+/g)).toHaveLength(1);
   });
   it('restores only to empty workspace and preserves stable domain rows',()=>{
     expect(sql).toContain("raise exception 'restore target is not empty: %'");
