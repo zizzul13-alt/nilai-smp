@@ -24,6 +24,16 @@ verify_fail(){
 # Exercise the actual P1 privilege migration on the plain-PostgreSQL contract database.
 "${PSQL[@]}" -f supabase/migrations/202609070918_p1_authenticated_privilege_hardening.sql >/dev/null
 
+# Prove the default-privilege law behaviorally, not only by catalog shape: a function
+# created AFTER hardening must not inherit PostgreSQL's built-in PUBLIC EXECUTE grant.
+"${PSQL[@]}" -q <<'SQL'
+create or replace function public.p1_future_acl_probe() returns integer language sql as $$select 1$$;
+SQL
+future_exec="$(run "select has_function_privilege('anon','public.p1_future_acl_probe()','EXECUTE');")"
+[[ "$future_exec" == 'f' ]] || fail 'P1 hardening did not close future function PUBLIC EXECUTE'
+run "drop function public.p1_future_acl_probe();"
+pass 'P1 hardening closes PUBLIC EXECUTE on functions created after hardening'
+
 "${PSQL[@]}" -q <<'SQL'
 create schema if not exists supabase_migrations;
 create table if not exists supabase_migrations.schema_migrations(version text primary key,name text);
@@ -87,6 +97,10 @@ run "revoke truncate on table public.students from authenticated;"
 run "alter default privileges for role postgres in schema public grant select on tables to authenticated;"
 verify_fail 'P1 hosted verifier rejects future-table authenticated default ACL exposure'
 run "alter default privileges for role postgres in schema public revoke select on tables from authenticated;"
+
+run "alter default privileges for role postgres grant execute on functions to public;"
+verify_fail 'P1 hosted verifier rejects global future-function PUBLIC EXECUTE exposure'
+run "alter default privileges for role postgres revoke execute on functions from public;"
 
 run "update storage.buckets set public=true where id='artifact-files';"
 verify_fail 'P1 hosted verifier rejects public artifact bucket drift'
