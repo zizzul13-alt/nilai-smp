@@ -47,7 +47,17 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://ci-placeholder.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder_not_real
-        run: npm run candidate:preflight
+        shell: bash
+        run: |
+          set +e
+          npm run candidate:preflight
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Wrangler diagnostic log"
+            find "$HOME/.config/.wrangler/logs" -maxdepth 1 -type f -name 'wrangler-*.log' -print -exec cat {} \; 2>/dev/null || true
+            echo "::endgroup::"
+          fi
+          exit "$status"
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Foundation E2E
