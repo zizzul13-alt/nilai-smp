@@ -29,6 +29,16 @@ describe('P4/P6 Cloudflare candidate operator lane', () => {
     expect(builder).toContain('P4_BUNDLE_PRECHECK PASS');
   });
 
+  it('keeps loopback rejection strict while bounding the known Supabase Auth library default', () => {
+    expect(builder).toContain("['localhost http endpoint', 'http://localhost']");
+    expect(builder).toContain("['loopback http endpoint', 'http://127.0.0.1']");
+    expect(builder).toContain('approvedThirdPartyLoopback');
+    expect(builder).toContain("body.startsWith('http://localhost:9999', index)");
+    expect(builder).toContain("context.includes('supabase.auth.token')");
+    expect(builder).toContain("context.includes('gotrue-js/')");
+    expect(builder).toContain('if (!approvedThirdPartyLoopback(body, needle, index))');
+  });
+
   it('fails before build when browser config is missing or expanded', () => {
     const baseEnv = { ...process.env } as Record<string, string>;
     for (const key of Object.keys(baseEnv)) if (key.startsWith('VITE_')) delete baseEnv[key];
