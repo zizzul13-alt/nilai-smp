@@ -8,6 +8,7 @@ export const PORTABLE_BACKUP_MAX_BYTES=80_000_000;
 type JsonRow=Record<string,unknown>;
 export type ArtifactPayload={object_id:string;storage_path:string;mime_type:string;byte_size:number;sha256:string;base64:string};
 export type PortableBackup={format:string;format_version:number;source_schema_version:string;exported_at:string;source_workspace_id:string;tables:Record<string,JsonRow[]>;artifact_payloads:ArtifactPayload[];checksum_sha256:string};
+type RestoredArtifactObject={id:string;storage_path:string;mime_type:string;byte_size:number;state:string};
 
 function stable(value:unknown):unknown{
   if(Array.isArray(value))return value.map(stable);
@@ -93,12 +94,25 @@ export function restoreOperationId(checksum:string){
   const chars=checksum.slice(0,32).split('');chars[12]='4';chars[16]=((parseInt(chars[16],16)&3)|8).toString(16);const hex=chars.join('');return`${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
 
-async function ensurePayloadAtPath(client:SupabaseClient,payload:ArtifactPayload){
+async function loadRestoredArtifactObjects(client:SupabaseClient,ids:string[]){
+  const rows:RestoredArtifactObject[]=[];
+  for(let offset=0;offset<ids.length;offset+=100){
+    const chunk=ids.slice(offset,offset+100);
+    const{data,error}=await client.from('artifact_objects').select('id,storage_path,mime_type,byte_size,state').in('id',chunk);
+    if(error)throw new Error(`Metadata artifact hasil restore tidak dapat dibaca: ${error.message}`);
+    rows.push(...((data??[]) as RestoredArtifactObject[]));
+  }
+  return rows;
+}
+
+async function ensurePayloadAtPath(client:SupabaseClient,payload:ArtifactPayload,target:RestoredArtifactObject){
+  if(target.mime_type!==payload.mime_type||Number(target.byte_size)!==payload.byte_size)throw new Error(`Metadata target ${payload.object_id} berbeda dari backup terverifikasi.`);
+  if(target.state!=='PENDING_UPLOAD'&&target.state!=='READY')throw new Error(`State target ${payload.object_id} tidak dapat dipulihkan.`);
   const bytes=base64ToBytes(payload.base64);const blob=new Blob([bytes],{type:payload.mime_type});
-  const{error}=await client.storage.from('artifact-files').upload(payload.storage_path,blob,{upsert:false,contentType:payload.mime_type});
+  const{error}=await client.storage.from('artifact-files').upload(target.storage_path,blob,{upsert:false,contentType:payload.mime_type});
   if(error){
     if(!/already exists/i.test(error.message))throw new Error(`Restore upload ${payload.object_id} gagal: ${error.message}`);
-    const{data:existing,error:downloadError}=await client.storage.from('artifact-files').download(payload.storage_path);
+    const{data:existing,error:downloadError}=await client.storage.from('artifact-files').download(target.storage_path);
     if(downloadError||!existing)throw new Error(`Restore retry tidak dapat memverifikasi ${payload.object_id}.`);
     const hash=await sha256Hex(existing);if(existing.size!==payload.byte_size||hash!==payload.sha256)throw new Error(`Restore menolak object existing yang berbeda byte: ${payload.object_id}.`);
   }
@@ -109,7 +123,12 @@ export async function restorePortableBackup(client:SupabaseClient,input:unknown)
   const backup=await verifyPortableBackup(input);const opId=restoreOperationId(backup.checksum_sha256);
   const{data,error}=await client.rpc('restore_portable_backup_operation',{p_op_id:opId,p_manifest:backup});
   if(error)throw new Error(`Restore canonical gagal: ${error.message}`);
-  for(const payload of backup.artifact_payloads)await ensurePayloadAtPath(client,payload);
+  if(backup.artifact_payloads.length){
+    const targets=await loadRestoredArtifactObjects(client,backup.artifact_payloads.map(payload=>payload.object_id));
+    const byId=new Map(targets.map(target=>[target.id,target]));
+    if(byId.size!==backup.artifact_payloads.length)throw new Error('Metadata ArtifactObject hasil restore tidak lengkap; byte restore dihentikan.');
+    for(const payload of backup.artifact_payloads){const target=byId.get(payload.object_id);if(!target)throw new Error(`ArtifactObject target ${payload.object_id} hilang.`);await ensurePayloadAtPath(client,payload,target);}
+  }
   const row=Array.isArray(data)?data[0]:data;return{restoredRows:Number(row?.restored_rows??0),replayed:Boolean(row?.replayed),artifactPayloads:backup.artifact_payloads.length};
 }
 
@@ -118,7 +137,8 @@ export function backupBlob(backup:PortableBackup){return new Blob([JSON.stringif
 function esc(value:unknown){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function crc32(data:Uint8Array){let crc=0xffffffff;for(const byte of data){crc^=byte;for(let k=0;k<8;k++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}return(crc^0xffffffff)>>>0;}
 function u16(n:number){return[n&255,(n>>>8)&255];}function u32(n:number){return[n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255];}
-function zipStore(files:{name:string;data:Uint8Array}[]){const out:number[]=[],central:number[]=[];let offset=0;for(const file of files){const name=new TextEncoder().encode(file.name),crc=crc32(file.data);const local=[...u32(0x04034b50),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(file.data.length),...u32(file.data.length),...u16(name.length),...u16(0),...name];out.push(...local,...file.data);central.push(...u32(0x02014b50),...u16(20),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(file.data.length),...u32(file.data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...name);offset=out.length;}const start=out.length;out.push(...central,...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(central.length),...u32(start),...u16(0));return new Uint8Array(out);}
+function appendBytes(target:number[],bytes:Iterable<number>){for(const byte of bytes)target.push(byte);}
+function zipStore(files:{name:string;data:Uint8Array}[]){const out:number[]=[],central:number[]=[];let offset=0;for(const file of files){const name=new TextEncoder().encode(file.name),crc=crc32(file.data);const local=[...u32(0x04034b50),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(file.data.length),...u32(file.data.length),...u16(name.length),...u16(0),...name];appendBytes(out,local);appendBytes(out,file.data);const record=[...u32(0x02014b50),...u16(20),...u16(20),...u16(0),...u16(0),...u16(0),...u16(0),...u32(crc),...u32(file.data.length),...u32(file.data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...name];appendBytes(central,record);offset=out.length;}const start=out.length;appendBytes(out,central);appendBytes(out,[...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(central.length),...u32(start),...u16(0)]);return new Uint8Array(out);}
 
 export function makeHumanEscapeXlsx(backup:PortableBackup){
   const tables=backup.tables;const students=new Map((tables.students??[]).map(row=>[String(row.id),row]));const enrollments=new Map((tables.enrollments??[]).map(row=>[String(row.id),row]));const classes=new Map((tables.classes??[]).map(row=>[String(row.id),row]));const assessments=new Map((tables.assessments??[]).map(row=>[String(row.id),row]));
