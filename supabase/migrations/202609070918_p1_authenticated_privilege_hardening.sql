@@ -11,6 +11,11 @@ alter default privileges for role postgres in schema public
   revoke all on tables from anon, authenticated;
 alter default privileges for role postgres in schema public
   revoke all on sequences from anon, authenticated;
+-- PostgreSQL grants EXECUTE on new functions to PUBLIC at the GLOBAL default level.
+-- A per-schema REVOKE cannot subtract that global default, so close global first and
+-- then remove any Supabase-added public-schema function defaults as a second layer.
+alter default privileges for role postgres
+  revoke execute on functions from public, anon, authenticated;
 alter default privileges for role postgres in schema public
   revoke execute on functions from public, anon, authenticated;
 
@@ -21,6 +26,7 @@ begin
   if exists(select 1 from pg_roles where rolname='supabase_admin') then
     execute 'alter default privileges for role supabase_admin in schema public revoke all on tables from anon, authenticated';
     execute 'alter default privileges for role supabase_admin in schema public revoke all on sequences from anon, authenticated';
+    execute 'alter default privileges for role supabase_admin revoke execute on functions from public, anon, authenticated';
     execute 'alter default privileges for role supabase_admin in schema public revoke execute on functions from public, anon, authenticated';
   end if;
 end $$;
