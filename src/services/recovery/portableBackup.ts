@@ -3,7 +3,15 @@ import{confirmArtifactObject,sha256Hex}from'../artifacts/artifacts';
 
 export const PORTABLE_BACKUP_FORMAT='nilai-smp-portable-backup';
 export const PORTABLE_BACKUP_VERSION=1;
+export const PORTABLE_SOURCE_SCHEMA='r3.6-recovery.1';
 export const PORTABLE_BACKUP_MAX_BYTES=80_000_000;
+export const REQUIRED_PORTABLE_TABLES=[
+  'academic_years','academic_periods','classes','students','enrollments',
+  'materials','lessons','lesson_versions','meetings','checkpoints','activities','activity_meetings',
+  'scoring_profiles','assessments','assessment_results','assessment_attempts','correction_sessions',
+  'continuity_baselines','lesson_pacing_plans','reporting_policies','reporting_cycles','report_snapshots','report_snapshot_rows','audit_events',
+  'artifacts','artifact_versions','artifact_objects',
+]as const;
 
 type JsonRow=Record<string,unknown>;
 export type ArtifactPayload={object_id:string;storage_path:string;mime_type:string;byte_size:number;sha256:string;base64:string};
@@ -20,6 +28,12 @@ async function textSha256(text:string){return sha256Hex(new Blob([text],{type:'a
 function withoutChecksum(value:PortableBackup|Record<string,unknown>){const{checksum_sha256:_,...rest}=value as any;return rest;}
 function bytesToBase64(bytes:Uint8Array){let binary='';const chunk=0x8000;for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));return btoa(binary);}
 function base64ToBytes(value:string){const binary=atob(value);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes;}
+
+export function assertPortableTableCompleteness(tables:unknown){
+  if(!tables||typeof tables!=='object'||Array.isArray(tables))throw new Error('Tabel canonical backup tidak valid.');
+  const rows=tables as Record<string,unknown>;
+  for(const name of REQUIRED_PORTABLE_TABLES)if(!Object.prototype.hasOwnProperty.call(rows,name)||!Array.isArray(rows[name]))throw new Error(`Backup tidak lengkap: tabel ${name} hilang atau bukan array.`);
+}
 
 export function assertArtifactPayloadCompleteness(backup:Pick<PortableBackup,'tables'|'artifact_payloads'>){
   const objects=(backup.tables.artifact_objects??[]) as JsonRow[];
@@ -44,8 +58,10 @@ export async function generatePortableBackup(client:SupabaseClient):Promise<Port
   if(error)throw new Error(`Backup export gagal: ${error.message}`);
   const raw=(Array.isArray(data)?data[0]:data) as Omit<PortableBackup,'artifact_payloads'|'checksum_sha256'>|null;
   if(!raw||raw.format!==PORTABLE_BACKUP_FORMAT||raw.format_version!==PORTABLE_BACKUP_VERSION)throw new Error('Server mengembalikan format backup yang tidak didukung.');
+  if(raw.source_schema_version!==PORTABLE_SOURCE_SCHEMA)throw new Error(`Schema sumber ${raw.source_schema_version} belum didukung oleh portable format v1.`);
+  assertPortableTableCompleteness(raw.tables);
   const payloads:ArtifactPayload[]=[];
-  const objects=(raw.tables?.artifact_objects??[]) as JsonRow[];
+  const objects=(raw.tables.artifact_objects??[]) as JsonRow[];
   for(const object of objects){
     if(object.state!=='READY')continue;
     const storagePath=String(object.storage_path??'');const expectedHash=String(object.sha256??'');const expectedSize=Number(object.byte_size??-1);const objectId=String(object.id??'');const mime=String(object.mime_type??'application/octet-stream');
@@ -68,6 +84,7 @@ export async function verifyPortableBackup(input:unknown):Promise<PortableBackup
   if(!/^[0-9a-f]{64}$/.test(backup.checksum_sha256))throw new Error('Checksum manifest tidak valid.');
   const manifestHash=await textSha256(canonicalJson(withoutChecksum(backup)));
   if(manifestHash!==backup.checksum_sha256)throw new Error('Checksum backup tidak cocok. File berubah/rusak; restore dibatalkan.');
+  assertPortableTableCompleteness(backup.tables);
   assertArtifactPayloadCompleteness(backup);
   const objects=new Map((backup.tables.artifact_objects??[]).map(row=>[String(row.id),row]));
   for(const payload of backup.artifact_payloads){
@@ -84,8 +101,10 @@ export function migratePortableBackup(input:unknown):PortableBackup{
   if(!input||typeof input!=='object')throw new Error('File backup bukan object JSON.');
   const candidate=input as Partial<PortableBackup>;
   if(candidate.format!==PORTABLE_BACKUP_FORMAT)throw new Error('Bukan backup portable Nilai SMP.');
-  if(candidate.format_version!==1)throw new Error(`Backup format v${String(candidate.format_version)} belum didukung.`);
+  if(candidate.format_version!==PORTABLE_BACKUP_VERSION)throw new Error(`Backup format v${String(candidate.format_version)} belum didukung.`);
+  if(candidate.source_schema_version!==PORTABLE_SOURCE_SCHEMA)throw new Error(`Schema sumber ${String(candidate.source_schema_version)} belum didukung.`);
   if(!candidate.tables||typeof candidate.tables!=='object'||!Array.isArray(candidate.artifact_payloads))throw new Error('Isi backup tidak lengkap.');
+  assertPortableTableCompleteness(candidate.tables);
   return candidate as PortableBackup;
 }
 
@@ -121,7 +140,8 @@ async function ensurePayloadAtPath(client:SupabaseClient,payload:ArtifactPayload
 
 export async function restorePortableBackup(client:SupabaseClient,input:unknown){
   const backup=await verifyPortableBackup(input);const opId=restoreOperationId(backup.checksum_sha256);
-  const{data,error}=await client.rpc('restore_portable_backup_operation',{p_op_id:opId,p_manifest:backup});
+  const{artifact_payloads:_,...serverManifest}=backup;
+  const{data,error}=await client.rpc('restore_portable_backup_operation',{p_op_id:opId,p_manifest:serverManifest});
   if(error)throw new Error(`Restore canonical gagal: ${error.message}`);
   if(backup.artifact_payloads.length){
     const targets=await loadRestoredArtifactObjects(client,backup.artifact_payloads.map(payload=>payload.object_id));

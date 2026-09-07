@@ -29,33 +29,42 @@ set search_path=pg_catalog,public,auth
 as $$
 declare
   caller_id uuid:=auth.uid();
-  owned_workspace_id uuid;
-  schema_version text;
   table_name text;
-  table_rows jsonb;
-  all_tables jsonb:='{}'::jsonb;
+  first_table boolean:=true;
+  query_text text;
+  backup jsonb;
 begin
   if caller_id is null then raise exception 'authentication required' using errcode='42501'; end if;
-  select w.id into owned_workspace_id from public.workspaces w where w.owner_user_id=caller_id;
-  if owned_workspace_id is null then raise exception 'workspace missing' using errcode='P3201'; end if;
-  select version into schema_version from public.app_schema_version where id=1;
+
+  -- Build one SELECT containing every canonical table subquery. Under READ COMMITTED a
+  -- single SQL statement sees one MVCC snapshot, so the export is source-consistent
+  -- without relation-level locks that would block other workspaces or invert lock order.
+  query_text:='select jsonb_build_object('
+    ||'''format'',''nilai-smp-portable-backup'','
+    ||'''format_version'',1,'
+    ||'''source_schema_version'',sv.version,'
+    ||'''exported_at'',clock_timestamp(),'
+    ||'''source_workspace_id'',w.id,'
+    ||'''tables'',jsonb_build_object(';
 
   foreach table_name in array public.portable_backup_table_names() loop
-    execute format(
-      'select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from public.%I t where workspace_id=$1',
-      table_name
-    ) into table_rows using owned_workspace_id;
-    all_tables:=all_tables||jsonb_build_object(table_name,table_rows);
+    if not first_table then query_text:=query_text||','; end if;
+    first_table:=false;
+    query_text:=query_text||format(
+      '%L,(select coalesce(jsonb_agg(to_jsonb(t) order by to_jsonb(t)::text),''[]''::jsonb) from public.%I t where t.workspace_id=w.id)',
+      table_name,table_name
+    );
   end loop;
 
-  return jsonb_build_object(
-    'format','nilai-smp-portable-backup',
-    'format_version',1,
-    'source_schema_version',schema_version,
-    'exported_at',clock_timestamp(),
-    'source_workspace_id',owned_workspace_id,
-    'tables',all_tables
-  );
+  query_text:=query_text
+    ||')) from public.workspaces w cross join public.app_schema_version sv '
+    ||'where w.owner_user_id=$1 and sv.id=1 and sv.version=''r3.6-recovery.1''';
+
+  execute query_text into backup using caller_id;
+  if backup is null then
+    raise exception 'portable export unavailable for owned workspace/schema' using errcode='P3702';
+  end if;
+  return backup;
 end;
 $$;
 revoke all on function public.export_portable_backup() from public,anon;
@@ -78,6 +87,7 @@ declare
   prior public.applied_operations%rowtype;
   request_meta jsonb;
   source_schema text;
+  manifest_checksum text;
 begin
   if caller_id is null then raise exception 'authentication required' using errcode='42501'; end if;
   if p_op_id is null then raise exception 'op_id required' using errcode='22023'; end if;
@@ -86,12 +96,19 @@ begin
   end if;
   if jsonb_typeof(p_manifest->'tables')<>'object' then raise exception 'backup tables missing' using errcode='22023'; end if;
   source_schema:=coalesce(p_manifest->>'source_schema_version','');
-  if source_schema='' then raise exception 'source schema version missing' using errcode='22023'; end if;
+  if source_schema<>'r3.6-recovery.1' then raise exception 'unsupported source schema: %',source_schema using errcode='P3702'; end if;
+  manifest_checksum:=coalesce(p_manifest->>'checksum_sha256','');
+  if manifest_checksum!~'^[0-9a-f]{64}$' then raise exception 'manifest checksum missing or invalid' using errcode='22023'; end if;
+  foreach table_name in array public.portable_backup_table_names() loop
+    if not ((p_manifest->'tables') ? table_name) or jsonb_typeof(p_manifest->'tables'->table_name)<>'array' then
+      raise exception 'backup table missing or invalid: %',table_name using errcode='22023';
+    end if;
+  end loop;
 
   select w.id into owned_workspace_id from public.workspaces w where w.owner_user_id=caller_id;
   if owned_workspace_id is null then raise exception 'workspace missing' using errcode='P3201'; end if;
 
-  request_meta:=jsonb_build_object('format_version',1,'source_schema_version',source_schema,'manifest_sha256',coalesce(p_manifest->>'checksum_sha256',''));
+  request_meta:=jsonb_build_object('format_version',1,'source_schema_version',source_schema,'manifest_sha256',manifest_checksum);
   select ao.* into prior from public.applied_operations ao where ao.op_id=p_op_id;
   if found then
     if prior.workspace_id<>owned_workspace_id or prior.operation_type<>'recovery.restore' or prior.target_entity_type<>'workspace' or prior.target_entity_id<>owned_workspace_id or prior.request_metadata<>request_meta then
@@ -117,8 +134,7 @@ begin
 
   foreach table_name in array public.portable_backup_table_names() loop
     if table_name in ('report_snapshots','report_snapshot_rows','artifact_versions','artifact_objects') then continue; end if;
-    table_rows:=coalesce(p_manifest->'tables'->table_name,'[]'::jsonb);
-    if jsonb_typeof(table_rows)<>'array' then raise exception 'invalid table payload: %',table_name using errcode='22023'; end if;
+    table_rows:=p_manifest->'tables'->table_name;
     select coalesce(jsonb_agg(
       value
       ||jsonb_build_object('workspace_id',owned_workspace_id)
@@ -132,27 +148,24 @@ begin
 
   -- Report history depends on cycle identities created above.
   foreach table_name in array array['report_snapshots','report_snapshot_rows']::text[] loop
-    table_rows:=coalesce(p_manifest->'tables'->table_name,'[]'::jsonb);
-    if jsonb_typeof(table_rows)<>'array' then raise exception 'invalid table payload: %',table_name using errcode='22023'; end if;
+    table_rows:=p_manifest->'tables'->table_name;
     select coalesce(jsonb_agg(value||jsonb_build_object('workspace_id',owned_workspace_id,'created_by',caller_id,'recorded_by',caller_id,'actor_user_id',caller_id)),'[]'::jsonb)
       into normalized_rows from jsonb_array_elements(table_rows);
     execute format('insert into public.%I select * from jsonb_populate_recordset(null::public.%I,$1)',table_name,table_name) using normalized_rows;
     get diagnostics affected_rows=row_count; total_rows:=total_rows+affected_rows;
   end loop;
   update public.reporting_cycles c set current_snapshot_id=(x.value->>'current_snapshot_id')::uuid
-    from jsonb_array_elements(coalesce(p_manifest->'tables'->'reporting_cycles','[]'::jsonb)) x(value)
+    from jsonb_array_elements(p_manifest->'tables'->'reporting_cycles') x(value)
     where c.workspace_id=owned_workspace_id and c.id=(x.value->>'id')::uuid and nullif(x.value->>'current_snapshot_id','') is not null;
 
   -- Artifact metadata restores READY binaries as PENDING until exact bytes are uploaded and checksum-confirmed.
-  table_rows:=coalesce(p_manifest->'tables'->'artifact_versions','[]'::jsonb);
-  if jsonb_typeof(table_rows)<>'array' then raise exception 'invalid table payload: artifact_versions' using errcode='22023'; end if;
+  table_rows:=p_manifest->'tables'->'artifact_versions';
   select coalesce(jsonb_agg(value||jsonb_build_object('workspace_id',owned_workspace_id,'created_by',caller_id)),'[]'::jsonb)
     into normalized_rows from jsonb_array_elements(table_rows);
   insert into public.artifact_versions select * from jsonb_populate_recordset(null::public.artifact_versions,normalized_rows);
   get diagnostics affected_rows=row_count; total_rows:=total_rows+affected_rows;
 
-  table_rows:=coalesce(p_manifest->'tables'->'artifact_objects','[]'::jsonb);
-  if jsonb_typeof(table_rows)<>'array' then raise exception 'invalid table payload: artifact_objects' using errcode='22023'; end if;
+  table_rows:=p_manifest->'tables'->'artifact_objects';
   select coalesce(jsonb_agg(
     value
     ||jsonb_build_object(
@@ -169,7 +182,7 @@ begin
   insert into public.artifact_objects select * from jsonb_populate_recordset(null::public.artifact_objects,normalized_rows);
   get diagnostics affected_rows=row_count; total_rows:=total_rows+affected_rows;
   update public.artifacts a set current_version_id=(x.value->>'current_version_id')::uuid
-    from jsonb_array_elements(coalesce(p_manifest->'tables'->'artifacts','[]'::jsonb)) x(value)
+    from jsonb_array_elements(p_manifest->'tables'->'artifacts') x(value)
     where a.workspace_id=owned_workspace_id and a.id=(x.value->>'id')::uuid and nullif(x.value->>'current_version_id','') is not null;
 
   insert into public.applied_operations(op_id,workspace_id,operation_type,target_entity_type,target_entity_id,request_metadata,result_revision,result_metadata)
