@@ -4,7 +4,7 @@
 Use `.env.local` with browser-safe Supabase URL + publishable key only. Never substitute a service-role key.
 
 ## Database incompatible
-Stop writes and apply ordered migrations through R3.5 Artifact Core: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture -> reporting core -> artifact core -> artifact integrity hardening -> artifact governor repairs. Current runtime expects `r3.5-artifact-core.3`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
+Stop writes and apply ordered migrations through R3.6 Recovery: foundation -> academic spine -> safe work -> teaching core -> assessment core -> rapid correction -> bulk assessment -> continuity core -> continuity lifecycle guard -> continuity write boundary -> today re-entry -> pacing final torture -> reporting core -> artifact core -> artifact integrity hardening -> artifact governor repairs -> recovery portable backup. Current runtime expects `r3.6-recovery.1`. Do not manually edit or pre-set `app_schema_version`; the ordered migrations own the version and runtime/database must agree.
 
 ## Today read failure / stale context
 A Today read failure is unknown state, not "no work". Use the Today Retry action; do not infer schedule or class activity from missing data.
@@ -32,7 +32,7 @@ A FINALIZED reporting cycle is intentionally closed. Do not overwrite or recalcu
 If a reporting operation reports a revision conflict, reload the latest cycle/snapshot and review before trying again. Do not bypass the RPC by directly editing `reporting_cycles`, `report_snapshots`, or `report_snapshot_rows`.
 
 ## Artifact versions / private files
-Artifact identity is stable; every regeneration or factual revision creates a new `ArtifactVersion`. Do not rewrite an older version to make history look current. `STALE SOURCE` means an ArtifactVersion points to an older exact LessonVersion than the latest LessonVersion currently available; it is a warning to create a new version, not permission to mutate history.
+Artifact identity is stable; every regeneration or factual revision creates a new `ArtifactVersion`. Do not rewrite an older version to make history look current. `STALE SOURCE` is derived from its exact source family: LessonVersion only against newer versions of the same Lesson, ReportSnapshot only against newer snapshots of the same ReportingCycle.
 
 Manual artifacts remain valid without AI. Lesson-sourced and report-sourced versions retain exact source IDs and provenance. READY DOCX/PDF objects are private, checksumed and overwrite-resistant. A READY object cannot be replaced on the same version; create a new ArtifactVersion instead.
 
@@ -43,6 +43,15 @@ Artifact create/version operations retain one client operation ID for the whole 
 Archive closes new ArtifactVersion and new ArtifactObject reservation creation. An object that was already reserved while the Artifact was active may finish its existing PENDING_UPLOAD confirmation after Archive; that confirmation cannot create a new reservation or rewrite an existing READY object.
 
 Do not manually edit `artifact_objects`, Storage paths, SHA-256, or READY state. Do not make the `artifact-files` bucket public. Browser Storage UPDATE/DELETE is intentionally absent for artifact objects.
+
+## Portable backup / restore
+A successful portable backup must finish both canonical row export and READY ArtifactObject byte verification. If a private object cannot be downloaded, has the wrong size, or its SHA-256 differs from metadata, stop and repair that object/history first; do not keep a file labelled as a successful backup.
+
+Restore verifies the whole manifest plus every embedded artifact payload before any canonical import. Unknown portable-format versions fail closed. Restore refuses a non-empty canonical workspace so it cannot silently merge unrelated histories. Use a fresh/empty target for disaster recovery.
+
+After canonical restore, artifact metadata intentionally appears PENDING until exact bytes are restored and checksum-confirmed. If the browser/network dies during this phase, reopen the same backup file and retry. Its manifest checksum deterministically recreates the restore operation identity, so the canonical import replays and remaining PENDING bytes can continue. If an existing Storage path contains different bytes, restore refuses to overwrite it.
+
+The XLSX human escape file is readable/exportable evidence, not a canonical restore source. Never import it as if it proved ReportSnapshot, Attempt, Meeting, Checkpoint, ArtifactVersion, or other historical identities.
 
 ## Safe Work Pending Safe / FAILED / CONFLICT
 Pending Safe is a Safe Work state, not a Rapid Correction-only concept. It is used by Rapid Correction, Meeting Checkpoint / Teaching Continuity, and other Safe Work operations where applicable.
