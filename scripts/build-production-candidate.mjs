@@ -29,9 +29,32 @@ if (supabaseUrl.protocol !== 'https:' || !supabaseUrl.hostname.endsWith('.supaba
   process.exit(2);
 }
 
+function decodeLegacyJwtRole(key) {
+  const parts = key.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    const payload = JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+    return typeof payload.role === 'string' ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
+function isPrivilegedSupabaseKey(key) {
+  if (/^sb_secret_/i.test(key)) return true;
+  if (/(service[_-]?role|secret)/i.test(key)) return true;
+  return decodeLegacyJwtRole(key) === 'service_role';
+}
+
 const publishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY.trim();
 if (!(publishableKey.startsWith('sb_publishable_') || publishableKey.split('.').length === 3)) {
   console.error('P4_PRECHECK_FAIL publishable key is not a recognized browser-safe Supabase key');
+  process.exit(2);
+}
+if (isPrivilegedSupabaseKey(publishableKey)) {
+  console.error('P4_PRECHECK_FAIL privileged/service-role Supabase key is forbidden in browser config');
   process.exit(2);
 }
 
@@ -59,7 +82,6 @@ function textFiles(dir) {
 
 const forbiddenLiterals = [
   ['Vite source path', '/src/'],
-  ['service role marker', 'service_role'],
   ['service role env', 'SUPABASE_SERVICE_ROLE'],
   ['database URL env', 'DATABASE_URL'],
   ['Cloudflare token env', 'CLOUDFLARE_API_TOKEN'],
