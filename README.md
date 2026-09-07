@@ -17,10 +17,11 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 - **R3.4 Teaching Continuity:** explicit Meeting lifecycle, durable Checkpoints, Today dispatcher, Continue/Before Leaving/re-entry flows, append-only continuity baselines, and explainable RELAXED/NORMAL/COMPRESSED pacing with teacher override.
 - **R3.5 Reporting Core:** versioned Reporting Policy, SIMPLE_MEAN provisional/finalized snapshots, explicit Missing/rounding/KKM semantics, source-consistent finalization, audited reopen, and append-only report history.
 - **R3.5 Artifact Core:** stable Artifact identity, append-only ArtifactVersion history, exact LessonVersion/ReportSnapshot provenance, manual-first canonical content, private checksumed DOCX/PDF object metadata, signed downloads, stale-source detection, and archive-first lifecycle.
+- **R3.6 Portable Recovery Core:** owner-derived portable canonical export, exact READY artifact-byte inclusion, whole-manifest + per-object SHA-256 verification, restore-to-empty with stable domain IDs, target-workspace storage-path rewriting, fresh retry ledger, PENDING-before-READY object recovery, and XLSX human escape export.
 
 **NOT YET IMPLEMENTED**
 
-Portable backup/restore engine; legacy data migration into the R3 canonical schema; final Daily Driver integration/production-artifact E2E; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; schedule engine; automatic homework; gamification.
+Legacy data migration into the R3 canonical schema; final Daily Driver integration/production-artifact E2E; Teacher Brief/AI features; collaboration/multi-teacher roles; full offline; generic global search; schedule engine; automatic homework; gamification.
 
 ## Continuity laws
 
@@ -39,6 +40,12 @@ Reporting consumes canonical current Result truth under an explicit versioned po
 ## Artifact laws
 
 Artifact identity != ArtifactVersion != ArtifactObject. Manual content is first-class and AI is optional. Lesson/report provenance always points to an exact immutable source identity. Regeneration creates a new ArtifactVersion rather than overwriting historical content. READY binary objects are private and checksumed; overwriting a READY object on the same version is forbidden.
+
+## Recovery laws
+
+Archive != backup. A portable backup is accepted only after canonical rows and every READY ArtifactObject byte have been read and checksum-verified. Restore is verify-first and target-empty-only: stable academic/document IDs are preserved, target workspace ownership is derived from the signed-in user, ArtifactObject paths are rewritten into target scope, and binary metadata is PENDING until exact bytes are uploaded and confirmed READY. Source `applied_operations` are retry metadata and are deliberately not transported.
+
+The XLSX human escape export is readable/provider-independent evidence, not canonical round-trip storage.
 
 ## Prerequisites and setup
 
@@ -64,20 +71,21 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, continuity lifecycle/idempotency/checkpoint sequencing, Safe Work interruption recovery, atomic bulk commit/idempotency/revision contracts, reporting source consistency, artifact append-only/idempotency/storage metadata contracts, browser UX acceptance, and production build correctness.
+The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, continuity lifecycle/idempotency/checkpoint sequencing, Safe Work interruption recovery, atomic bulk commit/idempotency/revision contracts, reporting source consistency, artifact append-only/idempotency/storage metadata contracts, portable restore into a separate empty database, browser UX acceptance, and production build correctness.
 
 ## Repository map
 
 ```text
 src/app/                 application/bootstrap, auth gate and workspace routing
-src/components/          Today/teaching/assessment/reporting/artifact workspaces
+src/components/          Today/teaching/assessment/reporting/artifact/recovery workspaces
 src/config/              browser config and schema-version contract
 src/domain/              canonical TypeScript domain contracts
 src/services/academic/   academic/teaching/assessment/correction/reporting boundaries
 src/services/artifacts/  artifact versioning, storage and checksum boundaries
+src/services/recovery/   portable backup/verify/restore + human escape boundaries
 src/services/safeWork/   narrow durable rapid/checkpoint operation queue and sync worker
 supabase/migrations/     append-only canonical database migrations
-tests/database/          real PostgreSQL contract attacks
+tests/database/          real PostgreSQL contract attacks + separate-db restore proof
 tests/unit/              fast static/domain/regression contracts
 tests/e2e/               critical browser acceptance
 legacy/streamlit/        preserved pre-R3 behavior evidence
