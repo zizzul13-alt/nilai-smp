@@ -65,6 +65,8 @@ describe('P4/P6 Cloudflare candidate operator lane', () => {
   it('runs a non-deploying Wrangler packaging proof in normal CI', () => {
     expect(workflow).toContain('Cloudflare candidate dry-run');
     expect(workflow).toContain('VITE_SUPABASE_URL: https://ci-placeholder.supabase.co');
-    expect(workflow).toContain('run: npm run candidate:preflight');
+    expect(workflow).toContain('npm run candidate:preflight');
+    expect(workflow).toContain('Wrangler diagnostic log');
+    expect(workflow).toContain("find \"$HOME/.config/.wrangler/logs\"");
   });
 });
