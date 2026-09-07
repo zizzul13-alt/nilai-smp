@@ -72,6 +72,18 @@ const forbidden = [
   ['database URL env', 'DATABASE_URL'],
   ['Cloudflare token env', 'CLOUDFLARE_API_TOKEN'],
 ];
+
+function sanitizedContext(body, needle) {
+  const index = body.indexOf(needle);
+  const start = Math.max(0, index - 140);
+  const end = Math.min(body.length, index + needle.length + 140);
+  return body
+    .slice(start, end)
+    .replaceAll(process.env.VITE_SUPABASE_URL, '<SUPABASE_URL>')
+    .replaceAll(publishableKey, '<PUBLISHABLE_KEY>')
+    .replace(/[\r\n\t]+/g, ' ');
+}
+
 let sawSupabaseUrl = false;
 let sawPublishableKey = false;
 for (const file of textFiles('dist')) {
@@ -81,6 +93,7 @@ for (const file of textFiles('dist')) {
   for (const [label, needle] of forbidden) {
     if (body.includes(needle)) {
       console.error(`P4_PRECHECK_FAIL ${label} leaked into ${file}`);
+      console.error(`P4_PRECHECK_CONTEXT ${sanitizedContext(body, needle)}`);
       process.exit(4);
     }
   }
