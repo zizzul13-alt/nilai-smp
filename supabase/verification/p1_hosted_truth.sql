@@ -16,14 +16,14 @@ DECLARE
     '202609040001','202609040002','202609040003','202609040004','202609040005','202609040006',
     '202609050001','202609050002','202609050003',
     '202609060001','202609060002','202609060003','202609060004','202609060005','202609060006',
-    '202609070001'
+    '202609070001','202609070918'
   ]::text[];
   expected_files text[] := ARRAY[
     '202609030001_foundation_schema_version',
     '202609040001_academic_spine','202609040002_safe_work_engine','202609040003_teaching_core','202609040004_assessment_core','202609040005_rapid_correction_safe_writes','202609040006_bulk_assessment',
     '202609050001_continuity_core','202609050002_continuity_lifecycle_guard','202609050003_continuity_write_boundary',
     '202609060001_today_reentry','202609060002_pacing_final_torture','202609060003_reporting_core','202609060004_artifact_core','202609060005_artifact_integrity_hardening','202609060006_artifact_governor_repairs',
-    '202609070001_recovery_portable_backup'
+    '202609070001_recovery_portable_backup','202609070918_p1_authenticated_privilege_hardening'
   ]::text[];
   actual_migrations text[];
   migration_count integer;
@@ -31,7 +31,10 @@ DECLARE
   actual_schema_version text;
   unprotected_tables text[];
   anonymous_table_grants text[];
+  missing_global_function_acl text[];
+  default_acl_exposure text[];
   exposed_definer_functions text[];
+  forbidden_global_privileges text[];
   forbidden_dml text[];
   bucket_public boolean;
   bucket_limit bigint;
@@ -54,7 +57,7 @@ BEGIN
   -- Supabase CLI records the repository timestamp as `version` and normally stores the
   -- suffix as `name`. Supabase MCP/apply_migration records an execution timestamp as
   -- `version` and preserves the complete canonical migration id in `name`. Both are
-  -- legitimate provenance encodings. Accept either only when all 17 logical migrations,
+  -- legitimate provenance encodings. Accept either only when all logical migrations,
   -- filenames and ordering match exactly; never rewrite hosted history just to satisfy proof.
   WITH actual AS (
     SELECT row_number() OVER (ORDER BY version::text)::integer AS rn,
@@ -118,6 +121,51 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL anonymous/PUBLIC public-table grants present: %', anonymous_table_grants;
   END IF;
 
+  -- PostgreSQL's built-in default grants EXECUTE on new functions to PUBLIC. Merely having
+  -- no pg_default_acl row therefore is NOT safe. Every creator role used by this hosted
+  -- project must have an explicit GLOBAL function-default ACL row proving that built-in
+  -- PUBLIC EXECUTE was overridden.
+  SELECT array_agg(r.rolname ORDER BY r.rolname)
+    INTO missing_global_function_acl
+    FROM pg_roles r
+   WHERE r.rolname IN ('postgres','supabase_admin')
+     AND NOT EXISTS (
+       SELECT 1
+         FROM pg_default_acl d
+        WHERE d.defaclrole=r.oid
+          AND d.defaclnamespace=0
+          AND d.defaclobjtype='f'
+     );
+
+  IF coalesce(cardinality(missing_global_function_acl),0) > 0 THEN
+    RAISE EXCEPTION 'P1_FAIL creator roles lack explicit global function default ACL hardening: %', missing_global_function_acl;
+  END IF;
+
+  -- Future public objects must not silently inherit browser capabilities. Table/sequence
+  -- defaults are public-schema scoped. Function EXECUTE is checked at BOTH global and
+  -- public-schema levels because per-schema REVOKE cannot subtract PostgreSQL's global
+  -- built-in PUBLIC EXECUTE default.
+  SELECT array_agg(
+           pg_get_userbyid(d.defaclrole)||':'||coalesce(n.nspname,'<global>')||':'||coalesce(r.rolname,'PUBLIC')||':'||d.defaclobjtype::text||':'||x.privilege_type
+           ORDER BY pg_get_userbyid(d.defaclrole),coalesce(n.nspname,'<global>'),coalesce(r.rolname,'PUBLIC'),d.defaclobjtype::text,x.privilege_type
+         )
+    INTO default_acl_exposure
+    FROM pg_default_acl d
+    LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
+    CROSS JOIN LATERAL aclexplode(d.defaclacl) x
+    LEFT JOIN pg_roles r ON r.oid=x.grantee
+   WHERE pg_get_userbyid(d.defaclrole) IN ('postgres','supabase_admin')
+     AND coalesce(r.rolname,'PUBLIC') IN ('anon','authenticated','PUBLIC')
+     AND (
+       (d.defaclobjtype IN ('r','S') AND n.nspname='public')
+       OR
+       (d.defaclobjtype='f' AND x.privilege_type='EXECUTE' AND (d.defaclnamespace=0 OR n.nspname='public'))
+     );
+
+  IF coalesce(cardinality(default_acl_exposure),0) > 0 THEN
+    RAISE EXCEPTION 'P1_FAIL default ACL still auto-exposes future browser objects: %', default_acl_exposure;
+  END IF;
+
   -- SECURITY DEFINER functions are privileged mutation/read boundaries. None may remain
   -- executable by anon, including through PostgreSQL's PUBLIC role inheritance.
   SELECT array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text)
@@ -132,24 +180,42 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL anonymous EXECUTE remains on SECURITY DEFINER functions: %', exposed_definer_functions;
   END IF;
 
+  -- Browser callers never need schema-destructive/control privileges. This invariant is
+  -- global, including direct-CRUD tables protected by ownership RLS.
+  SELECT array_agg(table_name || ':' || privilege_type ORDER BY table_name, privilege_type)
+    INTO forbidden_global_privileges
+    FROM information_schema.role_table_grants
+   WHERE table_schema='public'
+     AND grantee='authenticated'
+     AND privilege_type IN ('TRUNCATE','REFERENCES','TRIGGER');
+
+  IF coalesce(cardinality(forbidden_global_privileges),0) > 0 THEN
+    RAISE EXCEPTION 'P1_FAIL authenticated has forbidden global table privileges: %', forbidden_global_privileges;
+  END IF;
+
   -- These tables are intentionally read-only from the authenticated Data API.
   -- Their writes are owned by narrow SECURITY DEFINER operations / server-side invariants.
+  -- LessonVersion is append-only; CorrectionSession is updateable workflow state but not deletable.
   SELECT array_agg(table_name || ':' || privilege_type ORDER BY table_name, privilege_type)
     INTO forbidden_dml
     FROM information_schema.role_table_grants
    WHERE table_schema = 'public'
      AND grantee = 'authenticated'
-     AND privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER')
-     AND table_name = ANY(ARRAY[
-       'app_schema_version','applied_operations',
-       'meetings','checkpoints','continuity_baselines','lesson_pacing_plans',
-       'assessment_results','assessment_attempts',
-       'audit_events','reporting_policies','reporting_cycles','report_snapshots','report_snapshot_rows',
-       'artifacts','artifact_versions','artifact_objects'
-     ]::text[]);
+     AND privilege_type IN ('INSERT','UPDATE','DELETE')
+     AND (
+       table_name = ANY(ARRAY[
+         'app_schema_version','applied_operations',
+         'meetings','checkpoints','continuity_baselines','lesson_pacing_plans',
+         'assessment_results','assessment_attempts',
+         'audit_events','reporting_policies','reporting_cycles','report_snapshots','report_snapshot_rows',
+         'artifacts','artifact_versions','artifact_objects'
+       ]::text[])
+       OR (table_name='lesson_versions' AND privilege_type IN ('UPDATE','DELETE'))
+       OR (table_name='correction_sessions' AND privilege_type='DELETE')
+     );
 
   IF coalesce(cardinality(forbidden_dml), 0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL authenticated direct DML grants on protected tables: %', forbidden_dml;
+    RAISE EXCEPTION 'P1_FAIL authenticated direct DML grants exceed canonical boundary: %', forbidden_dml;
   END IF;
 
   IF to_regclass('storage.buckets') IS NULL OR to_regclass('storage.objects') IS NULL THEN
@@ -237,7 +303,7 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL forbidden browser Storage UPDATE/DELETE policies present: %', forbidden_storage_policies;
   END IF;
 
-  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=17 schema=r3.6-recovery.1 RLS=all-public anonymous-grants=none definer-rpcs=closed artifact-files=private owner-policies=exact-shape';
+  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=18 schema=r3.6-recovery.1 RLS=all-public anonymous-grants=none default-acl=closed authenticated-privileges=bounded definer-rpcs=closed artifact-files=private owner-policies=exact-shape';
 END
 $$;
 
