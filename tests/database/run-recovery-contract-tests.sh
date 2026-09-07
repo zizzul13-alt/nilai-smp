@@ -36,6 +36,7 @@ restore_from_file(){
   "${RPSQL[@]}" -qAt <<SQL
 create temporary table portable_input(payload text);
 \copy portable_input(payload) from '/tmp/nilai-portable-backup-with-checksum.json'
+grant select on portable_input to authenticated;
 set role authenticated;
 set request.jwt.claims = '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}';
 select outcome||':'||restored_rows||':'||replayed from public.restore_portable_backup_operation('$op_id',(select payload::jsonb from portable_input));
