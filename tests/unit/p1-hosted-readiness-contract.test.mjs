@@ -6,6 +6,7 @@ const runbook=readFileSync('docs/HOSTED_SUPABASE_P1.md','utf8');
 const readiness=readFileSync('docs/PRODUCTION_READINESS.md','utf8');
 const schema=readFileSync('src/config/schema.ts','utf8');
 const pkg=readFileSync('package.json','utf8');
+const harness=readFileSync('tests/database/run-p1-hosted-verifier-contract-tests.sh','utf8');
 const expectedMigrations=[
   '202609030001_foundation_schema_version.sql',
   '202609040001_academic_spine.sql',
@@ -30,9 +31,22 @@ describe('P1 hosted Supabase readiness contracts',()=>{
   it('locks the exact repository migration chain into hosted proof',()=>{
     const actual=readdirSync('supabase/migrations').filter(name=>name.endsWith('.sql')).sort();
     expect(actual).toEqual(expectedMigrations);
-    for(const filename of expectedMigrations)expect(verifier).toContain(filename.slice(0,12));
+    for(const filename of expectedMigrations){
+      expect(verifier).toContain(filename.slice(0,-4));
+      expect(verifier).toContain(filename.slice(0,12));
+    }
     expect(verifier).toContain('migration history mismatch');
     expect(runbook).toContain('MIGRATION_COUNT=17');
+  });
+
+  it('accepts only the two observed legitimate migration-history encodings',()=>{
+    expect(verifier).toContain("a.version=e.migration_id");
+    expect(verifier).toContain("a.version ~ '^[0-9]{14}$'");
+    expect(verifier).toContain('a.name=e.canonical_name');
+    expect(verifier).toContain('never rewrite hosted history just to satisfy proof');
+    expect(harness).toContain('accepts exact CLI migration provenance');
+    expect(harness).toContain('accepts exact MCP execution-version provenance');
+    expect(harness).toContain('rejects tampered MCP canonical migration name');
   });
 
   it('keeps runtime, runbook and verifier on the exact schema identity',()=>{

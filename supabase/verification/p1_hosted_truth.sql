@@ -18,7 +18,16 @@ DECLARE
     '202609060001','202609060002','202609060003','202609060004','202609060005','202609060006',
     '202609070001'
   ]::text[];
+  expected_files text[] := ARRAY[
+    '202609030001_foundation_schema_version',
+    '202609040001_academic_spine','202609040002_safe_work_engine','202609040003_teaching_core','202609040004_assessment_core','202609040005_rapid_correction_safe_writes','202609040006_bulk_assessment',
+    '202609050001_continuity_core','202609050002_continuity_lifecycle_guard','202609050003_continuity_write_boundary',
+    '202609060001_today_reentry','202609060002_pacing_final_torture','202609060003_reporting_core','202609060004_artifact_core','202609060005_artifact_integrity_hardening','202609060006_artifact_governor_repairs',
+    '202609070001_recovery_portable_backup'
+  ]::text[];
   actual_migrations text[];
+  migration_count integer;
+  migration_mismatch_count integer;
   actual_schema_version text;
   unprotected_tables text[];
   anonymous_table_grants text[];
@@ -37,12 +46,41 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL migration history table missing';
   END IF;
 
-  SELECT coalesce(array_agg(version::text ORDER BY version::text), ARRAY[]::text[])
-    INTO actual_migrations
-    FROM supabase_migrations.schema_migrations;
+  SELECT count(*) INTO migration_count FROM supabase_migrations.schema_migrations;
+  IF migration_count <> cardinality(expected_migrations) THEN
+    RAISE EXCEPTION 'P1_FAIL migration history count mismatch. expected=% actual=%', cardinality(expected_migrations), migration_count;
+  END IF;
 
-  IF actual_migrations IS DISTINCT FROM expected_migrations THEN
-    RAISE EXCEPTION 'P1_FAIL migration history mismatch. expected=%, actual=%', expected_migrations, actual_migrations;
+  -- Supabase CLI records the repository timestamp as `version` and normally stores the
+  -- suffix as `name`. Supabase MCP/apply_migration records an execution timestamp as
+  -- `version` and preserves the complete canonical migration id in `name`. Both are
+  -- legitimate provenance encodings. Accept either only when all 17 logical migrations,
+  -- filenames and ordering match exactly; never rewrite hosted history just to satisfy proof.
+  WITH actual AS (
+    SELECT row_number() OVER (ORDER BY version::text)::integer AS rn,
+           version::text AS version,
+           coalesce(name::text,'') AS name
+      FROM supabase_migrations.schema_migrations
+  ), expected AS (
+    SELECT i AS rn,
+           expected_migrations[i] AS migration_id,
+           expected_files[i] AS canonical_name,
+           substring(expected_files[i] from 14) AS canonical_suffix
+      FROM generate_subscripts(expected_migrations,1) AS g(i)
+  )
+  SELECT
+    coalesce(array_agg(a.version||':'||a.name ORDER BY a.rn),ARRAY[]::text[]),
+    count(*) FILTER (WHERE NOT (
+      (a.version=e.migration_id AND a.name IN ('',e.canonical_suffix,e.canonical_name))
+      OR
+      (a.version ~ '^[0-9]{14}$' AND a.name=e.canonical_name)
+    ))
+  INTO actual_migrations,migration_mismatch_count
+  FROM actual a
+  JOIN expected e USING(rn);
+
+  IF migration_mismatch_count <> 0 THEN
+    RAISE EXCEPTION 'P1_FAIL migration history mismatch. expected ids=% expected names=% actual=%', expected_migrations, expected_files, actual_migrations;
   END IF;
 
   IF to_regclass('public.app_schema_version') IS NULL THEN
