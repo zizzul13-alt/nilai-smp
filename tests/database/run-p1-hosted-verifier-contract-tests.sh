@@ -21,11 +21,8 @@ verify_fail(){
   pass "$label"
 }
 
-# Exercise the actual P1 privilege migration on the plain-PostgreSQL contract database.
 "${PSQL[@]}" -f supabase/migrations/202609070918_p1_authenticated_privilege_hardening.sql >/dev/null
 
-# Prove the default-privilege law behaviorally, not only by catalog shape: a function
-# created AFTER hardening must not inherit PostgreSQL's built-in PUBLIC EXECUTE grant.
 "${PSQL[@]}" -q <<'SQL'
 create or replace function public.p1_future_acl_probe() returns integer language sql as $$select 1$$;
 SQL
@@ -50,32 +47,21 @@ create schema if not exists storage;
 create table if not exists storage.buckets(id text primary key,name text not null,public boolean not null default false,file_size_limit bigint,allowed_mime_types text[]);
 create table if not exists storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text not null,name text not null);
 alter table storage.objects enable row level security;
-
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
 values('artifact-files','artifact-files',false,20000000,array['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/octet-stream']::text[])
 on conflict(id) do update set name=excluded.name,public=excluded.public,file_size_limit=excluded.file_size_limit,allowed_mime_types=excluded.allowed_mime_types;
-
 drop policy if exists artifact_file_owner_insert on storage.objects;
 drop policy if exists artifact_file_owner_select on storage.objects;
 create policy artifact_file_owner_insert on storage.objects for insert to authenticated with check(
-  bucket_id='artifact-files' and exists(
-    select 1 from public.artifact_objects ao join public.workspaces w on w.id=ao.workspace_id
-    where ao.storage_path=name and ao.state='PENDING_UPLOAD' and w.owner_user_id=auth.uid()
-  )
+  bucket_id='artifact-files' and exists(select 1 from public.artifact_objects ao join public.workspaces w on w.id=ao.workspace_id where ao.storage_path=name and ao.state='PENDING_UPLOAD' and w.owner_user_id=auth.uid())
 );
 create policy artifact_file_owner_select on storage.objects for select to authenticated using(
-  bucket_id='artifact-files' and exists(
-    select 1 from public.artifact_objects ao join public.workspaces w on w.id=ao.workspace_id
-    where ao.storage_path=name and ao.state='READY' and w.owner_user_id=auth.uid()
-  )
+  bucket_id='artifact-files' and exists(select 1 from public.artifact_objects ao join public.workspaces w on w.id=ao.workspace_id where ao.storage_path=name and ao.state='READY' and w.owner_user_id=auth.uid())
 );
 SQL
 
 verify_pass 'P1 hosted verifier accepts exact CLI migration provenance and hardened privileges'
 
-# MCP apply_migration uses an execution timestamp for version and preserves the complete
-# repository migration identity in name. This is legitimate only when all 18 names and
-# ordering are exact.
 "${PSQL[@]}" -q <<'SQL'
 truncate supabase_migrations.schema_migrations;
 insert into supabase_migrations.schema_migrations(version,name) values
@@ -86,9 +72,14 @@ insert into supabase_migrations.schema_migrations(version,name) values
 ('20260907090017','202609070001_recovery_portable_backup'),('20260907090018','202609070918_p1_authenticated_privilege_hardening');
 SQL
 verify_pass 'P1 hosted verifier accepts exact MCP execution-version provenance'
+
 run "update supabase_migrations.schema_migrations set name='202609060006_tampered' where name='202609060006_artifact_governor_repairs';"
 verify_fail 'P1 hosted verifier rejects tampered MCP canonical migration name'
 run "update supabase_migrations.schema_migrations set name='202609060006_artifact_governor_repairs' where name='202609060006_tampered';"
+
+run "alter function public.pacing_text_array_valid(jsonb,boolean) owner to authenticated;"
+verify_fail 'P1 hosted verifier rejects canonical function ownership drift'
+run "alter function public.pacing_text_array_valid(jsonb,boolean) owner to postgres;"
 
 run "grant truncate on table public.students to authenticated;"
 verify_fail 'P1 hosted verifier rejects authenticated TRUNCATE on canonical table'
@@ -114,10 +105,7 @@ verify_fail 'P1 hosted verifier rejects permissive named policy with wrong owner
 "${PSQL[@]}" -q <<'SQL'
 drop policy artifact_file_owner_select on storage.objects;
 create policy artifact_file_owner_select on storage.objects for select to authenticated using(
-  bucket_id='artifact-files' and exists(
-    select 1 from public.artifact_objects ao join public.workspaces w on w.id=ao.workspace_id
-    where ao.storage_path=name and ao.state='READY' and w.owner_user_id=auth.uid()
-  )
+  bucket_id='artifact-files' and exists(select 1 from public.artifact_objects ao join public.workspaces w on w.id=ao.workspace_id where ao.storage_path=name and ao.state='READY' and w.owner_user_id=auth.uid())
 );
 SQL
 
