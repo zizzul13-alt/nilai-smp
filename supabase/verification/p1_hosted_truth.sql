@@ -1,8 +1,5 @@
 -- P1 Hosted Supabase Truth verification.
 -- READ-ONLY. Run only with an operator/database connection, never through the browser.
--- Intended invocation (example):
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/verification/p1_hosted_truth.sql
---
 -- A failure raises an exception and must block HOSTED_SCHEMA_TRUTH=PASS.
 
 begin;
@@ -25,13 +22,30 @@ DECLARE
     '202609060001_today_reentry','202609060002_pacing_final_torture','202609060003_reporting_core','202609060004_artifact_core','202609060005_artifact_integrity_hardening','202609060006_artifact_governor_repairs',
     '202609070001_recovery_portable_backup','202609070918_p1_authenticated_privilege_hardening'
   ]::text[];
+  canonical_tables text[] := ARRAY[
+    'app_schema_version','workspaces','academic_years','academic_periods','classes','students','enrollments','applied_operations',
+    'materials','lessons','lesson_versions','meetings','checkpoints','activities','activity_meetings','scoring_profiles','assessments',
+    'assessment_results','assessment_attempts','correction_sessions','continuity_baselines','lesson_pacing_plans','audit_events','reporting_policies',
+    'reporting_cycles','report_snapshots','report_snapshot_rows','artifacts','artifact_versions','artifact_objects'
+  ]::text[];
+  canonical_functions text[] := ARRAY[
+    'append_artifact_version_operation','apply_assessment_bulk_operation','apply_assessment_judgement_operation',
+    'apply_meeting_checkpoint_operation','apply_student_rename_operation','archive_artifact_operation','bootstrap_personal_workspace',
+    'calculate_report_snapshot_operation','confirm_artifact_object_operation','create_artifact_operation','create_reporting_policy_operation',
+    'export_portable_backup','pacing_text_array_valid','portable_backup_table_names','read_today_active_correction','read_today_class_contexts',
+    'record_assessment_judgement','record_continuity_baseline_operation','reject_scoring_profile_config_rewrite',
+    'reopen_reporting_cycle_operation','reserve_artifact_object_operation','restore_portable_backup_operation',
+    'set_teaching_meeting_status_operation','start_teaching_meeting_operation','upsert_lesson_pacing_plan_operation'
+  ]::text[];
   actual_migrations text[];
   migration_count integer;
   migration_mismatch_count integer;
   actual_schema_version text;
+  unexpected_table_owners text[];
+  unexpected_function_owners text[];
   unprotected_tables text[];
   anonymous_table_grants text[];
-  missing_global_function_acl text[];
+  missing_global_function_acl boolean;
   default_acl_exposure text[];
   exposed_definer_functions text[];
   forbidden_global_privileges text[];
@@ -54,11 +68,8 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL migration history count mismatch. expected=% actual=%', cardinality(expected_migrations), migration_count;
   END IF;
 
-  -- Supabase CLI records the repository timestamp as `version` and normally stores the
-  -- suffix as `name`. Supabase MCP/apply_migration records an execution timestamp as
-  -- `version` and preserves the complete canonical migration id in `name`. Both are
-  -- legitimate provenance encodings. Accept either only when all logical migrations,
-  -- filenames and ordering match exactly; never rewrite hosted history just to satisfy proof.
+  -- Accept the two observed legitimate provenance encodings without rewriting hosted history:
+  -- CLI canonical version+suffix, or MCP execution-version+full canonical name.
   WITH actual AS (
     SELECT row_number() OVER (ORDER BY version::text)::integer AS rn,
            version::text AS version,
@@ -75,12 +86,10 @@ BEGIN
     coalesce(array_agg(a.version||':'||a.name ORDER BY a.rn),ARRAY[]::text[]),
     count(*) FILTER (WHERE NOT (
       (a.version=e.migration_id AND a.name IN ('',e.canonical_suffix,e.canonical_name))
-      OR
-      (a.version ~ '^[0-9]{14}$' AND a.name=e.canonical_name)
+      OR (a.version ~ '^[0-9]{14}$' AND a.name=e.canonical_name)
     ))
   INTO actual_migrations,migration_mismatch_count
-  FROM actual a
-  JOIN expected e USING(rn);
+  FROM actual a JOIN expected e USING(rn);
 
   IF migration_mismatch_count <> 0 THEN
     RAISE EXCEPTION 'P1_FAIL migration history mismatch. expected ids=% expected names=% actual=%', expected_migrations, expected_files, actual_migrations;
@@ -89,229 +98,156 @@ BEGIN
   IF to_regclass('public.app_schema_version') IS NULL THEN
     RAISE EXCEPTION 'P1_FAIL public.app_schema_version missing';
   END IF;
-
-  SELECT version INTO actual_schema_version
-    FROM public.app_schema_version
-   WHERE id = 1;
-
+  SELECT version INTO actual_schema_version FROM public.app_schema_version WHERE id=1;
   IF actual_schema_version IS DISTINCT FROM 'r3.6-recovery.1' THEN
     RAISE EXCEPTION 'P1_FAIL schema version mismatch. expected=r3.6-recovery.1 actual=%', actual_schema_version;
   END IF;
 
+  -- Default-ACL hardening is valid only while the actual Nilai SMP application objects are
+  -- created/owned by postgres. Managed Supabase roles may own platform objects/defaults,
+  -- but they are outside this application migration boundary and must not be mutated here.
+  SELECT array_agg(c.relname||':'||pg_get_userbyid(c.relowner) ORDER BY c.relname)
+    INTO unexpected_table_owners
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='public' AND c.relkind IN ('r','p')
+     AND c.relname=ANY(canonical_tables)
+     AND pg_get_userbyid(c.relowner)<>'postgres';
+  IF coalesce(cardinality(unexpected_table_owners),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL canonical table ownership drift: %',unexpected_table_owners;
+  END IF;
+
+  SELECT array_agg(p.oid::regprocedure::text||':'||pg_get_userbyid(p.proowner) ORDER BY p.oid::regprocedure::text)
+    INTO unexpected_function_owners
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='public' AND p.proname=ANY(canonical_functions)
+     AND pg_get_userbyid(p.proowner)<>'postgres';
+  IF coalesce(cardinality(unexpected_function_owners),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL canonical function ownership drift: %',unexpected_function_owners;
+  END IF;
+
   SELECT array_agg(c.relname ORDER BY c.relname)
     INTO unprotected_tables
-    FROM pg_class c
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-   WHERE n.nspname = 'public'
-     AND c.relkind IN ('r','p')
-     AND NOT c.relrowsecurity;
-
-  IF coalesce(cardinality(unprotected_tables), 0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL public tables without RLS: %', unprotected_tables;
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+   WHERE n.nspname='public' AND c.relkind IN ('r','p') AND NOT c.relrowsecurity;
+  IF coalesce(cardinality(unprotected_tables),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL public tables without RLS: %',unprotected_tables;
   END IF;
 
-  -- PUBLIC grants are inherited by anon/authenticated, so they are anonymous exposure too.
-  SELECT array_agg(grantee || ':' || table_name || ':' || privilege_type ORDER BY grantee, table_name, privilege_type)
+  SELECT array_agg(grantee||':'||table_name||':'||privilege_type ORDER BY grantee,table_name,privilege_type)
     INTO anonymous_table_grants
     FROM information_schema.role_table_grants
-   WHERE table_schema = 'public'
-     AND grantee IN ('anon','PUBLIC');
-
-  IF coalesce(cardinality(anonymous_table_grants), 0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL anonymous/PUBLIC public-table grants present: %', anonymous_table_grants;
+   WHERE table_schema='public' AND grantee IN ('anon','PUBLIC');
+  IF coalesce(cardinality(anonymous_table_grants),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL anonymous/PUBLIC public-table grants present: %',anonymous_table_grants;
   END IF;
 
-  -- PostgreSQL's built-in default grants EXECUTE on new functions to PUBLIC. Merely having
-  -- no pg_default_acl row therefore is NOT safe. Every creator role used by this hosted
-  -- project must have an explicit GLOBAL function-default ACL row proving that built-in
-  -- PUBLIC EXECUTE was overridden.
-  SELECT array_agg(r.rolname ORDER BY r.rolname)
-    INTO missing_global_function_acl
-    FROM pg_roles r
-   WHERE r.rolname IN ('postgres','supabase_admin')
-     AND NOT EXISTS (
-       SELECT 1
-         FROM pg_default_acl d
-        WHERE d.defaclrole=r.oid
-          AND d.defaclnamespace=0
-          AND d.defaclobjtype='f'
-     );
-
-  IF coalesce(cardinality(missing_global_function_acl),0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL creator roles lack explicit global function default ACL hardening: %', missing_global_function_acl;
+  -- PostgreSQL's built-in default grants EXECUTE on new functions to PUBLIC. An explicit
+  -- GLOBAL postgres function-default ACL row must exist so absence is not mistaken for safety.
+  SELECT NOT EXISTS(
+    SELECT 1 FROM pg_default_acl d
+     WHERE pg_get_userbyid(d.defaclrole)='postgres'
+       AND d.defaclnamespace=0 AND d.defaclobjtype='f'
+  ) INTO missing_global_function_acl;
+  IF missing_global_function_acl THEN
+    RAISE EXCEPTION 'P1_FAIL postgres lacks explicit global function default ACL hardening';
   END IF;
 
-  -- Future public objects must not silently inherit browser capabilities. Table/sequence
-  -- defaults are public-schema scoped. Function EXECUTE is checked at BOTH global and
-  -- public-schema levels because per-schema REVOKE cannot subtract PostgreSQL's global
-  -- built-in PUBLIC EXECUTE default.
+  -- Only the proven application creator role (`postgres`) is governed here. Supabase-managed
+  -- creator roles own platform surfaces and may carry platform-required defaults in public.
   SELECT array_agg(
-           pg_get_userbyid(d.defaclrole)||':'||coalesce(n.nspname,'<global>')||':'||coalesce(r.rolname,'PUBLIC')||':'||d.defaclobjtype::text||':'||x.privilege_type
-           ORDER BY pg_get_userbyid(d.defaclrole),coalesce(n.nspname,'<global>'),coalesce(r.rolname,'PUBLIC'),d.defaclobjtype::text,x.privilege_type
-         )
+           coalesce(n.nspname,'<global>')||':'||coalesce(r.rolname,'PUBLIC')||':'||d.defaclobjtype::text||':'||x.privilege_type
+           ORDER BY coalesce(n.nspname,'<global>'),coalesce(r.rolname,'PUBLIC'),d.defaclobjtype::text,x.privilege_type)
     INTO default_acl_exposure
     FROM pg_default_acl d
     LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
     CROSS JOIN LATERAL aclexplode(d.defaclacl) x
     LEFT JOIN pg_roles r ON r.oid=x.grantee
-   WHERE pg_get_userbyid(d.defaclrole) IN ('postgres','supabase_admin')
+   WHERE pg_get_userbyid(d.defaclrole)='postgres'
      AND coalesce(r.rolname,'PUBLIC') IN ('anon','authenticated','PUBLIC')
-     AND (
-       (d.defaclobjtype IN ('r','S') AND n.nspname='public')
-       OR
-       (d.defaclobjtype='f' AND x.privilege_type='EXECUTE' AND (d.defaclnamespace=0 OR n.nspname='public'))
-     );
-
-  IF coalesce(cardinality(default_acl_exposure),0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL default ACL still auto-exposes future browser objects: %', default_acl_exposure;
+     AND ((d.defaclobjtype IN ('r','S') AND n.nspname='public')
+       OR (d.defaclobjtype='f' AND x.privilege_type='EXECUTE' AND (d.defaclnamespace=0 OR n.nspname='public')));
+  IF coalesce(cardinality(default_acl_exposure),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL postgres default ACL still auto-exposes future browser objects: %',default_acl_exposure;
   END IF;
 
-  -- SECURITY DEFINER functions are privileged mutation/read boundaries. None may remain
-  -- executable by anon, including through PostgreSQL's PUBLIC role inheritance.
   SELECT array_agg(p.oid::regprocedure::text ORDER BY p.oid::regprocedure::text)
     INTO exposed_definer_functions
-    FROM pg_proc p
-    JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public'
-     AND p.prosecdef
-     AND has_function_privilege('anon', p.oid, 'EXECUTE');
-
-  IF coalesce(cardinality(exposed_definer_functions), 0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL anonymous EXECUTE remains on SECURITY DEFINER functions: %', exposed_definer_functions;
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='public' AND p.prosecdef AND has_function_privilege('anon',p.oid,'EXECUTE');
+  IF coalesce(cardinality(exposed_definer_functions),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL anonymous EXECUTE remains on SECURITY DEFINER functions: %',exposed_definer_functions;
   END IF;
 
-  -- Browser callers never need schema-destructive/control privileges. This invariant is
-  -- global, including direct-CRUD tables protected by ownership RLS.
-  SELECT array_agg(table_name || ':' || privilege_type ORDER BY table_name, privilege_type)
+  SELECT array_agg(table_name||':'||privilege_type ORDER BY table_name,privilege_type)
     INTO forbidden_global_privileges
     FROM information_schema.role_table_grants
-   WHERE table_schema='public'
-     AND grantee='authenticated'
+   WHERE table_schema='public' AND grantee='authenticated'
      AND privilege_type IN ('TRUNCATE','REFERENCES','TRIGGER');
-
-  IF coalesce(cardinality(forbidden_global_privileges),0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL authenticated has forbidden global table privileges: %', forbidden_global_privileges;
+  IF coalesce(cardinality(forbidden_global_privileges),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL authenticated has forbidden global table privileges: %',forbidden_global_privileges;
   END IF;
 
-  -- These tables are intentionally read-only from the authenticated Data API.
-  -- Their writes are owned by narrow SECURITY DEFINER operations / server-side invariants.
-  -- LessonVersion is append-only; CorrectionSession is updateable workflow state but not deletable.
-  SELECT array_agg(table_name || ':' || privilege_type ORDER BY table_name, privilege_type)
+  SELECT array_agg(table_name||':'||privilege_type ORDER BY table_name,privilege_type)
     INTO forbidden_dml
     FROM information_schema.role_table_grants
-   WHERE table_schema = 'public'
-     AND grantee = 'authenticated'
+   WHERE table_schema='public' AND grantee='authenticated'
      AND privilege_type IN ('INSERT','UPDATE','DELETE')
-     AND (
-       table_name = ANY(ARRAY[
-         'app_schema_version','applied_operations',
-         'meetings','checkpoints','continuity_baselines','lesson_pacing_plans',
-         'assessment_results','assessment_attempts',
-         'audit_events','reporting_policies','reporting_cycles','report_snapshots','report_snapshot_rows',
-         'artifacts','artifact_versions','artifact_objects'
-       ]::text[])
+     AND (table_name=ANY(ARRAY[
+       'app_schema_version','applied_operations','meetings','checkpoints','continuity_baselines','lesson_pacing_plans',
+       'assessment_results','assessment_attempts','audit_events','reporting_policies','reporting_cycles','report_snapshots',
+       'report_snapshot_rows','artifacts','artifact_versions','artifact_objects']::text[])
        OR (table_name='lesson_versions' AND privilege_type IN ('UPDATE','DELETE'))
-       OR (table_name='correction_sessions' AND privilege_type='DELETE')
-     );
-
-  IF coalesce(cardinality(forbidden_dml), 0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL authenticated direct DML grants exceed canonical boundary: %', forbidden_dml;
+       OR (table_name='correction_sessions' AND privilege_type='DELETE'));
+  IF coalesce(cardinality(forbidden_dml),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL authenticated direct DML grants exceed canonical boundary: %',forbidden_dml;
   END IF;
 
   IF to_regclass('storage.buckets') IS NULL OR to_regclass('storage.objects') IS NULL THEN
     RAISE EXCEPTION 'P1_FAIL Supabase Storage catalog missing';
   END IF;
-
-  SELECT b.public, b.file_size_limit,
-         ARRAY(SELECT m FROM unnest(coalesce(b.allowed_mime_types, ARRAY[]::text[])) AS m ORDER BY m)
-    INTO bucket_public, bucket_limit, bucket_mimes
-    FROM storage.buckets b
-   WHERE b.id = 'artifact-files';
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'P1_FAIL artifact-files bucket missing';
+  SELECT b.public,b.file_size_limit,
+         ARRAY(SELECT m FROM unnest(coalesce(b.allowed_mime_types,ARRAY[]::text[])) m ORDER BY m)
+    INTO bucket_public,bucket_limit,bucket_mimes FROM storage.buckets b WHERE b.id='artifact-files';
+  IF NOT FOUND THEN RAISE EXCEPTION 'P1_FAIL artifact-files bucket missing'; END IF;
+  IF bucket_public IS DISTINCT FROM false THEN RAISE EXCEPTION 'P1_FAIL artifact-files must be private'; END IF;
+  IF bucket_limit IS DISTINCT FROM 20000000 THEN RAISE EXCEPTION 'P1_FAIL artifact-files size limit mismatch. expected=20000000 actual=%',bucket_limit; END IF;
+  IF bucket_mimes IS DISTINCT FROM ARRAY['application/octet-stream','application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document']::text[] THEN
+    RAISE EXCEPTION 'P1_FAIL artifact-files MIME allow-list mismatch: %',bucket_mimes;
   END IF;
 
-  IF bucket_public IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'P1_FAIL artifact-files must be private';
+  SELECT count(*),max(with_check) INTO storage_insert_policy_count,storage_insert_check
+    FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+      AND policyname='artifact_file_owner_insert' AND cmd='INSERT' AND 'authenticated'::name=ANY(roles);
+  SELECT count(*),max(qual) INTO storage_select_policy_count,storage_select_qual
+    FROM pg_policies WHERE schemaname='storage' AND tablename='objects'
+      AND policyname='artifact_file_owner_select' AND cmd='SELECT' AND 'authenticated'::name=ANY(roles);
+  IF storage_insert_policy_count<>1 OR storage_select_policy_count<>1 THEN
+    RAISE EXCEPTION 'P1_FAIL required artifact Storage policies missing/duplicated. insert=% select=%',storage_insert_policy_count,storage_select_policy_count;
+  END IF;
+  IF storage_insert_check IS NULL OR position('artifact-files' in storage_insert_check)=0 OR position('artifact_objects' in storage_insert_check)=0
+     OR position('workspaces' in storage_insert_check)=0 OR position('storage_path' in storage_insert_check)=0
+     OR position('PENDING_UPLOAD' in storage_insert_check)=0 OR position('auth.uid()' in storage_insert_check)=0 THEN
+    RAISE EXCEPTION 'P1_FAIL artifact Storage INSERT policy is not ownership-derived: %',storage_insert_check;
+  END IF;
+  IF storage_select_qual IS NULL OR position('artifact-files' in storage_select_qual)=0 OR position('artifact_objects' in storage_select_qual)=0
+     OR position('workspaces' in storage_select_qual)=0 OR position('storage_path' in storage_select_qual)=0
+     OR position('READY' in storage_select_qual)=0 OR position('auth.uid()' in storage_select_qual)=0 THEN
+    RAISE EXCEPTION 'P1_FAIL artifact Storage SELECT policy is not ownership-derived: %',storage_select_qual;
+  END IF;
+  SELECT array_agg(policyname||':'||cmd ORDER BY policyname,cmd) INTO forbidden_storage_policies
+    FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND 'authenticated'::name=ANY(roles)
+      AND cmd IN ('UPDATE','DELETE') AND policyname LIKE 'artifact_file_owner_%';
+  IF coalesce(cardinality(forbidden_storage_policies),0)>0 THEN
+    RAISE EXCEPTION 'P1_FAIL forbidden browser Storage UPDATE/DELETE policies present: %',forbidden_storage_policies;
   END IF;
 
-  IF bucket_limit IS DISTINCT FROM 20000000 THEN
-    RAISE EXCEPTION 'P1_FAIL artifact-files size limit mismatch. expected=20000000 actual=%', bucket_limit;
-  END IF;
-
-  IF bucket_mimes IS DISTINCT FROM ARRAY[
-      'application/octet-stream',
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ]::text[] THEN
-    RAISE EXCEPTION 'P1_FAIL artifact-files MIME allow-list mismatch: %', bucket_mimes;
-  END IF;
-
-  SELECT count(*), max(with_check)
-    INTO storage_insert_policy_count, storage_insert_check
-    FROM pg_policies
-   WHERE schemaname = 'storage'
-     AND tablename = 'objects'
-     AND policyname = 'artifact_file_owner_insert'
-     AND cmd = 'INSERT'
-     AND 'authenticated'::name = ANY(roles);
-
-  SELECT count(*), max(qual)
-    INTO storage_select_policy_count, storage_select_qual
-    FROM pg_policies
-   WHERE schemaname = 'storage'
-     AND tablename = 'objects'
-     AND policyname = 'artifact_file_owner_select'
-     AND cmd = 'SELECT'
-     AND 'authenticated'::name = ANY(roles);
-
-  IF storage_insert_policy_count <> 1 OR storage_select_policy_count <> 1 THEN
-    RAISE EXCEPTION 'P1_FAIL required artifact Storage policies missing/duplicated. insert=% select=%', storage_insert_policy_count, storage_select_policy_count;
-  END IF;
-
-  IF storage_insert_check IS NULL
-     OR position('artifact-files' in storage_insert_check) = 0
-     OR position('artifact_objects' in storage_insert_check) = 0
-     OR position('workspaces' in storage_insert_check) = 0
-     OR position('storage_path' in storage_insert_check) = 0
-     OR position('PENDING_UPLOAD' in storage_insert_check) = 0
-     OR position('auth.uid()' in storage_insert_check) = 0 THEN
-    RAISE EXCEPTION 'P1_FAIL artifact Storage INSERT policy is not the ownership-derived pending-object contract: %', storage_insert_check;
-  END IF;
-
-  IF storage_select_qual IS NULL
-     OR position('artifact-files' in storage_select_qual) = 0
-     OR position('artifact_objects' in storage_select_qual) = 0
-     OR position('workspaces' in storage_select_qual) = 0
-     OR position('storage_path' in storage_select_qual) = 0
-     OR position('READY' in storage_select_qual) = 0
-     OR position('auth.uid()' in storage_select_qual) = 0 THEN
-    RAISE EXCEPTION 'P1_FAIL artifact Storage SELECT policy is not the ownership-derived ready-object contract: %', storage_select_qual;
-  END IF;
-
-  SELECT array_agg(policyname || ':' || cmd ORDER BY policyname, cmd)
-    INTO forbidden_storage_policies
-    FROM pg_policies
-   WHERE schemaname = 'storage'
-     AND tablename = 'objects'
-     AND 'authenticated'::name = ANY(roles)
-     AND cmd IN ('UPDATE','DELETE')
-     AND policyname LIKE 'artifact_file_owner_%';
-
-  IF coalesce(cardinality(forbidden_storage_policies), 0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL forbidden browser Storage UPDATE/DELETE policies present: %', forbidden_storage_policies;
-  END IF;
-
-  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=18 schema=r3.6-recovery.1 RLS=all-public anonymous-grants=none default-acl=closed authenticated-privileges=bounded definer-rpcs=closed artifact-files=private owner-policies=exact-shape';
+  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=18 schema=r3.6-recovery.1 canonical-owner=postgres RLS=all-public anonymous-grants=none postgres-default-acl=closed authenticated-privileges=bounded definer-rpcs=closed artifact-files=private owner-policies=exact-shape';
 END
 $$;
 
-SELECT
-  'P1_HOSTED_TRUTH' AS proof,
+SELECT 'P1_HOSTED_TRUTH' AS proof,
   (SELECT version FROM public.app_schema_version WHERE id=1) AS schema_version,
   (SELECT count(*) FROM supabase_migrations.schema_migrations) AS migration_count,
   (SELECT NOT public FROM storage.buckets WHERE id='artifact-files') AS artifact_bucket_private,
   (SELECT file_size_limit FROM storage.buckets WHERE id='artifact-files') AS artifact_bucket_limit;
-
 rollback;
