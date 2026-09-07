@@ -9,6 +9,8 @@ import { AssessmentManager } from '../components/AssessmentManager';
 import { Reporting } from '../components/Reporting';
 import { Artifacts } from '../components/Artifacts';
 import { BackupRestore } from '../components/BackupRestore';
+import { DailyDriverSetup } from '../components/DailyDriverSetup';
+import { SafeWorkSummary } from '../components/SafeWorkSummary';
 import { WorkspaceBootstrapGate } from '../components/WorkspaceBootstrapGate';
 import { readBrowserConfig } from '../config/env';
 import { EXPECTED_SCHEMA_VERSION } from '../config/schema';
@@ -43,6 +45,7 @@ function SignedOut({ client, authError }: { client: SupabaseClient; authError: s
       <section className="auth-card">
         <p className="eyebrow">Nilai SMP · R3</p>
         <h1>Masuk</h1>
+        <p className="muted">Masuk lalu lanjutkan pekerjaan terakhir tanpa mencari-cari modul.</p>
         <form onSubmit={submit} className="auth-form">
           <label>Email<input type="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
           <label>Kata sandi<input type="password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
@@ -54,7 +57,7 @@ function SignedOut({ client, authError }: { client: SupabaseClient; authError: s
   );
 }
 
-type WorkspaceMode='today'|'continuity'|'assessments'|'rapid'|'bulk'|'reporting'|'artifacts'|'recovery';
+type WorkspaceMode='today'|'continuity'|'assessments'|'rapid'|'bulk'|'reporting'|'artifacts'|'recovery'|'setup';
 
 function SignedIn({ client, email, userId }: { client: SupabaseClient; email: string; userId: string }) {
   const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
@@ -88,20 +91,27 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
     <WorkspaceBootstrapGate client={client} userId={userId} worker={worker} onLogout={logout} logoutError={logoutError}>
       {workspaceId => (
         <main className="teacher-shell">
-          <div className="topbar">
-            <span>{email}</span>
-            <div>
-              <button type="button" className={mode === 'today' ? '' : 'secondary'} onClick={() => setMode('today')}>Today</button>{' '}
-              <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => openContinuity()}>Teaching</button>{' '}
-              <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>{' '}
-              <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => openRapid()}>Rapid Correction</button>{' '}
-              <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>{' '}
-              <button type="button" className={mode === 'reporting' ? '' : 'secondary'} onClick={() => setMode('reporting')}>Reporting</button>{' '}
-              <button type="button" className={mode === 'artifacts' ? '' : 'secondary'} onClick={() => setMode('artifacts')}>Artifacts</button>{' '}
-              <button type="button" className={mode === 'recovery' ? '' : 'secondary'} onClick={() => setMode('recovery')}>Recovery</button>{' '}
-              <button type="button" className="secondary" onClick={logout}>Keluar</button>
+          <header className="teacher-header">
+            <div className="teacher-identity"><strong>Nilai SMP</strong><span>{email}</span></div>
+            <SafeWorkSummary userId={userId} workspaceId={workspaceId} onOpen={()=>setMode('today')} />
+            <button type="button" className="secondary compact-action" onClick={logout}>Keluar</button>
+          </header>
+          <nav className="daily-nav" aria-label="Pekerjaan utama">
+            <button type="button" className={mode === 'today' ? '' : 'secondary'} onClick={() => setMode('today')}>Today</button>
+            <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => openContinuity()}>Teaching</button>
+            <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => openRapid()}>Rapid Correction</button>
+            <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>
+            <button type="button" className={mode === 'reporting' ? '' : 'secondary'} onClick={() => setMode('reporting')}>Reporting</button>
+          </nav>
+          <details className="more-tools" open={['bulk','artifacts','recovery','setup'].includes(mode)}>
+            <summary>Data, dokumen & alat lain</summary>
+            <div className="tool-nav">
+              <button type="button" className={mode === 'setup' ? '' : 'secondary'} onClick={() => setMode('setup')}>Data & Setup</button>
+              <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>
+              <button type="button" className={mode === 'artifacts' ? '' : 'secondary'} onClick={() => setMode('artifacts')}>Artifacts</button>
+              <button type="button" className={mode === 'recovery' ? '' : 'secondary'} onClick={() => setMode('recovery')}>Recovery</button>
             </div>
-          </div>
+          </details>
           {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
           {mode === 'today' ? <Today client={client} userId={userId} workspaceId={workspaceId} onOpenContinuity={openContinuity} onOpenRapid={openRapid} /> : null}
           {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialClassId={continuityTarget} /> : null}
@@ -111,6 +121,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
           {mode === 'reporting' ? <Reporting client={client} workspaceId={workspaceId} /> : null}
           {mode === 'artifacts' ? <Artifacts client={client} workspaceId={workspaceId} /> : null}
           {mode === 'recovery' ? <BackupRestore client={client} /> : null}
+          {mode === 'setup' ? <DailyDriverSetup client={client} workspaceId={workspaceId} onReady={()=>setMode('today')} /> : null}
         </main>
       )}
     </WorkspaceBootstrapGate>
