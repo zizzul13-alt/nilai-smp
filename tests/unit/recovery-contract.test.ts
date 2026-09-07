@@ -41,7 +41,7 @@ describe('R3.6 portable recovery contracts',()=>{
   it('requires exactly one embedded payload for every READY ArtifactObject',()=>{
     const ready={id:'o1',state:'READY'};
     expect(()=>assertArtifactPayloadCompleteness({tables:{artifact_objects:[ready]},artifact_payloads:[]})).toThrow(/tidak memiliki payload/);
-    expect(()=>assertArtifactPayloadCompleteness({tables:{artifact_objects:[{id:'o1',state:'PENDING_UPLOAD'}]},artifact_payloads:[{object_id:'o1',storage_path:'x',mime_type:'application/pdf',byte_size:1,sha256:'a'.repeat(64),base64:'AA=='}]})).toThrow(/belum READY/);
+    expect(()=>assertArtifactPayloadCompleteness({tables:{artifact_objects:[{id:'o1',state:'PENDING_UPLOAD'}]},artifact_payloads:[{object_id:'o1',storage_path:'x',mime_type:'application/pdf',byte_size:1,sha256:'a'.repeat(64),base64:'AA=='}]})).toThrow(/tidak boleh ada/);
   });
   it('verifies manifest and artifact checksums before restore',()=>{
     expect(service).toContain('verifyPortableBackup(input)');
