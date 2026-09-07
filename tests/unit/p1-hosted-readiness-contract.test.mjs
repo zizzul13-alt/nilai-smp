@@ -3,6 +3,7 @@ import{readFileSync,readdirSync}from'node:fs';
 
 const verifier=readFileSync('supabase/verification/p1_hosted_truth.sql','utf8');
 const hardening=readFileSync('supabase/migrations/202609070918_p1_authenticated_privilege_hardening.sql','utf8');
+const existingFunctionHardening=readFileSync('supabase/migrations/202609071405_p1_existing_function_acl_hardening.sql','utf8');
 const runbook=readFileSync('docs/HOSTED_SUPABASE_P1.md','utf8');
 const readiness=readFileSync('docs/PRODUCTION_READINESS.md','utf8');
 const schema=readFileSync('src/config/schema.ts','utf8');
@@ -15,7 +16,7 @@ const expectedMigrations=[
   '202609050003_continuity_write_boundary.sql','202609060001_today_reentry.sql','202609060002_pacing_final_torture.sql',
   '202609060003_reporting_core.sql','202609060004_artifact_core.sql','202609060005_artifact_integrity_hardening.sql',
   '202609060006_artifact_governor_repairs.sql','202609070001_recovery_portable_backup.sql',
-  '202609070918_p1_authenticated_privilege_hardening.sql',
+  '202609070918_p1_authenticated_privilege_hardening.sql','202609071405_p1_existing_function_acl_hardening.sql',
 ];
 
 describe('P1 hosted Supabase readiness contracts',()=>{
@@ -27,7 +28,7 @@ describe('P1 hosted Supabase readiness contracts',()=>{
       expect(verifier).toContain(filename.slice(0,12));
     }
     expect(verifier).toContain('migration history mismatch');
-    expect(runbook).toContain('MIGRATION_COUNT=18');
+    expect(runbook).toContain('MIGRATION_COUNT=19');
   });
 
   it('accepts only the two observed legitimate migration-history encodings',()=>{
@@ -51,6 +52,8 @@ describe('P1 hosted Supabase readiness contracts',()=>{
     expect(hardening).toContain('public.applied_operations');
     expect(hardening).toContain('public.continuity_baselines');
     expect(hardening).toContain("version='r3.6-recovery.1'");
+    expect(existingFunctionHardening).toContain('reject_scoring_profile_config_rewrite');
+    expect(existingFunctionHardening).toContain('from public, anon, authenticated');
     expect(verifier).toContain('unexpected_table_owners');
     expect(verifier).toContain('unexpected_function_owners');
     expect(verifier).toContain("pg_get_userbyid(c.relowner)<>'postgres'");
@@ -59,8 +62,10 @@ describe('P1 hosted Supabase readiness contracts',()=>{
     expect(verifier).not.toContain("IN ('postgres','supabase_admin')");
     expect(verifier).toContain('missing_global_function_acl');
     expect(verifier).toContain('default_acl_exposure');
+    expect(verifier).toContain('exposed_anonymous_functions');
     expect(verifier).toContain("privilege_type IN ('TRUNCATE','REFERENCES','TRIGGER')");
     expect(harness).toContain('closes PUBLIC EXECUTE on functions created after hardening');
+    expect(harness).toContain('rejects existing canonical helper PUBLIC EXECUTE exposure');
     expect(harness).toContain('rejects global future-function PUBLIC EXECUTE exposure');
     expect(harness).toContain('rejects authenticated TRUNCATE on canonical table');
     expect(harness).toContain('rejects future-table authenticated default ACL exposure');
@@ -76,7 +81,7 @@ describe('P1 hosted Supabase readiness contracts',()=>{
     for(const token of[
       'set transaction read only','unexpected_table_owners','unexpected_function_owners','unprotected_tables',
       "grantee IN ('anon','PUBLIC')",'missing_global_function_acl','default_acl_exposure','forbidden_global_privileges',
-      'p.prosecdef',"has_function_privilege('anon',p.oid,'EXECUTE')","bucket_limit IS DISTINCT FROM 20000000",
+      'exposed_anonymous_functions',"has_function_privilege('anon',p.oid,'EXECUTE')","bucket_limit IS DISTINCT FROM 20000000",
       'artifact_file_owner_insert','artifact_file_owner_select','storage_insert_check','storage_select_qual',"cmd IN ('UPDATE','DELETE')",
     ])expect(verifier).toContain(token);
     expect(runbook).toContain('This is useful but **not sufficient** for P1.');
