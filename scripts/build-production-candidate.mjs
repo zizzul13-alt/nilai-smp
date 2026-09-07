@@ -57,8 +57,15 @@ function textFiles(dir) {
   return out;
 }
 
-const forbidden = [
+const forbiddenLiterals = [
   ['Vite source path', '/src/'],
+  ['service role marker', 'service_role'],
+  ['service role env', 'SUPABASE_SERVICE_ROLE'],
+  ['database URL env', 'DATABASE_URL'],
+  ['Cloudflare token env', 'CLOUDFLARE_API_TOKEN'],
+];
+
+const loopbackLiterals = [
   ['localhost http endpoint', 'http://localhost'],
   ['localhost https endpoint', 'https://localhost'],
   ['localhost websocket endpoint', 'ws://localhost'],
@@ -67,21 +74,27 @@ const forbidden = [
   ['loopback https endpoint', 'https://127.0.0.1'],
   ['loopback websocket endpoint', 'ws://127.0.0.1'],
   ['loopback secure websocket endpoint', 'wss://127.0.0.1'],
-  ['service role marker', 'service_role'],
-  ['service role env', 'SUPABASE_SERVICE_ROLE'],
-  ['database URL env', 'DATABASE_URL'],
-  ['Cloudflare token env', 'CLOUDFLARE_API_TOKEN'],
 ];
 
-function sanitizedContext(body, needle) {
-  const index = body.indexOf(needle);
-  const start = Math.max(0, index - 140);
-  const end = Math.min(body.length, index + needle.length + 140);
+function sanitizedContext(body, needle, index = body.indexOf(needle)) {
+  const start = Math.max(0, index - 180);
+  const end = Math.min(body.length, index + needle.length + 220);
   return body
     .slice(start, end)
     .replaceAll(process.env.VITE_SUPABASE_URL, '<SUPABASE_URL>')
     .replaceAll(publishableKey, '<PUBLISHABLE_KEY>')
     .replace(/[\r\n\t]+/g, ' ');
+}
+
+function approvedThirdPartyLoopback(body, needle, index) {
+  if (needle !== 'http://localhost') return false;
+  if (!body.startsWith('http://localhost:9999', index)) return false;
+
+  const context = body.slice(
+    Math.max(0, index - 320),
+    Math.min(body.length, index + 520),
+  );
+  return context.includes('supabase.auth.token') && context.includes('gotrue-js/');
 }
 
 let sawSupabaseUrl = false;
@@ -90,11 +103,26 @@ for (const file of textFiles('dist')) {
   const body = readFileSync(file, 'utf8');
   if (body.includes(process.env.VITE_SUPABASE_URL)) sawSupabaseUrl = true;
   if (body.includes(publishableKey)) sawPublishableKey = true;
-  for (const [label, needle] of forbidden) {
+
+  for (const [label, needle] of forbiddenLiterals) {
     if (body.includes(needle)) {
       console.error(`P4_PRECHECK_FAIL ${label} leaked into ${file}`);
       console.error(`P4_PRECHECK_CONTEXT ${sanitizedContext(body, needle)}`);
       process.exit(4);
+    }
+  }
+
+  for (const [label, needle] of loopbackLiterals) {
+    let from = 0;
+    while (from < body.length) {
+      const index = body.indexOf(needle, from);
+      if (index === -1) break;
+      if (!approvedThirdPartyLoopback(body, needle, index)) {
+        console.error(`P4_PRECHECK_FAIL ${label} leaked into ${file}`);
+        console.error(`P4_PRECHECK_CONTEXT ${sanitizedContext(body, needle, index)}`);
+        process.exit(4);
+      }
+      from = index + needle.length;
     }
   }
 }
