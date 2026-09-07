@@ -5,6 +5,7 @@ import { EXPECTED_SCHEMA_VERSION } from '../../src/config/schema';
 const app=readFileSync('src/app/App.tsx','utf8');
 const gate=readFileSync('src/components/WorkspaceBootstrapGate.tsx','utf8');
 const architecture=readFileSync('docs/ARCHITECTURE.md','utf8');
+const dataModel=readFileSync('docs/DATA_MODEL.md','utf8');
 const deployment=readFileSync('docs/DEPLOYMENT.md','utf8');
 const troubleshooting=readFileSync('docs/TROUBLESHOOTING.md','utf8');
 const migrations=readdirSync('supabase/migrations').filter(name=>name.endsWith('.sql')).sort();
@@ -40,6 +41,7 @@ describe('R3.HARDEN-01 contracts',()=>{
   it('keeps runtime and operational docs on the same schema identity',()=>{
     expect(EXPECTED_SCHEMA_VERSION).toBe('r3.6-recovery.1');
     expect(architecture).toContain(EXPECTED_SCHEMA_VERSION);
+    expect(dataModel).toContain(EXPECTED_SCHEMA_VERSION);
     expect(deployment).toContain(EXPECTED_SCHEMA_VERSION);
     expect(troubleshooting).toContain(EXPECTED_SCHEMA_VERSION);
     expect(architecture).not.toContain('Current branch compatibility is `r3.5-artifact-core.3`');
