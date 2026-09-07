@@ -7,6 +7,7 @@ test-results/
 .env.*
 !.env.example
 .wrangler/
+supabase/.temp/
 .DS_Store
 __pycache__/
 *.pyc
