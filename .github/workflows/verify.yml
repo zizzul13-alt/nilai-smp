@@ -50,14 +50,27 @@ jobs:
         shell: bash
         run: |
           set +e
-          npm run candidate:preflight
-          status=$?
+          set -o pipefail
+          npm run candidate:preflight 2>&1 | tee candidate-preflight.log
+          status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             echo "::group::Wrangler diagnostic log"
-            find "$HOME/.config/.wrangler/logs" -maxdepth 1 -type f -name 'wrangler-*.log' -print -exec cat {} \; 2>/dev/null || true
+            {
+              echo
+              echo "===== WRANGLER INTERNAL LOGS ====="
+              find "$HOME/.config/.wrangler/logs" -maxdepth 1 -type f -name 'wrangler-*.log' -print -exec cat {} \; 2>/dev/null || true
+            } | tee -a candidate-preflight.log
             echo "::endgroup::"
           fi
           exit "$status"
+      - name: Upload Cloudflare candidate diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-candidate-diagnostic
+          path: candidate-preflight.log
+          retention-days: 1
+          if-no-files-found: error
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Foundation E2E
