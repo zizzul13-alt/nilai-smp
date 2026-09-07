@@ -25,6 +25,8 @@ describe('P4/P6 Cloudflare candidate operator lane', () => {
     expect(pkg.scripts.deploy).toBe('npm run candidate:build && wrangler deploy');
     expect(builder).toContain("new Set(['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY'])");
     expect(builder).toContain('unexpected browser env');
+    expect(builder).toContain('isPrivilegedSupabaseKey');
+    expect(builder).toContain('privileged/service-role Supabase key is forbidden');
     expect(builder).toContain('CLOUDFLARE_API_TOKEN');
     expect(builder).toContain('P4_BUNDLE_PRECHECK PASS');
   });
@@ -39,7 +41,7 @@ describe('P4/P6 Cloudflare candidate operator lane', () => {
     expect(builder).toContain('if (!approvedThirdPartyLoopback(body, needle, index))');
   });
 
-  it('fails before build when browser config is missing or expanded', () => {
+  it('fails before build when browser config is missing, expanded, or privileged', () => {
     const baseEnv = { ...process.env } as Record<string, string>;
     for (const key of Object.keys(baseEnv)) if (key.startsWith('VITE_')) delete baseEnv[key];
 
@@ -61,6 +63,19 @@ describe('P4/P6 Cloudflare candidate operator lane', () => {
     });
     expect(expanded.status).toBe(2);
     expect(expanded.stderr).toContain('unexpected browser env: VITE_FORBIDDEN_EXTRA');
+
+    const serviceRolePayload = Buffer.from(JSON.stringify({ role: 'service_role' })).toString('base64url');
+    const legacyServiceRoleKey = `eyJhbGciOiJub25lIn0.${serviceRolePayload}.signature`;
+    const privileged = spawnSync(process.execPath, ['scripts/build-production-candidate.mjs'], {
+      env: {
+        ...baseEnv,
+        VITE_SUPABASE_URL: 'https://ci-placeholder.supabase.co',
+        VITE_SUPABASE_PUBLISHABLE_KEY: legacyServiceRoleKey,
+      },
+      encoding: 'utf8',
+    });
+    expect(privileged.status).toBe(2);
+    expect(privileged.stderr).toContain('privileged/service-role Supabase key is forbidden');
   });
 
   it('has a deployed root + deep-SPA smoke and explicit rollback guardrails', () => {
