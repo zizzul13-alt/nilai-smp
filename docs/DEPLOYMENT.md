@@ -42,9 +42,10 @@ Apply every source-controlled migration strictly in filename order:
 202609060006_artifact_governor_repairs.sql
 202609070001_recovery_portable_backup.sql
 202609070918_p1_authenticated_privilege_hardening.sql
+202609071405_p1_existing_function_acl_hardening.sql
 ```
 
-`app_schema_version` and `src/config/schema.ts` remain `r3.6-recovery.1`. The final P1 migration is privilege hardening only: it removes unintended Supabase default browser grants, reconstructs the exact authenticated capability surface, and closes future public default ACL exposure. R3.7 Daily Driver/production-artifact work is schema-neutral. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
+`app_schema_version` and `src/config/schema.ts` remain `r3.6-recovery.1`. The final P1 migrations are privilege hardening only: they remove unintended Supabase default browser grants, reconstruct the exact authenticated capability surface, close future public default ACL exposure, and explicitly revoke the historical PUBLIC EXECUTE residue on the internal scoring-profile trigger helper. R3.7 Daily Driver/production-artifact work is schema-neutral. Do not manually edit, pre-set, or forge `app_schema_version`; ordered migrations own that value and the browser fails closed on mismatch.
 
 Today uses bounded ownership-derived PostgreSQL RPC reads plus local IndexedDB Safe Work summary; it does not download Teaching Core history. Re-entry baselines are append-only facts and do not rewrite Meeting/Checkpoint history.
 

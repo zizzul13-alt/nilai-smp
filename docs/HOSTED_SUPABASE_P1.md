@@ -7,11 +7,13 @@ This runbook establishes `HOSTED_SCHEMA_TRUTH = PASS` for the first real Supabas
 Current compatibility baseline:
 
 - schema compatibility: `r3.6-recovery.1`;
-- expected repository migrations: 18;
-- final migration: `202609070918_p1_authenticated_privilege_hardening.sql`;
+- expected repository migrations: 19;
+- final migration: `202609071405_p1_existing_function_acl_hardening.sql`;
 - R3.7 remains schema-neutral.
 
-The 18th migration exists because the real hosted verifier found unintended `authenticated` privileges inherited from the project's public-schema default ACLs. A first hosted apply also proved that application migrations cannot and should not mutate managed `supabase_admin` default privileges. Hosted ownership evidence showed every canonical Nilai SMP public table and all 25 Nilai SMP public functions are owned by `postgres`. P1 therefore binds default-ACL hardening to the proven application creator role and fails if canonical ownership drifts.
+The 18th migration exists because the real hosted verifier found unintended `authenticated` privileges inherited from the project's public-schema default ACLs. A first hosted apply also proved that application migrations cannot and should not mutate managed `supabase_admin` default privileges. Hosted ownership evidence showed every canonical Nilai SMP public table and all canonical Nilai SMP public functions are owned by `postgres`. P1 therefore binds default-ACL hardening to the proven application creator role and fails if canonical ownership drifts.
+
+The 19th migration is a bounded follow-up discovered by the real post-restore privilege audit: the pre-hardening trigger helper `reject_scoring_profile_config_rewrite()` retained PostgreSQL's historical PUBLIC EXECUTE grant. It is not a browser RPC and needs no direct browser execution, so the grant is explicitly revoked from `PUBLIC`, `anon`, and `authenticated`. The verifier now checks anonymous/PUBLIC EXECUTE across every canonical function, not only SECURITY DEFINER RPCs.
 
 ## Hard laws
 
@@ -50,9 +52,10 @@ The exact ordered chain is:
 202609060006_artifact_governor_repairs.sql
 202609070001_recovery_portable_backup.sql
 202609070918_p1_authenticated_privilege_hardening.sql
+202609071405_p1_existing_function_acl_hardening.sql
 ```
 
-Supabase CLI normally records the repository migration timestamp as `schema_migrations.version`. Supabase MCP `apply_migration` may record an execution timestamp as `version` while preserving the full canonical repository identity in `name`. The verifier accepts only those two observed representations and still requires all 18 logical migrations in exact order. Never use migration repair merely to convert one legitimate representation into the other.
+Supabase CLI normally records the repository migration timestamp as `schema_migrations.version`. Supabase MCP `apply_migration` may record an execution timestamp as `version` while preserving the full canonical repository identity in `name`. The verifier accepts only those two observed representations and still requires all 19 logical migrations in exact order. Never use migration repair merely to convert one legitimate representation into the other.
 
 ## Privilege model required by P1
 
@@ -64,13 +67,14 @@ The hosted project must prove:
 - `postgres` public table/sequence defaults do not auto-grant browser roles;
 - `postgres` has an explicit GLOBAL function default overriding PostgreSQL's built-in PUBLIC EXECUTE, plus no public-schema browser EXECUTE default;
 - managed `supabase_admin` defaults are not treated as Nilai SMP application defaults unless canonical ownership ever changes to that role, in which case P1 fails ownership proof first;
+- no canonical function, including trigger/internal helpers, is executable by anon/PUBLIC;
+- authenticated SECURITY DEFINER RPCs are intentional ownership-checked boundaries and are granted explicitly;
 - `authenticated` has no `TRUNCATE`, `REFERENCES`, or `TRIGGER` on public tables;
 - RPC-owned/read-only tables have no browser `INSERT/UPDATE/DELETE`;
 - `lesson_versions` remains append-only (`SELECT`,`INSERT` only);
-- `correction_sessions` remains workflow-mutable without browser `DELETE`;
-- authenticated SECURITY DEFINER RPCs are intentional ownership-checked boundaries, while anon execution remains closed.
+- `correction_sessions` remains workflow-mutable without browser `DELETE`.
 
-The privilege migration revokes broad browser capability and reconstructs only the intended authenticated table surface. It does not bump `app_schema_version`.
+The privilege migrations revoke broad browser capability and reconstruct only the intended authenticated surface. They do not bump `app_schema_version`.
 
 ## Public-schema drift check
 
@@ -113,7 +117,7 @@ P1_EXECUTED_AT=<timestamp with timezone>
 GIT_SHA=<exact candidate SHA>
 SCHEMA_EXPECTED=r3.6-recovery.1
 SUPABASE_PROJECT_REF=<ref>
-MIGRATION_COUNT=18
+MIGRATION_COUNT=19
 MIGRATION_PROVENANCE=<CLI_CANONICAL | MCP_EXECUTION_VERSION_CANONICAL_NAME>
 CANONICAL_OBJECT_OWNER=postgres
 MIGRATION_APPLY=<success>
@@ -134,6 +138,6 @@ Set:
 HOSTED_SCHEMA_TRUTH = PASS
 ```
 
-only if all 18 canonical migrations are represented in exact order, compatibility remains `r3.6-recovery.1`, canonical ownership is proven, the committed verifier passes on the real project, Security Advisor has no unresolved ERROR, and no manual schema/migration-history forgery or seed was used.
+only if all 19 canonical migrations are represented in exact order, compatibility remains `r3.6-recovery.1`, canonical ownership is proven, every canonical function is closed to anonymous/PUBLIC execution, the committed verifier passes on the real project, Security Advisor has no unresolved ERROR, and no manual schema/migration-history forgery or seed was used.
 
 Otherwise P1 remains blocked and P2 is not authorized.

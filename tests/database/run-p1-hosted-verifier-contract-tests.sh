@@ -22,6 +22,7 @@ verify_fail(){
 }
 
 "${PSQL[@]}" -f supabase/migrations/202609070918_p1_authenticated_privilege_hardening.sql >/dev/null
+"${PSQL[@]}" -f supabase/migrations/202609071405_p1_existing_function_acl_hardening.sql >/dev/null
 
 "${PSQL[@]}" -q <<'SQL'
 create or replace function public.p1_future_acl_probe() returns integer language sql as $$select 1$$;
@@ -41,7 +42,7 @@ insert into supabase_migrations.schema_migrations(version,name) values
 ('202609040001','academic_spine'),('202609040002','safe_work_engine'),('202609040003','teaching_core'),('202609040004','assessment_core'),('202609040005','rapid_correction_safe_writes'),('202609040006','bulk_assessment'),
 ('202609050001','continuity_core'),('202609050002','continuity_lifecycle_guard'),('202609050003','continuity_write_boundary'),
 ('202609060001','today_reentry'),('202609060002','pacing_final_torture'),('202609060003','reporting_core'),('202609060004','artifact_core'),('202609060005','artifact_integrity_hardening'),('202609060006','artifact_governor_repairs'),
-('202609070001','recovery_portable_backup'),('202609070918','p1_authenticated_privilege_hardening');
+('202609070001','recovery_portable_backup'),('202609070918','p1_authenticated_privilege_hardening'),('202609071405','p1_existing_function_acl_hardening');
 
 create schema if not exists storage;
 create table if not exists storage.buckets(id text primary key,name text not null,public boolean not null default false,file_size_limit bigint,allowed_mime_types text[]);
@@ -69,7 +70,7 @@ insert into supabase_migrations.schema_migrations(version,name) values
 ('20260907090002','202609040001_academic_spine'),('20260907090003','202609040002_safe_work_engine'),('20260907090004','202609040003_teaching_core'),('20260907090005','202609040004_assessment_core'),('20260907090006','202609040005_rapid_correction_safe_writes'),('20260907090007','202609040006_bulk_assessment'),
 ('20260907090008','202609050001_continuity_core'),('20260907090009','202609050002_continuity_lifecycle_guard'),('20260907090010','202609050003_continuity_write_boundary'),
 ('20260907090011','202609060001_today_reentry'),('20260907090012','202609060002_pacing_final_torture'),('20260907090013','202609060003_reporting_core'),('20260907090014','202609060004_artifact_core'),('20260907090015','202609060005_artifact_integrity_hardening'),('20260907090016','202609060006_artifact_governor_repairs'),
-('20260907090017','202609070001_recovery_portable_backup'),('20260907090018','202609070918_p1_authenticated_privilege_hardening');
+('20260907090017','202609070001_recovery_portable_backup'),('20260907090018','202609070918_p1_authenticated_privilege_hardening'),('20260907090019','202609071405_p1_existing_function_acl_hardening');
 SQL
 verify_pass 'P1 hosted verifier accepts exact MCP execution-version provenance'
 
@@ -80,6 +81,10 @@ run "update supabase_migrations.schema_migrations set name='202609060006_artifac
 run "alter function public.pacing_text_array_valid(jsonb,boolean) owner to authenticated;"
 verify_fail 'P1 hosted verifier rejects canonical function ownership drift'
 run "alter function public.pacing_text_array_valid(jsonb,boolean) owner to postgres;"
+
+run "grant execute on function public.reject_scoring_profile_config_rewrite() to public;"
+verify_fail 'P1 hosted verifier rejects existing canonical helper PUBLIC EXECUTE exposure'
+run "revoke execute on function public.reject_scoring_profile_config_rewrite() from public, anon, authenticated;"
 
 run "grant truncate on table public.students to authenticated;"
 verify_fail 'P1 hosted verifier rejects authenticated TRUNCATE on canonical table'
@@ -109,10 +114,10 @@ create policy artifact_file_owner_select on storage.objects for select to authen
 );
 SQL
 
-affected="$(run "delete from supabase_migrations.schema_migrations where name='202609070918_p1_authenticated_privilege_hardening' returning version;")"
+affected="$(run "delete from supabase_migrations.schema_migrations where name='202609071405_p1_existing_function_acl_hardening' returning version;")"
 [[ -n "$affected" ]] || fail 'migration drift fixture was not created'
 verify_fail 'P1 hosted verifier rejects missing migration-history entry'
-run "insert into supabase_migrations.schema_migrations(version,name) values('20260907090018','202609070918_p1_authenticated_privilege_hardening');"
+run "insert into supabase_migrations.schema_migrations(version,name) values('20260907090019','202609071405_p1_existing_function_acl_hardening');"
 
 verify_pass 'P1 hosted verifier returns to PASS after negative fixtures are repaired'
 printf '\nP1 hosted Supabase truth verifier PostgreSQL contract completed successfully.\n'
