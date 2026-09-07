@@ -132,7 +132,7 @@ BEGIN
      AND tablename = 'objects'
      AND policyname = 'artifact_file_owner_insert'
      AND cmd = 'INSERT'
-     AND 'authenticated' = ANY(roles);
+     AND 'authenticated'::name = ANY(roles);
 
   SELECT count(*) INTO storage_select_policy_count
     FROM pg_policies
@@ -140,7 +140,7 @@ BEGIN
      AND tablename = 'objects'
      AND policyname = 'artifact_file_owner_select'
      AND cmd = 'SELECT'
-     AND 'authenticated' = ANY(roles);
+     AND 'authenticated'::name = ANY(roles);
 
   IF storage_insert_policy_count <> 1 OR storage_select_policy_count <> 1 THEN
     RAISE EXCEPTION 'P1_FAIL required artifact Storage policies missing/duplicated. insert=% select=%', storage_insert_policy_count, storage_select_policy_count;
@@ -151,7 +151,7 @@ BEGIN
     FROM pg_policies
    WHERE schemaname = 'storage'
      AND tablename = 'objects'
-     AND 'authenticated' = ANY(roles)
+     AND 'authenticated'::name = ANY(roles)
      AND cmd IN ('UPDATE','DELETE')
      AND policyname LIKE 'artifact_file_owner_%';
 
