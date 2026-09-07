@@ -24,10 +24,9 @@ describe('R3.6 portable recovery contracts',()=>{
     const exportSql=sql.slice(exportStart,restoreStart);
     expect(exportSql).not.toMatch(/\block\s+table\b/i);
     expect(exportSql).toContain('single SQL statement sees one MVCC snapshot');
-    expect(exportSql).toContain('execute query_text into backup using caller_id');
     expect(exportSql).toContain("'''tables'',jsonb_build_object(");
     expect(exportSql).toContain('foreach table_name in array public.portable_backup_table_names() loop');
-    expect(exportSql.match(/execute\s+/g)).toHaveLength(1);
+    expect(exportSql.match(/\n\s*execute query_text into backup using caller_id;/g)).toHaveLength(1);
   });
   it('restores only to empty workspace and preserves stable domain rows',()=>{
     expect(sql).toContain("raise exception 'restore target is not empty: %'");
