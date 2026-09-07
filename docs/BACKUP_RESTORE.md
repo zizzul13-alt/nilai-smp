@@ -12,9 +12,11 @@ The Recovery workspace calls the owned `export_portable_backup()` RPC, then read
 
 - explicit `nilai-smp-portable-backup` format/version identity;
 - source schema version and export timestamp;
-- canonical workspace-owned rows needed to reconstruct academic, teaching, assessment, reporting, continuity, artifact and idempotency state;
+- canonical workspace-owned academic, teaching, assessment, reporting, continuity, artifact and audit-history rows;
 - exact READY artifact binary payloads encoded into the portable file;
 - a whole-manifest SHA-256 checksum.
+
+`applied_operations` is deliberately not transported. It is retry/idempotency metadata, not academic history. A recovered workspace starts a fresh operation ledger so old successful confirmations cannot falsely replay against newly PENDING restored objects.
 
 The browser also exposes an XLSX human-escape export derived from canonical Result/Enrollment/Student/Class/Assessment identities. It is for human/provider escape, not round-trip canonical restoration.
 
@@ -30,11 +32,13 @@ Restore is `verify -> restore-to-empty -> restore artifact bytes -> checksum-con
 - refuses a non-empty canonical workspace rather than merging two histories;
 - preserves stable domain UUIDs while remapping workspace ownership to the signed-in personal workspace;
 - reconstructs circular current-version/current-snapshot links only after append-only children exist;
-- restores ArtifactObject metadata as `PENDING_UPLOAD`, never fake READY.
+- rewrites ArtifactObject storage paths into the target workspace/artifact/version scope;
+- restores ArtifactObject metadata as `PENDING_UPLOAD`, never fake READY;
+- creates only a fresh `recovery.restore` AppliedOperation in the new workspace.
 
-The browser then uploads exact backed-up bytes with `upsert:false`. Existing paths on retry must match byte size + SHA-256. Only `confirm_artifact_object_operation()` can move restored object metadata to READY.
+The browser rereads restored ArtifactObject metadata by stable object ID, uses the target canonical `storage_path`, then uploads exact backed-up bytes with `upsert:false`. Existing paths on retry must match byte size + SHA-256. Only `confirm_artifact_object_operation()` can move restored object metadata to READY.
 
-A browser/network interruption after canonical restore is recoverable: replaying the same verified backup replays the restore operation and continues PENDING artifact uploads.
+A browser/network interruption after canonical restore is recoverable: replaying the same verified backup replays the restore operation and continues PENDING artifact uploads. Already-confirmed objects replay their new target confirmation operation safely.
 
 ## Compatibility
 
