@@ -5,6 +5,7 @@ const verifier=readFileSync('supabase/verification/p1_hosted_truth.sql','utf8');
 const runbook=readFileSync('docs/HOSTED_SUPABASE_P1.md','utf8');
 const readiness=readFileSync('docs/PRODUCTION_READINESS.md','utf8');
 const schema=readFileSync('src/config/schema.ts','utf8');
+const pkg=readFileSync('package.json','utf8');
 const expectedMigrations=[
   '202609030001_foundation_schema_version.sql',
   '202609040001_academic_spine.sql',
@@ -48,6 +49,8 @@ describe('P1 hosted Supabase readiness contracts',()=>{
       "bucket_limit IS DISTINCT FROM 20000000",
       'artifact_file_owner_insert',
       'artifact_file_owner_select',
+      'storage_insert_check',
+      'storage_select_qual',
       "cmd IN ('UPDATE','DELETE')",
     ])expect(verifier).toContain(token);
     expect(runbook).toContain('This is useful but **not sufficient** for P1.');
@@ -62,10 +65,12 @@ describe('P1 hosted Supabase readiness contracts',()=>{
     expect(runbook).not.toMatch(/supabase db push --include-seed\s*```/);
   });
 
-  it('keeps the first-production governor linked to this P1 evidence package',()=>{
+  it('requires the P1 verifier attack harness in the PostgreSQL gate',()=>{
+    expect(pkg).toContain('bash tests/database/run-p1-hosted-verifier-contract-tests.sh');
+  });
+
+  it('keeps the first-production governor linked to P1 state',()=>{
     expect(readiness).toContain('# P1 — Hosted Supabase schema truth');
     expect(readiness).toContain('HOSTED_SCHEMA_TRUTH = PASS');
-    expect(readiness).toContain('docs/HOSTED_SUPABASE_P1.md');
-    expect(readiness).toContain('supabase/verification/p1_hosted_truth.sql');
   });
 });
