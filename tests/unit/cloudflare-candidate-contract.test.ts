@@ -31,6 +31,15 @@ describe('P4/P6 Cloudflare candidate operator lane', () => {
     expect(builder).toContain('P4_BUNDLE_PRECHECK PASS');
   });
 
+  it('strips source maps from the deployable candidate before bundle scanning', () => {
+    expect(builder).toContain('rmSync');
+    expect(builder).toContain('stripSourceMaps');
+    expect(builder).toContain("else if (/\\.map$/i.test(entry))");
+    expect(builder).toContain("const removedSourceMaps = stripSourceMaps('dist')");
+    expect(builder).toContain('P4_SOURCEMAPS_STRIPPED');
+    expect(builder).not.toContain("|map)$/i.test(entry)");
+  });
+
   it('keeps loopback rejection strict while bounding the known Supabase Auth library default', () => {
     expect(builder).toContain("['localhost http endpoint', 'http://localhost']");
     expect(builder).toContain("['loopback http endpoint', 'http://127.0.0.1']");
