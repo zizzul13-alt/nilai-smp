@@ -31,6 +31,7 @@ DECLARE
   actual_schema_version text;
   unprotected_tables text[];
   anonymous_table_grants text[];
+  missing_global_function_acl text[];
   default_acl_exposure text[];
   exposed_definer_functions text[];
   forbidden_global_privileges text[];
@@ -120,27 +121,49 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL anonymous/PUBLIC public-table grants present: %', anonymous_table_grants;
   END IF;
 
-  -- Future public objects must not silently inherit browser capabilities from Supabase
-  -- default ACLs. Every browser-visible capability must be explicit in a migration.
+  -- PostgreSQL's built-in default grants EXECUTE on new functions to PUBLIC. Merely having
+  -- no pg_default_acl row therefore is NOT safe. Every creator role used by this hosted
+  -- project must have an explicit GLOBAL function-default ACL row proving that built-in
+  -- PUBLIC EXECUTE was overridden.
+  SELECT array_agg(r.rolname ORDER BY r.rolname)
+    INTO missing_global_function_acl
+    FROM pg_roles r
+   WHERE r.rolname IN ('postgres','supabase_admin')
+     AND NOT EXISTS (
+       SELECT 1
+         FROM pg_default_acl d
+        WHERE d.defaclrole=r.oid
+          AND d.defaclnamespace=0
+          AND d.defaclobjtype='f'
+     );
+
+  IF coalesce(cardinality(missing_global_function_acl),0) > 0 THEN
+    RAISE EXCEPTION 'P1_FAIL creator roles lack explicit global function default ACL hardening: %', missing_global_function_acl;
+  END IF;
+
+  -- Future public objects must not silently inherit browser capabilities. Table/sequence
+  -- defaults are public-schema scoped. Function EXECUTE is checked at BOTH global and
+  -- public-schema levels because per-schema REVOKE cannot subtract PostgreSQL's global
+  -- built-in PUBLIC EXECUTE default.
   SELECT array_agg(
-           pg_get_userbyid(d.defaclrole)||':'||coalesce(r.rolname,'PUBLIC')||':'||d.defaclobjtype::text||':'||x.privilege_type
-           ORDER BY pg_get_userbyid(d.defaclrole),coalesce(r.rolname,'PUBLIC'),d.defaclobjtype::text,x.privilege_type
+           pg_get_userbyid(d.defaclrole)||':'||coalesce(n.nspname,'<global>')||':'||coalesce(r.rolname,'PUBLIC')||':'||d.defaclobjtype::text||':'||x.privilege_type
+           ORDER BY pg_get_userbyid(d.defaclrole),coalesce(n.nspname,'<global>'),coalesce(r.rolname,'PUBLIC'),d.defaclobjtype::text,x.privilege_type
          )
     INTO default_acl_exposure
     FROM pg_default_acl d
-    JOIN pg_namespace n ON n.oid=d.defaclnamespace
+    LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
     CROSS JOIN LATERAL aclexplode(d.defaclacl) x
     LEFT JOIN pg_roles r ON r.oid=x.grantee
-   WHERE n.nspname='public'
-     AND pg_get_userbyid(d.defaclrole) IN ('postgres','supabase_admin')
+   WHERE pg_get_userbyid(d.defaclrole) IN ('postgres','supabase_admin')
      AND coalesce(r.rolname,'PUBLIC') IN ('anon','authenticated','PUBLIC')
      AND (
-       d.defaclobjtype IN ('r','S')
-       OR (d.defaclobjtype='f' AND x.privilege_type='EXECUTE')
+       (d.defaclobjtype IN ('r','S') AND n.nspname='public')
+       OR
+       (d.defaclobjtype='f' AND x.privilege_type='EXECUTE' AND (d.defaclnamespace=0 OR n.nspname='public'))
      );
 
   IF coalesce(cardinality(default_acl_exposure),0) > 0 THEN
-    RAISE EXCEPTION 'P1_FAIL public default ACL still auto-exposes future browser objects: %', default_acl_exposure;
+    RAISE EXCEPTION 'P1_FAIL default ACL still auto-exposes future browser objects: %', default_acl_exposure;
   END IF;
 
   -- SECURITY DEFINER functions are privileged mutation/read boundaries. None may remain
