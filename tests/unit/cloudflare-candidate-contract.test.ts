@@ -87,11 +87,15 @@ describe('P4/P6 Cloudflare candidate operator lane', () => {
     expect(runbook).toContain('actual cutover remains forbidden');
   });
 
-  it('runs a non-deploying Wrangler packaging proof in normal CI', () => {
+  it('runs a non-deploying Wrangler packaging proof in normal CI and captures failure evidence', () => {
     expect(workflow).toContain('Cloudflare candidate dry-run');
     expect(workflow).toContain('VITE_SUPABASE_URL: https://ci-placeholder.supabase.co');
     expect(workflow).toContain('npm run candidate:preflight');
     expect(workflow).toContain('Wrangler diagnostic log');
     expect(workflow).toContain("find \"$HOME/.config/.wrangler/logs\"");
+    expect(workflow).toContain('actions/upload-artifact@v4');
+    expect(workflow).toContain('name: cloudflare-candidate-diagnostic');
+    expect(workflow).toContain('path: candidate-preflight.log');
+    expect(workflow).toContain('if: failure()');
   });
 });
