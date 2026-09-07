@@ -41,9 +41,12 @@ npm run candidate:preflight
 `candidate:preflight` performs:
 1. fail-closed browser-env validation;
 2. the production Vite build;
-3. scan of `dist/` for dev/source/privileged markers;
-4. proof that the intended Supabase URL and publishable key were embedded;
-5. `wrangler deploy --dry-run` so Cloudflare packaging is checked without publishing.
+3. removal of generated source-map files from the deployable `dist/` candidate;
+4. scan of the remaining deployable files for dev/source/privileged markers;
+5. proof that the intended Supabase URL and publishable key were embedded;
+6. `wrangler deploy --dry-run` so Cloudflare packaging is checked without publishing.
+
+The normal Vite build may still generate source maps for local/test diagnostics. The candidate builder removes them only from the deployment artifact before security scanning and Wrangler packaging, so source paths are not published while normal build diagnostics remain available.
 
 Do not publish if this fails.
 
