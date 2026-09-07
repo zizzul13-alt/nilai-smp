@@ -47,3 +47,5 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Foundation E2E
         run: npm run test:e2e
+      - name: Production Artifact E2E
+        run: npm run test:e2e:production
