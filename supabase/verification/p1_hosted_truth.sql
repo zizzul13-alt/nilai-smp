@@ -28,6 +28,8 @@ DECLARE
   bucket_mimes text[];
   storage_insert_policy_count integer;
   storage_select_policy_count integer;
+  storage_insert_check text;
+  storage_select_qual text;
   forbidden_storage_policies text[];
 BEGIN
   IF to_regclass('supabase_migrations.schema_migrations') IS NULL THEN
@@ -126,7 +128,8 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL artifact-files MIME allow-list mismatch: %', bucket_mimes;
   END IF;
 
-  SELECT count(*) INTO storage_insert_policy_count
+  SELECT count(*), max(with_check)
+    INTO storage_insert_policy_count, storage_insert_check
     FROM pg_policies
    WHERE schemaname = 'storage'
      AND tablename = 'objects'
@@ -134,7 +137,8 @@ BEGIN
      AND cmd = 'INSERT'
      AND 'authenticated'::name = ANY(roles);
 
-  SELECT count(*) INTO storage_select_policy_count
+  SELECT count(*), max(qual)
+    INTO storage_select_policy_count, storage_select_qual
     FROM pg_policies
    WHERE schemaname = 'storage'
      AND tablename = 'objects'
@@ -144,6 +148,26 @@ BEGIN
 
   IF storage_insert_policy_count <> 1 OR storage_select_policy_count <> 1 THEN
     RAISE EXCEPTION 'P1_FAIL required artifact Storage policies missing/duplicated. insert=% select=%', storage_insert_policy_count, storage_select_policy_count;
+  END IF;
+
+  IF storage_insert_check IS NULL
+     OR position('artifact-files' in storage_insert_check) = 0
+     OR position('artifact_objects' in storage_insert_check) = 0
+     OR position('workspaces' in storage_insert_check) = 0
+     OR position('storage_path' in storage_insert_check) = 0
+     OR position('PENDING_UPLOAD' in storage_insert_check) = 0
+     OR position('auth.uid()' in storage_insert_check) = 0 THEN
+    RAISE EXCEPTION 'P1_FAIL artifact Storage INSERT policy is not the ownership-derived pending-object contract: %', storage_insert_check;
+  END IF;
+
+  IF storage_select_qual IS NULL
+     OR position('artifact-files' in storage_select_qual) = 0
+     OR position('artifact_objects' in storage_select_qual) = 0
+     OR position('workspaces' in storage_select_qual) = 0
+     OR position('storage_path' in storage_select_qual) = 0
+     OR position('READY' in storage_select_qual) = 0
+     OR position('auth.uid()' in storage_select_qual) = 0 THEN
+    RAISE EXCEPTION 'P1_FAIL artifact Storage SELECT policy is not the ownership-derived ready-object contract: %', storage_select_qual;
   END IF;
 
   SELECT array_agg(policyname || ':' || cmd ORDER BY policyname, cmd)
@@ -159,7 +183,7 @@ BEGIN
     RAISE EXCEPTION 'P1_FAIL forbidden browser Storage UPDATE/DELETE policies present: %', forbidden_storage_policies;
   END IF;
 
-  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=17 schema=r3.6-recovery.1 RLS=all-public anon-grants=none artifact-files=private';
+  RAISE NOTICE 'P1_HOSTED_TRUTH PASS: migrations=17 schema=r3.6-recovery.1 RLS=all-public anon-grants=none artifact-files=private owner-policies=exact-shape';
 END
 $$;
 
