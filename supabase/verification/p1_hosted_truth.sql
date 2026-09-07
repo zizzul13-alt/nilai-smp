@@ -123,8 +123,8 @@ BEGIN
   -- Future public objects must not silently inherit browser capabilities from Supabase
   -- default ACLs. Every browser-visible capability must be explicit in a migration.
   SELECT array_agg(
-           pg_get_userbyid(d.defaclrole)||':'||coalesce(r.rolname,'PUBLIC')||':'||d.defaclobjtype||':'||x.privilege_type
-           ORDER BY pg_get_userbyid(d.defaclrole),coalesce(r.rolname,'PUBLIC'),d.defaclobjtype,x.privilege_type
+           pg_get_userbyid(d.defaclrole)||':'||coalesce(r.rolname,'PUBLIC')||':'||d.defaclobjtype::text||':'||x.privilege_type
+           ORDER BY pg_get_userbyid(d.defaclrole),coalesce(r.rolname,'PUBLIC'),d.defaclobjtype::text,x.privilege_type
          )
     INTO default_acl_exposure
     FROM pg_default_acl d
