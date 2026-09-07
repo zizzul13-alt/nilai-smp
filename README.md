@@ -19,7 +19,7 @@ Nilai SMP R3 is a mobile-first, single-teacher daily workspace. Target architect
 - **R3.5 Artifact Core:** stable Artifact identity, append-only ArtifactVersion history, exact LessonVersion/ReportSnapshot provenance, manual-first canonical content, private checksumed DOCX/PDF object metadata, signed downloads, stale-source detection, and archive-first lifecycle.
 - **R3.6 Portable Recovery Core:** owner-derived portable canonical export, exact READY artifact-byte inclusion, whole-manifest + per-object SHA-256 verification, restore-to-empty with stable domain IDs, target-workspace storage-path rewriting, fresh retry ledger, PENDING-before-READY object recovery, and XLSX human escape export.
 - **R3.7 Daily Driver Integration:** Today-first teacher shell, schema-neutral Data & Setup path for existing Academic Spine/Teaching Core entities, focused teaching/correction/reporting navigation, and account-scoped Safe Work visibility without fabricating Schedule, Meeting or AttemptKind.
-- **R3.7 Production-Artifact E2E:** standard Playwright verification builds and serves `dist/`, exercises mobile + desktop workflows against production code, verifies deep SPA re-entry, and rejects reliance on the Vite development runtime.
+- **R3.7 Production-Artifact E2E:** existing source-instrumented browser torture is preserved, while a second mandatory Playwright lane builds and serves `dist/` only, runs mobile + desktop production-boundary checks, verifies deep SPA re-entry, and rejects reliance on the Vite development runtime for production proof.
 
 **NOT PART OF THE R3 IMPLEMENTATION BASELINE**
 
@@ -71,9 +71,12 @@ npm run test:db
 npm run build
 npx playwright install chromium
 npm run test:e2e
+npm run test:e2e:production
 ```
 
-`npm run test:e2e` builds the production artifact and Playwright serves that generated `dist/` through `vite preview`; it does not test against the Vite dev server. The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, continuity lifecycle/idempotency/checkpoint sequencing, Safe Work interruption recovery, atomic bulk commit/idempotency/revision contracts, reporting source consistency, artifact append-only/idempotency/storage metadata contracts, portable restore into a separate empty database, production-artifact browser UX acceptance and production build correctness.
+`npm run test:e2e` preserves high-value browser tests that intentionally load source modules for direct IndexedDB/queue/concurrency torture. `npm run test:e2e:production` separately builds the production artifact and serves only generated `dist/` through `vite preview`. CI requires both lanes; production acceptance cannot pass merely because the Vite dev server works.
+
+The database suite uses disposable PostgreSQL with a minimal Supabase-compatible auth harness. CI covers RLS, continuity lifecycle/idempotency/checkpoint sequencing, Safe Work interruption recovery, atomic bulk commit/idempotency/revision contracts, reporting source consistency, artifact append-only/idempotency/storage metadata contracts, portable restore into a separate empty database, both browser lanes and production build correctness.
 
 Real hosted Supabase Auth/RLS/Storage and exact private Artifact byte transfer remain production-readiness smoke requirements; CI does not fake them with privileged PostgreSQL machinery.
 
@@ -91,7 +94,8 @@ src/services/safeWork/   narrow durable rapid/checkpoint operation queue and syn
 supabase/migrations/     append-only canonical database migrations
 tests/database/          real PostgreSQL contract attacks + separate-db restore proof
 tests/unit/              fast static/domain/regression contracts
-tests/e2e/               production-artifact critical browser acceptance
+tests/e2e/               source-instrumented critical browser torture
+tests/e2e-production/    built-dist production-boundary browser acceptance
 legacy/streamlit/        preserved pre-R3 behavior evidence
 ```
 
