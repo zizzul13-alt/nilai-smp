@@ -1,7 +1,11 @@
 # Architecture
 
 ## Status
-R3.0 Foundation, R3.1 Academic Spine + Teaching Core, R3.2 Safe Work, R3.3 Assessment Core/Rapid Correction/Bulk Assessment, R3.4 Teaching Continuity/Today/Pacing, R3.5 Reporting + Artifacts, and R3.6 portable Recovery Core are implemented on this branch. Legacy migration and final Daily Driver integration remain later R3 work; collaboration, AI and full offline remain out of scope.
+R3.0 Foundation, R3.1 Academic Spine + Teaching Core, R3.2 Safe Work, R3.3 Assessment Core/Rapid Correction/Bulk Assessment, R3.4 Teaching Continuity/Today/Pacing, R3.5 Reporting + Artifacts, R3.6 portable Recovery Core, and R3.7 Daily Driver + production-artifact E2E are implemented and closed on `main`.
+
+Exact R3 closure main is `aaebd50ab6ffd5fd0ab71faa6e92b534ad90dd66`; exact-main verify-foundation run #284 passed the full verification chain. Current schema compatibility remains `r3.6-recovery.1` because R3.7 is schema-neutral.
+
+Production readiness is now a separate operational program governed by `PRODUCTION_READINESS.md`. Legacy migration is conditional on whether historical Streamlit data must cross cutover. Collaboration, AI, full offline, schedule automation, automatic homework, gamification, and generic global search are not prerequisites for first production and are governed by `FUTURE_ROADMAP.md`.
 
 ## Target boundaries
 ```text
@@ -28,8 +32,13 @@ Delivery: Cloudflare Workers Static Assets
 ```
 Supabase/PostgreSQL is canonical operational truth. UI sessions, spreadsheet files and Dexie are not canonical teaching/academic databases. Supabase Storage is a private binary object store referenced by canonical ArtifactObject metadata; Storage itself does not define document identity or provenance.
 
+## Production boundary
+The repository now proves the production artifact separately from source-instrumented browser torture, but hosted production truth is not inferred from CI. Real hosted Supabase Auth/RLS/private Storage, real Artifact byte transfer, portable backup/restore against hosted services, Cloudflare deployment, deployed mobile/desktop smoke, and known-good rollback remain explicit pre-cutover gates.
+
+Cloudflare remains presentation delivery only. First production does not require Worker-side state, D1, KV, Durable Objects, queues, or a second academic backend.
+
 ## Ownership and compatibility
-`auth.users -> workspaces -> all protected records` remains the ownership root. RLS derives `auth.uid()` and workspace-aware FKs reject cross-workspace composition. Narrow RPCs accept no browser-supplied workspace owner. Browser code receives no elevated credential. Current branch compatibility is `r3.6-recovery.1`, owned by the ordered migration chain through portable recovery.
+`auth.users -> workspaces -> all protected records` remains the ownership root. RLS derives `auth.uid()` and workspace-aware FKs reject cross-workspace composition. Narrow RPCs accept no browser-supplied workspace owner. Browser code receives no elevated credential. Current compatibility is `r3.6-recovery.1`, owned by the ordered migration chain through portable recovery.
 
 ## Teaching continuity boundary
 UI Session != Teaching Meeting. A Meeting is an actual teaching occurrence. Browser reload, route change, logout, component unmount and close/X do not change Meeting lifecycle. `start_teaching_meeting_operation()` serializes a Class start, enforces/reuses one `in_progress` Meeting, validates optional owned Lesson/LessonVersion context and records stable op-id replay metadata. The partial unique index on `(workspace_id,class_id)` for `status='in_progress'` is the database invariant behind the same rule.
@@ -71,5 +80,13 @@ Portable recovery is product-level portability, not a claim that provider snapsh
 
 AppliedOperation rows from the source are intentionally not portable academic history. The target starts a fresh idempotency ledger containing the recovery operation and later target-side confirmations, preventing old successful object-confirm operations from replaying against newly PENDING restored metadata.
 
+## Future schedule boundary
+If a planned timetable is added after production, it must remain an expectation layer. A planned slot may help Today suggest a likely Class, but it must never create, complete, cancel, or otherwise fabricate an actual Meeting. Explicit `Start Class` remains the boundary that creates/reuses actual teaching occurrence truth.
+
+## Future AI boundary
+If Teacher Brief/AI is added, deterministic bounded canonical context must exist independently of the provider. AI output is advisory/draft content and receives no authority to mutate Meeting, Checkpoint, Result, Attempt, finalized reporting, Student/Enrollment identity, or historical ArtifactVersion state. Saved AI-assisted documents must use normal append-only Artifact provenance.
+
 ## Legacy
-`legacy/streamlit/` remains behavior evidence only and cannot redefine R3 canonical identities or architecture. Its conversion into the canonical R3 graph belongs to the next R3.6 package and must use extract -> normalize -> validate -> dry-run -> migrate rather than destructive in-place mutation.
+`legacy/streamlit/` remains read-only behavior/source evidence and cannot redefine R3 canonical identities or architecture.
+
+Legacy migration is a **conditional cutover concern**, not unfinished R3 implementation. If historical data is not required, preserve the legacy source/archive and cut over without promoting migration to a blocker. If historical data must cross cutover, migration requires its own extract -> normalize -> validate -> dry-run -> migrate -> reconcile proof and becomes a cutover gate. Indefinite dual-writing between legacy and R3 is forbidden.
