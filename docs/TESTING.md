@@ -10,7 +10,7 @@
 ## Production-artifact browser law
 The existing `npm run test:e2e` lane is preserved because several high-value browser torture tests intentionally import source modules for direct IndexedDB, queue and concurrency attacks. R3.7 does not weaken or delete that coverage.
 
-A separate mandatory `npm run test:e2e:production` lane first runs `npm run build`, then uses `playwright.production.config.ts` to serve only the generated `dist/` through `vite preview`. Its test directory is isolated under `tests/e2e-production/`, so a production-artifact proof cannot accidentally succeed by asking Vite's development server for `/src/*` modules.
+A separate mandatory `npm run test:e2e:production` lane first runs `npm run build`, then uses `playwright.production.config.mjs` to serve only the generated `dist/` through `vite preview`. Its test directory is isolated under `tests/e2e-production/`, so a production-artifact proof cannot accidentally succeed by asking Vite's development server for `/src/*` modules. The small production-only Playwright harness is ESM JavaScript; the application and the existing TypeScript test corpus keep the exact pre-R3.7 TypeScript verification surface.
 
 The production lane runs on both Pixel 7 mobile emulation and Desktop Chrome. A deep re-entry test proves SPA fallback, hashed `/assets/` loading, and absence of `/@vite/client` or `/src/main.tsx` runtime delivery. Cloudflare Workers Static Assets is configured to serve the same `dist/` with SPA fallback.
 
