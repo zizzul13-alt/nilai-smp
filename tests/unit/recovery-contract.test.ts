@@ -1,13 +1,14 @@
 import{describe,expect,it}from'vitest';
 import{readFileSync}from'node:fs';
-import{assertArtifactPayloadCompleteness,makeHumanEscapeXlsx,migratePortableBackup,restoreOperationId,type PortableBackup}from'../../src/services/recovery/portableBackup';
+import{assertArtifactPayloadCompleteness,assertPortableTableCompleteness,makeHumanEscapeXlsx,migratePortableBackup,REQUIRED_PORTABLE_TABLES,restoreOperationId,type PortableBackup}from'../../src/services/recovery/portableBackup';
 
 const sql=readFileSync('supabase/migrations/202609070001_recovery_portable_backup.sql','utf8');
 const service=readFileSync('src/services/recovery/portableBackup.ts','utf8');
 const ui=readFileSync('src/components/BackupRestore.tsx','utf8');
 const docs=readFileSync('docs/BACKUP_RESTORE.md','utf8');
 
-function sampleBackup(tables:PortableBackup['tables']={}):PortableBackup{return{format:'nilai-smp-portable-backup',format_version:1,source_schema_version:'r3.6-recovery.1',exported_at:'x',source_workspace_id:'w',tables,artifact_payloads:[],checksum_sha256:'a'.repeat(64)};}
+function emptyTables(){return Object.fromEntries(REQUIRED_PORTABLE_TABLES.map(name=>[name,[]])) as PortableBackup['tables'];}
+function sampleBackup(overrides:PortableBackup['tables']={}):PortableBackup{return{format:'nilai-smp-portable-backup',format_version:1,source_schema_version:'r3.6-recovery.1',exported_at:'x',source_workspace_id:'w',tables:{...emptyTables(),...overrides},artifact_payloads:[],checksum_sha256:'a'.repeat(64)};}
 
 describe('R3.6 portable recovery contracts',()=>{
   it('exports a bounded owner-derived canonical graph without browser workspace ownership',()=>{
@@ -17,12 +18,26 @@ describe('R3.6 portable recovery contracts',()=>{
     expect(sql).not.toContain('p_workspace_id');
     for(const table of['students','enrollments','assessment_results','assessment_attempts','report_snapshots','artifact_versions','artifact_objects'])expect(sql).toContain(`'${table}'`);
   });
+  it('takes a write-blocking canonical snapshot before iterating export tables',()=>{
+    const lock=sql.indexOf('lock table public.workspaces,public.app_schema_version');
+    const loop=sql.indexOf('foreach table_name in array public.portable_backup_table_names() loop');
+    expect(lock).toBeGreaterThan(-1);expect(lock).toBeLessThan(loop);expect(sql).toContain('in share mode');
+    for(const table of REQUIRED_PORTABLE_TABLES)expect(sql.slice(lock,loop)).toContain(`public.${table}`);
+  });
   it('restores only to empty workspace and preserves stable domain rows',()=>{
     expect(sql).toContain("raise exception 'restore target is not empty: %'");
     expect(sql).toContain("'recovery.restore'");
     expect(sql).toContain("jsonb_build_object('workspace_id',owned_workspace_id)");
     expect(sql).toContain("jsonb_build_object('current_snapshot_id',null)");
     expect(sql).toContain("jsonb_build_object('current_version_id',null)");
+  });
+  it('fails closed when a required canonical table or source schema is missing',()=>{
+    expect(()=>assertPortableTableCompleteness({})).toThrow(/academic_years/);
+    const sample=sampleBackup();delete sample.tables.students;
+    expect(()=>migratePortableBackup(sample)).toThrow(/students/);
+    expect(()=>migratePortableBackup({...sampleBackup(),source_schema_version:'r3.7-daily-driver.1'})).toThrow(/Schema sumber/);
+    expect(sql).toContain("backup table missing or invalid");
+    expect(sql).toContain("source_schema<>'r3.6-recovery.1'");
   });
   it('rewrites ArtifactObject storage scope for the target workspace and restores bytes to that canonical target path',()=>{
     expect(sql).toContain("owned_workspace_id::text||'/'||(value->>'artifact_id')||'/'||(value->>'artifact_version_id')");
@@ -48,6 +63,11 @@ describe('R3.6 portable recovery contracts',()=>{
     expect(service).toContain("manifestHash!==backup.checksum_sha256");
     expect(service).toContain("String(meta.sha256)!==hash");
     expect(ui).toContain('Restore verified backup');
+  });
+  it('keeps binary base64 out of the canonical restore RPC payload',()=>{
+    expect(service).toContain('const{artifact_payloads:_,...serverManifest}=backup');
+    expect(service).toContain('p_manifest:serverManifest');
+    expect(service).not.toContain('p_manifest:backup});');
   });
   it('uses a deterministic restore operation identity across browser restarts',()=>{
     const hash='0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
