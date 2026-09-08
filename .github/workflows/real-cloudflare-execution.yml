@@ -83,7 +83,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm run candidate:smoke -- "${{ steps.deploy_v1.outputs.url }}" | tee smoke-v1.log
+          : > smoke-v1.log
+          for attempt in $(seq 1 12); do
+            echo "P4_SMOKE_ATTEMPT phase=v1 attempt=${attempt}/12" | tee -a smoke-v1.log
+            if npm run candidate:smoke -- "${{ steps.deploy_v1.outputs.url }}" 2>&1 | tee -a smoke-v1.log; then
+              echo "P4_SMOKE_READY phase=v1 attempt=${attempt}" | tee -a smoke-v1.log
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::P4_SMOKE_TIMEOUT V1 did not become ready within bounded propagation window"
+          exit 1
 
       - name: Browser production smoke V1
         env:
@@ -139,7 +149,20 @@ jobs:
           NODE
 
       - name: Smoke controlled V2
-        run: npm run candidate:smoke -- "${{ steps.deploy_v2.outputs.url }}" | tee smoke-v2.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > smoke-v2.log
+          for attempt in $(seq 1 12); do
+            echo "P6_SMOKE_ATTEMPT phase=v2 attempt=${attempt}/12" | tee -a smoke-v2.log
+            if npm run candidate:smoke -- "${{ steps.deploy_v2.outputs.url }}" 2>&1 | tee -a smoke-v2.log; then
+              echo "P6_SMOKE_READY phase=v2 attempt=${attempt}" | tee -a smoke-v2.log
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::P6_SMOKE_TIMEOUT controlled V2 did not become ready within bounded propagation window"
+          exit 1
 
       - name: Roll back to V1 exact candidate
         env:
@@ -159,7 +182,20 @@ jobs:
           NODE
 
       - name: URL and deep-SPA smoke after rollback
-        run: npm run candidate:smoke -- "${{ steps.deploy_v1.outputs.url }}" | tee smoke-after-rollback.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > smoke-after-rollback.log
+          for attempt in $(seq 1 12); do
+            echo "P6_SMOKE_ATTEMPT phase=rollback attempt=${attempt}/12" | tee -a smoke-after-rollback.log
+            if npm run candidate:smoke -- "${{ steps.deploy_v1.outputs.url }}" 2>&1 | tee -a smoke-after-rollback.log; then
+              echo "P6_SMOKE_READY phase=rollback attempt=${attempt}" | tee -a smoke-after-rollback.log
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::P6_SMOKE_TIMEOUT rollback target did not become ready within bounded propagation window"
+          exit 1
 
       - name: Browser smoke after rollback
         env:
