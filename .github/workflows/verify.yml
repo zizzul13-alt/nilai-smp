@@ -72,7 +72,19 @@ jobs:
           retention-days: 1
           if-no-files-found: error
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        shell: bash
+        run: |
+          # GitHub-hosted runners may carry a Google Chrome APT source even though
+          # Playwright's bundled Chromium does not use it. Keep Playwright's
+          # dependency installation strict while removing that unrelated source
+          # from apt metadata resolution.
+          if [ -f /etc/apt/sources.list.d/google-chrome.list ]; then
+            sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          fi
+          if [ -f /etc/apt/sources.list.d/google-chrome.list.save ]; then
+            sudo rm -f /etc/apt/sources.list.d/google-chrome.list.save
+          fi
+          npx playwright install --with-deps chromium
       - name: Foundation E2E
         run: npm run test:e2e
       - name: Production Artifact E2E
