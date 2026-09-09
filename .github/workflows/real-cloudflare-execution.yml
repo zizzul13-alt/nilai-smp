@@ -3,7 +3,7 @@ name: real-cloudflare-execution
 on:
   push:
     branches:
-      - ops/p4-real-external-execution-20260908
+      - ops/exact-candidate-acceptance-20260910
 
 permissions:
   contents: read
@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      EXACT_CANDIDATE_SHA: 0ebe9b66cc281fb24df7b23134104feb2d01daa0
       VITE_SUPABASE_URL: https://ifnnmmilurqtvvxywrlo.supabase.co
       VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Jx_jctLO1T0Bcn4juuRc0w_coYKu2g_
       CF_ACCOUNT_ID_PRIMARY: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -27,7 +28,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 75eafd6824a4ea07101fe1b1f1b04d8775d4c218
+          ref: 0ebe9b66cc281fb24df7b23134104feb2d01daa0
+
+      - name: Require exact candidate checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXACT_CANDIDATE_SHA"
+          echo "EXACT_CANDIDATE_CHECKOUT PASS sha=$actual"
 
       - uses: actions/setup-node@v4
         with:
@@ -55,7 +64,13 @@ jobs:
         run: npm run candidate:preflight
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        shell: bash
+        run: |
+          while IFS= read -r source_file; do
+            echo "Removing unrelated Chrome APT source: $source_file"
+            sudo rm -f "$source_file"
+          done < <(sudo grep -IlR 'dl\.google\.com/linux/chrome-stable' /etc/apt/sources.list.d 2>/dev/null || true)
+          npx playwright install --with-deps chromium
 
       - name: Deploy V1 exact candidate
         id: deploy_v1
@@ -64,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler deploy --message "Nilai SMP P4 exact candidate ${GITHUB_SHA}"
+          npx wrangler deploy --message "Nilai SMP P4 exact candidate ${EXACT_CANDIDATE_SHA}"
           node --input-type=module <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
           const records = readFileSync('wrangler-v1.ndjson', 'utf8')
@@ -131,8 +146,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'rollback-probe run=%s base=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > dist/rollback-probe.txt
-          npx wrangler deploy --message "Nilai SMP P6 controlled rollback probe ${GITHUB_SHA}"
+          printf 'rollback-probe run=%s base=%s\n' "$GITHUB_RUN_ID" "$EXACT_CANDIDATE_SHA" > dist/rollback-probe.txt
+          npx wrangler deploy --message "Nilai SMP P6 controlled rollback probe ${EXACT_CANDIDATE_SHA}"
           node --input-type=module <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
           const records = readFileSync('wrangler-v2.ndjson', 'utf8')
@@ -170,7 +185,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler rollback "$V1_VERSION" --message "Nilai SMP P6 rollback proof to exact candidate ${GITHUB_SHA}"
+          npx wrangler rollback "$V1_VERSION" --message "Nilai SMP P6 rollback proof to exact candidate ${EXACT_CANDIDATE_SHA}"
           npx wrangler deployments status --json | tee deployment-status-after-rollback.json
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -228,10 +243,9 @@ jobs:
         run: |
           cat > cloudflare-execution-summary.txt <<EOF
           P4_P6_REAL_EXECUTION=PASS
-          exact_candidate_sha=75eafd6824a4ea07101fe1b1f1b04d8775d4c218
+          exact_candidate_sha=${EXACT_CANDIDATE_SHA}
           schema_version=r3.6-recovery.1
           supabase_project_ref=ifnnmmilurqtvvxywrlo
-          wrangler_version=4.127.1
           worker_name=nilai-smp
           deployed_url=${DEPLOYED_URL}
           known_good_v1=${V1_VERSION}
