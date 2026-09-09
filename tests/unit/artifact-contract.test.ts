@@ -136,7 +136,7 @@ describe('R3.5-02 artifact contracts',()=>{
 
   it('exposes Artifacts as a workspace, not a separate app',()=>{
     expect(app).toContain("|'artifacts'");
-    expect(app).toContain('>Artifacts</button>');
+    expect(app).toContain('>Dokumen</button>');
     expect(app).toContain('<Artifacts client={client} workspaceId={workspaceId} />');
   });
 });
