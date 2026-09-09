@@ -97,19 +97,19 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
             <button type="button" className="secondary compact-action" onClick={logout}>Keluar</button>
           </header>
           <nav className="daily-nav" aria-label="Pekerjaan utama">
-            <button type="button" className={mode === 'today' ? '' : 'secondary'} onClick={() => setMode('today')}>Today</button>
-            <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => openContinuity()}>Teaching</button>
-            <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => openRapid()}>Rapid Correction</button>
-            <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Assessment</button>
-            <button type="button" className={mode === 'reporting' ? '' : 'secondary'} onClick={() => setMode('reporting')}>Reporting</button>
+            <button type="button" className={mode === 'today' ? '' : 'secondary'} onClick={() => setMode('today')}>Hari ini</button>
+            <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => openContinuity()}>Mengajar</button>
+            <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => openRapid()}>Koreksi cepat</button>
+            <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Penilaian</button>
+            <button type="button" className={mode === 'reporting' ? '' : 'secondary'} onClick={() => setMode('reporting')}>Laporan</button>
           </nav>
           <details className="more-tools" open={['bulk','artifacts','recovery','setup'].includes(mode)}>
             <summary>Data, dokumen & alat lain</summary>
             <div className="tool-nav">
-              <button type="button" className={mode === 'setup' ? '' : 'secondary'} onClick={() => setMode('setup')}>Data & Setup</button>
-              <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Bulk Entry / Import</button>
-              <button type="button" className={mode === 'artifacts' ? '' : 'secondary'} onClick={() => setMode('artifacts')}>Artifacts</button>
-              <button type="button" className={mode === 'recovery' ? '' : 'secondary'} onClick={() => setMode('recovery')}>Recovery</button>
+              <button type="button" className={mode === 'setup' ? '' : 'secondary'} onClick={() => setMode('setup')}>Data & Pengaturan</button>
+              <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Entri Massal / Impor</button>
+              <button type="button" className={mode === 'artifacts' ? '' : 'secondary'} onClick={() => setMode('artifacts')}>Dokumen</button>
+              <button type="button" className={mode === 'recovery' ? '' : 'secondary'} onClick={() => setMode('recovery')}>Pemulihan</button>
             </div>
           </details>
           {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
