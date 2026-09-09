@@ -74,16 +74,15 @@ jobs:
       - name: Install Chromium
         shell: bash
         run: |
-          # GitHub-hosted runners may carry a Google Chrome APT source even though
-          # Playwright's bundled Chromium does not use it. Keep Playwright's
-          # dependency installation strict while removing that unrelated source
-          # from apt metadata resolution.
-          if [ -f /etc/apt/sources.list.d/google-chrome.list ]; then
-            sudo rm -f /etc/apt/sources.list.d/google-chrome.list
-          fi
-          if [ -f /etc/apt/sources.list.d/google-chrome.list.save ]; then
-            sudo rm -f /etc/apt/sources.list.d/google-chrome.list.save
-          fi
+          # GitHub-hosted runner images may register Google Chrome through either
+          # legacy .list files or deb822 .sources files. Playwright's bundled
+          # Chromium does not use that third-party repository. Remove only source
+          # definitions that actually point at Chrome before Playwright resolves
+          # its Ubuntu dependencies; keep the dependency/browser install strict.
+          while IFS= read -r source_file; do
+            echo "Removing unrelated Chrome APT source: $source_file"
+            sudo rm -f "$source_file"
+          done < <(sudo grep -IlR 'dl\.google\.com/linux/chrome-stable' /etc/apt/sources.list.d 2>/dev/null || true)
           npx playwright install --with-deps chromium
       - name: Foundation E2E
         run: npm run test:e2e
