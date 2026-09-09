@@ -56,7 +56,7 @@ describe('R3.3 assessment usability closure', () => {
   });
 
   it('exposes Assessment creation alongside continuity/correction/bulk workflows without adding new assessment schema semantics', () => {
-    expect(ui).toContain('Buat Assessment');
+    expect(ui).toContain('Buat Penilaian');
     expect(ui).toContain('loadAssessmentCreationContext');
     expect(ui).toContain('createAssessment(client, workspaceId');
     expect(app).toContain("'continuity'|'assessments'|'rapid'|'bulk'");
