@@ -22,7 +22,7 @@ describe('R3.5-01 reporting contracts',()=>{
     expect(migration).not.toContain('best_remedial_score');
     expect(migration).not.toContain('greatest(r.score');
     expect(migration).not.toMatch(/from public\.assessment_attempts/);
-    expect(ui).toContain('Raw REMEDIAL Attempt tetap evidence dan tidak otomatis dipromosikan menjadi nilai rapor.');
+    expect(ui).toContain('Attempt REMEDIAL mentah tetap menjadi bukti dan tidak otomatis dipromosikan menjadi nilai rapor.');
   });
 
   it('keeps KKM separate from the arithmetic formula',()=>{
@@ -36,7 +36,7 @@ describe('R3.5-01 reporting contracts',()=>{
     expect(migration).toContain("coalesce(r.state,'UNCHECKED')");
     expect(migration).toContain("when r.state='MISSING' and policy.missing_policy='ZERO'");
     expect(migration).toContain("raise exception 'cannot finalize while UNCHECKED evidence remains' using errcode='P3506'");
-    expect(ui).toContain('UNCHECKED memblok Finalize');
+    expect(ui).toContain('UNCHECKED memblok finalisasi');
   });
 
   it('freezes one consistent canonical source before producing snapshot rows',()=>{
@@ -55,7 +55,7 @@ describe('R3.5-01 reporting contracts',()=>{
     expect(migration).toContain("'reporting.cycle.finalized'");
     expect(migration).toContain("'reporting.cycle.reopened'");
     expect(migration).toContain("raise exception 'reporting cycle is finalized; reopen before recalculation'");
-    expect(ui).toContain('Reopen untuk koreksi faktual');
+    expect(ui).toContain('Buka kembali untuk koreksi faktual');
   });
 
   it('binds current snapshots and rows to the exact cycle/class graph',()=>{
@@ -85,7 +85,7 @@ describe('R3.5-01 reporting contracts',()=>{
 
   it('exposes Reporting as one workspace rather than a dashboard subsystem',()=>{
     expect(app).toContain("|'reporting'");
-    expect(app).toContain('>Reporting</button>');
+    expect(app).toContain('>Laporan</button>');
     expect(app).toContain('<Reporting client={client} workspaceId={workspaceId} />');
   });
 

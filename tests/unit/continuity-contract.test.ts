@@ -110,7 +110,7 @@ describe('R3.4 continuity contracts',()=>{
 
   it('UI keeps durable enqueue, persisted sync status, and canonical refresh as separate safety phases',()=>{
     const enqueue=ui.indexOf('enqueueMeetingCheckpoint');
-    const pendingSafe=ui.indexOf("Pending Safe — checkpoint sudah durable di perangkat",enqueue);
+    const pendingSafe=ui.indexOf("Pending Safe — checkpoint sudah durabel di perangkat",enqueue);
     const sync=ui.indexOf('worker.syncNamespace(userId,workspaceId)',pendingSafe);
     const persistedRead=ui.indexOf('safeWorkDb.operations.get(op.op_id)',sync);
     const safetyNotice=ui.indexOf('checkpointSafetyNotice(remaining)',persistedRead);
@@ -122,7 +122,7 @@ describe('R3.4 continuity contracts',()=>{
     expect(safetyNotice).toBeGreaterThan(persistedRead);
     expect(canonicalRefresh).toBeGreaterThan(safetyNotice);
     expect(ui).toContain('withCheckpointRefreshFailure');
-    expect(ui).toContain('Failed — checkpoint belum tersimpan aman di perangkat');
+    expect(ui).toContain('Gagal — checkpoint belum tersimpan aman di perangkat');
   });
 
   it('safety mapper reports actual persisted state and never downgrades Saved on refresh failure',()=>{
@@ -140,8 +140,8 @@ describe('R3.4 continuity contracts',()=>{
   });
 
   it('explicit lifecycle remains explicit and cross-tab coordination is advisory, not the safety decision',()=>{
-    expect(ui).toContain('Complete Class');
-    expect(ui).toContain('Cancel Meeting');
+    expect(ui).toContain('Selesaikan Kelas');
+    expect(ui).toContain('Batalkan Pertemuan');
     expect(ui).toContain('subscribeSafeWorkChanges');
     expect(ui).not.toContain("return()=>{void changeMeetingStatus('completed')");
   });

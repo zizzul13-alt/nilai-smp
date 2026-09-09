@@ -10,6 +10,6 @@ test('new durable checkpoint remains visible when canonical Today refresh fails'
   await expect(page.getByText('Local Offline LAST',{exact:true})).toBeVisible();
   await expect(page.getByText('Local Offline NEXT',{exact:true})).toBeVisible();
   await expect(page.getByText(/PENDING SAFE · belum terkonfirmasi server/)).toBeVisible();
-  await expect(page.getByText(/Today belum dapat menyelaraskan konteks server/)).toBeVisible();
+  await expect(page.getByText(/Halaman Hari ini belum dapat menyelaraskan konteks server/)).toBeVisible();
   await expect(page.getByText('Server LAST',{exact:true})).toHaveCount(0);
 });

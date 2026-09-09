@@ -31,9 +31,9 @@ test('actual TeachingContinuity UI rechecks durable cross-tab work before Comple
 
   await pageA.evaluate(async path=>{const harness=await import(path);await harness.mountContinuityUiHarness('M1');},harnessPath);
   const ui=pageA.locator('#continuity-test-root');
-  const complete=ui.getByRole('button',{name:'Complete Class'});
+  const complete=ui.getByRole('button',{name:'Selesaikan Kelas'});
   await expect(ui.locator('select')).toHaveValue('C1');
-  await expect(ui.getByText('IN PROGRESS')).toBeVisible();
+  await expect(ui.getByText('SEDANG BERJALAN')).toBeVisible();
   await expect(complete).toBeEnabled();
 
   // Simulate a durable Page B write whose advisory signal is delayed/missed.
@@ -57,7 +57,7 @@ test('actual TeachingContinuity UI rechecks durable cross-tab work before Comple
 
   // Repeat through the real Cancel button on a new active Meeting.
   await pageA.evaluate(async path=>{const harness=await import(path);await harness.mountContinuityUiHarness('M2');},harnessPath);
-  const cancel=ui.getByRole('button',{name:'Cancel Meeting'});
+  const cancel=ui.getByRole('button',{name:'Batalkan Pertemuan'});
   await expect(cancel).toBeEnabled();
   const cancelOp='c1000000-0000-0000-0000-000000000002';
   await addDurableCheckpointWithoutAdvisorySignal(pageB,'M2',cancelOp);

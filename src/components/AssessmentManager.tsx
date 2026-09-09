@@ -56,7 +56,7 @@ export function AssessmentManager({ client, workspaceId }: { client: SupabaseCli
       });
       setTitle('');
       setDescription('');
-      setMessage(`Assessment “${created.title}” siap dipakai.`);
+      setMessage(`Penilaian “${created.title}” siap dipakai.`);
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -66,17 +66,17 @@ export function AssessmentManager({ client, workspaceId }: { client: SupabaseCli
   }
 
   if (!context) {
-    return <section className="assessment-manager"><p role="status">Memuat Assessment…</p>{message ? <p role="alert">{message}</p> : null}</section>;
+    return <section className="assessment-manager"><p role="status">Memuat penilaian…</p>{message ? <p role="alert">{message}</p> : null}</section>;
   }
 
   return (
     <section className="assessment-manager">
-      <p className="eyebrow">Assessment workspace</p>
-      <h2>Buat Assessment</h2>
-      <p>Buat identitas penilaian sekali, lalu gunakan di Rapid Correction atau Bulk Entry.</p>
+      <p className="eyebrow">Ruang kerja penilaian</p>
+      <h2>Buat Penilaian</h2>
+      <p>Buat identitas penilaian sekali, lalu gunakan di Koreksi Cepat atau Entri Massal.</p>
 
       {context.classes.length === 0 ? (
-        <p role="status">Belum ada kelas aktif. Assessment baru belum bisa dibuat.</p>
+        <p role="status">Belum ada kelas aktif. Penilaian baru belum bisa dibuat.</p>
       ) : (
         <form className="auth-form" onSubmit={submit}>
           <label>
@@ -87,7 +87,7 @@ export function AssessmentManager({ client, workspaceId }: { client: SupabaseCli
           </label>
 
           <label>
-            Judul Assessment
+            Judul Penilaian
             <input value={title} disabled={busy} maxLength={160} onChange={event => setTitle(event.target.value)} required placeholder="Contoh: Kuis Bab 2" />
           </label>
 
@@ -97,21 +97,21 @@ export function AssessmentManager({ client, workspaceId }: { client: SupabaseCli
           </label>
 
           <label>
-            Scoring Profile
+            Profil Penilaian
             <select value={profileId} disabled={busy} onChange={event => setProfileId(event.target.value)}>
-              <option value="">Tanpa profile khusus</option>
+              <option value="">Tanpa profil khusus</option>
               {context.scoringProfiles.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
             </select>
           </label>
 
-          <button disabled={busy || !title.trim()}>{busy ? 'Menyimpan…' : 'Buat Assessment'}</button>
+          <button disabled={busy || !title.trim()}>{busy ? 'Menyimpan…' : 'Buat Penilaian'}</button>
         </form>
       )}
 
       {message ? <p role="status">{message}</p> : null}
 
       <div className="assessment-list">
-        <h3>Assessment aktif</h3>
+        <h3>Penilaian aktif</h3>
         {context.assessments.length === 0 ? <p>Belum ada.</p> : context.assessments.map(row => (
           <div key={row.id} className="preview-row">
             <strong>{row.title}</strong> · {context.classes.find(cls => cls.id === row.class_id)?.display_name ?? 'Kelas tidak aktif'} · {row.status}

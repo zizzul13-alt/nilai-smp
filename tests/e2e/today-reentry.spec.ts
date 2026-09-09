@@ -6,18 +6,18 @@ async function snapshot(page:Page){return page.evaluate(async(h:string)=>(await 
 test('Today dispatches active Meeting directly to the correct Teaching class',async({page})=>{
   await mount(page,'active');
   await expect(page.getByRole('heading',{name:'Apa yang penting sekarang?'})).toBeVisible();
-  await expect(page.getByText('VIII A · Meeting aktif')).toBeVisible();
+  await expect(page.getByText('VIII A · Pertemuan aktif')).toBeVisible();
   await expect(page.getByText('Halaman 37').first()).toBeVisible();
   await expect(page.getByText('Nomor 3').first()).toBeVisible();
-  const primary=page.getByRole('button',{name:'CONTINUE CLASS'});await expect(primary).toBeVisible();await primary.click();
+  const primary=page.getByRole('button',{name:'LANJUTKAN KELAS'});await expect(primary).toBeVisible();await primary.click();
   expect((await snapshot(page)).nav).toEqual([{surface:'continuity',id:'C1'}]);
 });
 
 test('Today resumes active correction at exact Assessment and restores saved enrollment cursor once',async({page})=>{
   await mount(page,'correction',{followRapid:true});
   await expect(page.getByText('Kuis Gerak').first()).toBeVisible();
-  const resume=page.getByRole('button',{name:'RESUME CORRECTION',exact:true});await expect(resume).toBeVisible();await resume.click();
-  await expect(page.getByLabel('Assessment')).toHaveValue('A1');
+  const resume=page.getByRole('button',{name:'LANJUTKAN KOREKSI',exact:true});await expect(resume).toBeVisible();await resume.click();
+  await expect(page.getByLabel('Penilaian')).toHaveValue('A1');
   await expect(page.getByText('Siswa E9',{exact:true})).toBeVisible();
   await page.getByLabel('Cari pemilik kertas').fill('9012');
   await page.getByRole('button',{name:/Siswa E12/}).click();
@@ -31,10 +31,10 @@ test('stale context is historical and Start From Today appends a forward baselin
   await mount(page,'stale');
   await expect(page.getByText(/Konteks lama — cek kembali/)).toBeVisible();
   await expect(page.getByText('Bab lama',{exact:true}).first()).toBeVisible();
-  await page.getByRole('button',{name:'START FROM TODAY'}).first().click();
-  await expect(page.getByRole('heading',{name:'START FROM TODAY'})).toBeVisible();
-  await page.getByLabel('LAST / STOPPED AT').fill('Bab 7 kondisi nyata');
-  await page.getByLabel('NEXT STEP').fill('Latihan baru');
+  await page.getByRole('button',{name:'MULAI DARI HARI INI'}).first().click();
+  await expect(page.getByRole('heading',{name:'MULAI DARI HARI INI'})).toBeVisible();
+  await page.getByLabel('TERAKHIR / BERHENTI DI').fill('Bab 7 kondisi nyata');
+  await page.getByLabel('LANGKAH BERIKUTNYA').fill('Latihan baru');
   await page.getByRole('button',{name:'Simpan baseline'}).click();
   await expect(page.getByText(/Baseline baru disimpan/)).toBeVisible();
   await expect(page.getByText('Bab 7 kondisi nyata',{exact:true}).first()).toBeVisible();
@@ -46,29 +46,29 @@ test('stale context is historical and Start From Today appends a forward baselin
 
 test('stale re-entry actions are hidden for a Class with an active Meeting',async({page})=>{
   await mount(page,'active-stale');
-  await expect(page.getByRole('button',{name:'CONTINUE CLASS'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Quick Update'})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Start From Today'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'LANJUTKAN KELAS'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Perbarui konteks'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Mulai dari hari ini'})).toHaveCount(0);
 });
 
 test('Today stays useful without active class work or schedule data',async({page})=>{
   await mount(page,'empty');
-  await expect(page.getByText(/Tidak ada work yang perlu perhatian/)).toBeVisible();
+  await expect(page.getByText(/Tidak ada pekerjaan yang perlu perhatian/)).toBeVisible();
   await expect(page.getByText(/Tidak ada jadwal yang perlu dikonfigurasi/)).toBeVisible();
-  await expect(page.getByText(/tidak ada "next class" yang difabrikasi/i)).toBeVisible();
+  await expect(page.getByText(/Tidak ada “kelas berikutnya” yang dibuat-buat/i)).toBeVisible();
   await expect(page.getByText(/scheduled/i)).toHaveCount(0);
 });
 
 test('Safe Work without a NOW primary is attention, not a false empty state',async({page})=>{
   await mount(page,'empty',{checkpoint:{meetingId:'M-orphan',stoppedAt:'Local failed',nextStep:'Recover',status:'FAILED'}});
-  await expect(page.getByText(/Tidak ada work yang perlu perhatian/)).toHaveCount(0);
-  await expect(page.getByText(/Tidak ada pekerjaan utama di NOW/)).toBeVisible();
+  await expect(page.getByText(/Tidak ada pekerjaan yang perlu perhatian/)).toHaveCount(0);
+  await expect(page.getByText(/Tidak ada pekerjaan utama sekarang/)).toBeVisible();
   await expect(page.getByText(/1 FAILED/)).toBeVisible();
 });
 
 test('Before Leaving truthfully surfaces Pending Safe and disappears when clean',async({page})=>{
   await mount(page,'pending',{pending:true});
-  await expect(page.getByRole('heading',{name:'BEFORE LEAVING'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'SEBELUM SELESAI'})).toBeVisible();
   await expect(page.getByText(/1 Pending Safe/)).toBeVisible();
   await expect(page.getByText(/Saved/)).toHaveCount(0);
   await page.evaluate(async({h,name}:{h:string;name:string})=>{const mod=await import(h);await mod.remountTodayWithoutPending(name);},{h:harness,name:'active'});
@@ -106,28 +106,28 @@ test('checkpoint for an older Meeting stays recovery attention and cannot overla
 
 test('old Meeting checkpoint recovery resolves authoritative Class instead of latest Today Meeting',async({page})=>{
   await mount(page,'old-recovery',{checkpoint:{meetingId:'M-old',stoppedAt:'Old pending',nextStep:'Recover',status:'PENDING_SAFE'},meetingMap:{'M-old':'C1'}});
-  await page.getByRole('button',{name:'Open recovery surface'}).click();
+  await page.getByRole('button',{name:'Buka pemulihan'}).click();
   await expect.poll(async()=>JSON.stringify((await snapshot(page)).nav)).toBe(JSON.stringify([{surface:'continuity',id:'C1'}]));
 });
 
 test('checkpoint recovery resolves Class outside the bounded 24-row Today window',async({page})=>{
   await mount(page,'outside-window',{checkpoint:{meetingId:'M25',stoppedAt:'C25 pending',nextStep:'Recover',status:'PENDING_SAFE'},meetingMap:{M25:'C25'}});
-  await page.getByRole('button',{name:'Open recovery surface'}).click();
+  await page.getByRole('button',{name:'Buka pemulihan'}).click();
   await expect.poll(async()=>JSON.stringify((await snapshot(page)).nav)).toBe(JSON.stringify([{surface:'continuity',id:'C25'}]));
 });
 
 test('unresolved checkpoint Class stays visible and never routes to default Class',async({page})=>{
   await mount(page,'empty',{checkpoint:{meetingId:'M-unknown',stoppedAt:'Unknown pending',nextStep:'Recover',status:'PENDING_SAFE'}});
-  await page.getByRole('button',{name:'Open recovery surface'}).click();
-  await expect(page.getByText('Class untuk checkpoint ini belum dapat ditentukan.')).toBeVisible();
+  await page.getByRole('button',{name:'Buka pemulihan'}).click();
+  await expect(page.getByText('Kelas untuk checkpoint ini belum dapat ditentukan.')).toBeVisible();
   expect((await snapshot(page)).nav).toEqual([]);
   await expect(page.getByText(/1 Pending Safe/)).toBeVisible();
 });
 
 test('Today read error is unknown state with Retry, never an empty claim',async({page})=>{
   await mount(page,'empty',{failReads:true});
-  await expect(page.getByRole('heading',{name:'Today belum dapat dimuat'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Halaman Hari ini belum dapat dimuat'})).toBeVisible();
   await expect(page.getByText(/bukan berarti tidak ada pekerjaan/)).toBeVisible();
   await expect(page.getByRole('button',{name:'Coba lagi'})).toBeVisible();
-  await expect(page.getByText(/Tidak ada work yang perlu perhatian/)).toHaveCount(0);
+  await expect(page.getByText(/Tidak ada pekerjaan yang perlu perhatian/)).toHaveCount(0);
 });

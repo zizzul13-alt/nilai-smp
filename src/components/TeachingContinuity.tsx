@@ -115,11 +115,11 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
     try{
       const result=await startTeachingMeeting(client,{opId,classId,lessonId:lessonId||null,lessonVersionId:lessonVersionId||null});
       setStartOpId(null);
-      const savedText=result.outcome==='continued'?'Meeting aktif sudah ada — konteks yang sama dilanjutkan.':'Class dimulai. Meeting aktual tercatat.';
+      const savedText=result.outcome==='continued'?'Pertemuan aktif sudah ada — konteks yang sama dilanjutkan.':'Kelas dimulai. Pertemuan aktual tercatat.';
       setNotice({kind:'info',text:savedText});
-      try{await refreshContinuityOnly();}catch{setNotice({kind:'info',text:`${savedText} Latest view belum dapat refresh; coba refresh tampilan.`});}
+      try{await refreshContinuityOnly();}catch{setNotice({kind:'info',text:`${savedText} Tampilan terbaru belum dapat dimuat; coba muat ulang.`});}
     }catch(error){
-      setNotice({kind:'error',text:`${error instanceof Error?error.message:String(error)} Retry Start Class akan memakai operation id yang sama.`});
+      setNotice({kind:'error',text:`${error instanceof Error?error.message:String(error)} Percobaan ulang Mulai Kelas akan memakai operation id yang sama.`});
     }finally{setBusy(false);}
   }
 
@@ -131,17 +131,17 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
     try{
       op=await withMeetingContinuityLock(userId,workspaceId,activeMeeting.id,()=>enqueueMeetingCheckpoint(safeWorkDb,{authUserId:userId,workspaceId,meetingId:activeMeeting.id,stoppedAt,nextStep}));
     }catch(error){
-      setNotice({kind:'error',text:`Failed — checkpoint belum tersimpan aman di perangkat: ${error instanceof Error?error.message:String(error)}`});
+      setNotice({kind:'error',text:`Gagal — checkpoint belum tersimpan aman di perangkat: ${error instanceof Error?error.message:String(error)}`});
       setBusy(false);
       return;
     }
-    setNotice({kind:'info',text:'Pending Safe — checkpoint sudah durable di perangkat, belum diklaim Saved.'});
+    setNotice({kind:'info',text:'Pending Safe — checkpoint sudah durabel di perangkat, belum diklaim Tersimpan.'});
     try{await refreshPendingOnly();}catch{/* Pending Safe remains truthful after the durable enqueue. */}
 
     try{await worker.syncNamespace(userId,workspaceId);}catch{/* Persisted operation below remains authoritative. */}
     let remaining:PendingOperation|undefined;
     try{remaining=await safeWorkDb.operations.get(op.op_id);}catch{
-      setNotice({kind:'error',text:'Status checkpoint belum dapat diverifikasi setelah percobaan sync. Durable enqueue sebelumnya berhasil, tetapi jangan anggap Saved atau Pending Safe sampai status recovery dapat dibaca kembali.'});
+      setNotice({kind:'error',text:'Status checkpoint belum dapat diverifikasi setelah percobaan sinkronisasi. Enqueue durabel sebelumnya berhasil, tetapi jangan anggap Tersimpan atau Pending Safe sampai status pemulihan dapat dibaca kembali.'});
       setBusy(false);
       return;
     }
@@ -186,25 +186,25 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
       const gate=await withMeetingLifecyclePreflight(safeWorkDb,userId,workspaceId,attempt.meetingId,()=>setTeachingMeetingStatus(client,{opId:attempt.opId,meetingId:attempt.meetingId,status:attempt.status}));
       if(gate.blocked){
         try{await refreshPendingOnly();}catch{/* Fresh durable preflight already proved blocking work exists. */}
-        setNotice({kind:'error',text:'Checkpoint belum tersinkron untuk Meeting ini. Selesaikan recovery/sync checkpoint sebelum Complete atau Cancel.'});return;
+        setNotice({kind:'error',text:'Checkpoint belum tersinkron untuk Pertemuan ini. Selesaikan pemulihan/sinkronisasi checkpoint sebelum Selesai atau Batal.'});return;
       }
       setLifecycleAttempt(null);
-      const savedText=status==='completed'?'Meeting selesai secara eksplisit. Riwayat dan checkpoint dipertahankan.':'Meeting dibatalkan secara eksplisit.';
+      const savedText=status==='completed'?'Pertemuan selesai secara eksplisit. Riwayat dan checkpoint dipertahankan.':'Pertemuan dibatalkan secara eksplisit.';
       setNotice({kind:'info',text:savedText});
-      try{await refreshContinuityOnly();await refreshPendingOnly();}catch{setNotice({kind:'info',text:`${savedText} Latest view belum dapat refresh; coba refresh tampilan.`});}
-    }catch(error){setNotice({kind:'error',text:`${error instanceof Error?error.message:String(error)} Retry memakai operation id lifecycle yang sama.`});}
+      try{await refreshContinuityOnly();await refreshPendingOnly();}catch{setNotice({kind:'info',text:`${savedText} Tampilan terbaru belum dapat dimuat; coba muat ulang.`});}
+    }catch(error){setNotice({kind:'error',text:`${error instanceof Error?error.message:String(error)} Percobaan ulang memakai operation id lifecycle yang sama.`});}
     finally{setBusy(false);}
   }
 
-  if(!context)return <section className="continuity-shell"><p>Memulihkan continuity…</p>{notice?<p role="alert">{notice.text}</p>:null}</section>;
+  if(!context)return <section className="continuity-shell"><p>Memulihkan konteks mengajar…</p>{notice?<p role="alert">{notice.text}</p>:null}</section>;
 
   return <section className="continuity-shell">
-    <header><p className="eyebrow">Teaching Continuity</p><h1>Continue without archaeology</h1><label className="field-label">Class<select value={classId} onChange={e=>changeClass(e.target.value)}>{context.classes.length===0?<option value="">Belum ada Class aktif</option>:null}{context.classes.map(c=><option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label></header>
-    {!selected?<div className="continuity-empty"><strong>Belum ada Class aktif.</strong><p>Buat/aktifkan Class melalui data akademik sebelum memulai Meeting.</p></div>:<>
-      <div className={`continuity-card continuity-card--${selected.state}`}><div className="continuity-status"><strong>{selected.classroom.display_name}</strong><span>{activeMeeting?'IN PROGRESS':selected.latestActualMeeting?selected.latestActualMeeting.status.toUpperCase():'NO MEETING'}</span></div><div className="continuity-memory"><div><small>LAST</small><strong>{visibleStopped??'Belum ada checkpoint'}</strong></div><div><small>NEXT</small><strong>{visibleNext??'Belum dicatat'}</strong></div></div>{selected.effectiveContext?.source==='baseline'?<p className="safety-badge">RE-ENTRY BASELINE · riwayat Meeting/Checkpoint lama tetap utuh</p>:null}{selected.lesson?<p className="muted">Lesson: {selected.lesson.title}{selected.lessonVersion?` · v${selected.lessonVersion.version_number}`:''}</p>:null}{latestLocal?<p className="safety-badge">{latestLocal.status} · konteks lokal terbaru</p>:null}</div>
-      {activeMeeting?<><button type="button" className="continue-primary" onClick={()=>stoppedInput.current?.focus()}>CONTINUE CLASS</button><div className="checkpoint-card"><h2>Checkpoint</h2><label className="field-label">STOPPED AT<input ref={stoppedInput} value={stoppedAt} onChange={e=>setStoppedAt(e.target.value)} placeholder="Halaman 37, contoh gaya gesek nomor 2" /></label><label className="field-label">NEXT STEP<input value={nextStep} onChange={e=>setNextStep(e.target.value)} placeholder="Bahas nomor 3 lalu latihan mandiri" /></label><button type="button" disabled={busy||!stoppedAt.trim()} onClick={()=>void saveCheckpoint()}>Simpan checkpoint</button><div className="meeting-actions"><button type="button" className="secondary" disabled={busy||currentMeetingPending.length>0} onClick={()=>void changeMeetingStatus('cancelled')}>Cancel Meeting</button><button type="button" disabled={busy||currentMeetingPending.length>0} onClick={()=>void changeMeetingStatus('completed')}>Complete Class</button></div></div></>:<div className="start-card"><h2>Start Class</h2>{selected.latestActualMeeting||selected.latestBaseline?<p className="muted">Konteks sebelumnya adalah riwayat/baseline. Start Class membuat Meeting aktual baru tanpa menghapus LAST/NEXT terakhir.</p>:<p className="muted">Belum ada Meeting sebelumnya untuk Class ini.</p>}<label className="field-label">Lesson (opsional)<select value={lessonId} onChange={e=>changeLesson(e.target.value)}><option value="">Tanpa Lesson</option>{activeLessons.map(l=><option key={l.id} value={l.id}>{l.title}</option>)}</select></label>{lessonId?<label className="field-label">Exact LessonVersion (opsional)<select value={lessonVersionId} onChange={e=>{setLessonVersionId(e.target.value);setStartOpId(null);}}><option value="">Tanpa version pin</option>{versions.map(v=><option key={v.id} value={v.id}>v{v.version_number}</option>)}</select></label>:null}<button type="button" className="continue-primary" disabled={busy} onClick={()=>void startClass()}>START CLASS</button></div>}
+    <header><p className="eyebrow">Kontinuitas Mengajar</p><h1>Lanjut tanpa mencari-cari konteks lama</h1><label className="field-label">Kelas<select value={classId} onChange={e=>changeClass(e.target.value)}>{context.classes.length===0?<option value="">Belum ada Kelas aktif</option>:null}{context.classes.map(c=><option key={c.id} value={c.id}>{c.display_name}</option>)}</select></label></header>
+    {!selected?<div className="continuity-empty"><strong>Belum ada Kelas aktif.</strong><p>Buat/aktifkan Kelas melalui data akademik sebelum memulai Pertemuan.</p></div>:<>
+      <div className={`continuity-card continuity-card--${selected.state}`}><div className="continuity-status"><strong>{selected.classroom.display_name}</strong><span>{activeMeeting?'SEDANG BERJALAN':selected.latestActualMeeting?selected.latestActualMeeting.status.toUpperCase():'BELUM ADA PERTEMUAN'}</span></div><div className="continuity-memory"><div><small>TERAKHIR</small><strong>{visibleStopped??'Belum ada checkpoint'}</strong></div><div><small>BERIKUTNYA</small><strong>{visibleNext??'Belum dicatat'}</strong></div></div>{selected.effectiveContext?.source==='baseline'?<p className="safety-badge">BASELINE MASUK ULANG · riwayat Pertemuan/Checkpoint lama tetap utuh</p>:null}{selected.lesson?<p className="muted">Pelajaran: {selected.lesson.title}{selected.lessonVersion?` · v${selected.lessonVersion.version_number}`:''}</p>:null}{latestLocal?<p className="safety-badge">{latestLocal.status} · konteks lokal terbaru</p>:null}</div>
+      {activeMeeting?<><button type="button" className="continue-primary" onClick={()=>stoppedInput.current?.focus()}>LANJUTKAN KELAS</button><div className="checkpoint-card"><h2>Checkpoint</h2><label className="field-label">BERHENTI DI<input ref={stoppedInput} value={stoppedAt} onChange={e=>setStoppedAt(e.target.value)} placeholder="Halaman 37, contoh gaya gesek nomor 2" /></label><label className="field-label">LANGKAH BERIKUTNYA<input value={nextStep} onChange={e=>setNextStep(e.target.value)} placeholder="Bahas nomor 3 lalu latihan mandiri" /></label><button type="button" disabled={busy||!stoppedAt.trim()} onClick={()=>void saveCheckpoint()}>Simpan checkpoint</button><div className="meeting-actions"><button type="button" className="secondary" disabled={busy||currentMeetingPending.length>0} onClick={()=>void changeMeetingStatus('cancelled')}>Batalkan Pertemuan</button><button type="button" disabled={busy||currentMeetingPending.length>0} onClick={()=>void changeMeetingStatus('completed')}>Selesaikan Kelas</button></div></div></>:<div className="start-card"><h2>Mulai Kelas</h2>{selected.latestActualMeeting||selected.latestBaseline?<p className="muted">Konteks sebelumnya adalah riwayat/baseline. Mulai Kelas membuat Pertemuan aktual baru tanpa menghapus TERAKHIR/BERIKUTNYA terakhir.</p>:<p className="muted">Belum ada Pertemuan sebelumnya untuk Kelas ini.</p>}<label className="field-label">Pelajaran (opsional)<select value={lessonId} onChange={e=>changeLesson(e.target.value)}><option value="">Tanpa Pelajaran</option>{activeLessons.map(l=><option key={l.id} value={l.id}>{l.title}</option>)}</select></label>{lessonId?<label className="field-label">Versi Pelajaran tepat (opsional)<select value={lessonVersionId} onChange={e=>{setLessonVersionId(e.target.value);setStartOpId(null);}}><option value="">Tanpa pin versi</option>{versions.map(v=><option key={v.id} value={v.id}>v{v.version_number}</option>)}</select></label>:null}<button type="button" className="continue-primary" disabled={busy} onClick={()=>void startClass()}>MULAI KELAS</button></div>}
       {pacingLessonId?<PacingPanel client={client} workspaceId={workspaceId} classId={classId} lessonId={pacingLessonId} lessonVersionId={pacingLessonVersionId} actualMeetingCount={actualPacingMeetings}/>:null}
-      {selectedClassPending.length?<div className="recovery-panel"><h2>Checkpoint recovery</h2>{selectedClassPending.map(op=>{const p=checkpointPayload(op);return <div className="recovery-item" key={op.op_id}><strong>{op.status}</strong><span>LAST: {p.stopped_at}</span><span>NEXT: {p.next_step??'—'}</span><small>{op.last_error_code??'Belum dikonfirmasi server'}</small>{op.status!=='CONFLICT'?<button type="button" className="secondary" disabled={busy} onClick={()=>void retryCheckpoint(op.op_id)}>Coba sync lagi</button>:null}</div>;})}</div>:null}
+      {selectedClassPending.length?<div className="recovery-panel"><h2>Pemulihan checkpoint</h2>{selectedClassPending.map(op=>{const p=checkpointPayload(op);return <div className="recovery-item" key={op.op_id}><strong>{op.status}</strong><span>TERAKHIR: {p.stopped_at}</span><span>BERIKUTNYA: {p.next_step??'—'}</span><small>{op.last_error_code??'Belum dikonfirmasi server'}</small>{op.status!=='CONFLICT'?<button type="button" className="secondary" disabled={busy} onClick={()=>void retryCheckpoint(op.op_id)}>Coba sinkronkan lagi</button>:null}</div>;})}</div>:null}
     </>}
     {notice?<p className={notice.kind==='error'?'work-message form-error':'work-message'} role={notice.kind==='error'?'alert':'status'}>{notice.text}</p>:null}
   </section>;
