@@ -6,6 +6,7 @@ const app=readFileSync('src/app/App.tsx','utf8');
 const setup=readFileSync('src/components/DailyDriverSetup.tsx','utf8');
 const setupService=readFileSync('src/services/academic/dailyDriverSetup.ts','utf8');
 const safeSummary=readFileSync('src/components/SafeWorkSummary.tsx','utf8');
+const dailyDriverCss=readFileSync('src/styles/daily-driver.css','utf8');
 
 describe('R3.7-01 Daily Driver integration',()=>{
   it('keeps R3.7 integration schema-neutral',()=>{
@@ -27,12 +28,18 @@ describe('R3.7-01 Daily Driver integration',()=>{
   });
   it('keeps Today primary and exposes the existing work surfaces without architecture knowledge',()=>{
     expect(app).toContain("useState<WorkspaceMode>('today')");
-    expect(app).toContain('Data & Setup');
-    expect(app).toContain('Rapid Correction');
-    expect(app).toContain('Bulk Entry / Import');
-    expect(app).toContain('Reporting');
-    expect(app).toContain('Artifacts');
-    expect(app).toContain('Recovery');
+    expect(app).toContain('Hari ini');
+    expect(app).toContain('Data & Pengaturan');
+    expect(app).toContain('Koreksi cepat');
+    expect(app).toContain('Entri Massal / Impor');
+    expect(app).toContain('Laporan');
+    expect(app).toContain('Dokumen');
+    expect(app).toContain('Pemulihan');
+  });
+  it('keeps primary mobile navigation visible without horizontal scrolling',()=>{
+    expect(dailyDriverCss).toContain('grid-template-columns:repeat(3,minmax(0,1fr))');
+    expect(dailyDriverCss).toContain('overflow:visible');
+    expect(dailyDriverCss).toContain('white-space:normal');
   });
   it('makes Safe Work visible without claiming Saved from queue absence',()=>{
     expect(app).toContain('<SafeWorkSummary');
