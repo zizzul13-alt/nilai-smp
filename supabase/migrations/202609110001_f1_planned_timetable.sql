@@ -1,4 +1,6 @@
 -- F1 Planned Timetable. Expectation data only: a planned slot never materializes an actual Meeting.
+-- This additive package intentionally preserves app_schema_version r3.6-recovery.1 so the
+-- previous frontend remains rollback-compatible and simply ignores this new table.
 
 create table public.planned_schedules (
   id uuid primary key default gen_random_uuid(),
@@ -21,7 +23,15 @@ create table public.planned_schedules (
 );
 
 create unique index planned_schedules_exact_active_unique
-  on public.planned_schedules(workspace_id, class_id, weekday, local_start_time, local_end_time, effective_from, coalesce(effective_until, 'infinity'::date))
+  on public.planned_schedules(
+    workspace_id,
+    class_id,
+    weekday,
+    local_start_time,
+    local_end_time,
+    effective_from,
+    coalesce(effective_until, 'infinity'::date)
+  )
   where status = 'active';
 
 create index planned_schedules_workspace_day_status_time_idx
@@ -49,9 +59,3 @@ create policy planned_schedule_owner_all on public.planned_schedules for all to 
 
 comment on table public.planned_schedules is
   'F1 local wall-clock planned teaching slots. Planned slots are expectations and MUST NOT create or imply actual meetings.';
-
-insert into public.app_schema_version (id, version, applied_at)
-values (1, 'f1-planned-timetable.1', now())
-on conflict (id) do update
-set version = excluded.version,
-    applied_at = excluded.applied_at;
