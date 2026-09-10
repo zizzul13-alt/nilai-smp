@@ -1,0 +1,24 @@
+:root{--surface:#fff;--surface-subtle:#f7f7f4;--surface-muted:#efefe9;--ink:#20211f;--ink-muted:#666861;--line:#deded8;--line-strong:#c8c8c2;--radius-sm:10px;--radius-md:14px;--radius-lg:18px;--shadow-card:0 10px 32px rgb(0 0 0/.055);--focus:0 0 0 3px rgb(32 33 31/.18)}
+body{background:linear-gradient(180deg,#f7f7f4 0,#f2f2ef 100%);color:var(--ink)}
+button,input,select,textarea,summary{transition:border-color .14s ease,box-shadow .14s ease,background-color .14s ease,transform .14s ease}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button:not(:disabled):active{transform:translateY(1px)}
+.auth-card{max-width:28rem;border-radius:var(--radius-lg);box-shadow:var(--shadow-card);padding:clamp(1.35rem,5vw,2.25rem)}
+.auth-card .eyebrow{color:var(--ink-muted)}
+.auth-card h1{font-size:clamp(1.8rem,7vw,2.35rem);letter-spacing:-.035em;margin-bottom:.45rem}
+.auth-card .muted{line-height:1.55;margin-top:0}
+.auth-form button{margin-top:.2rem;font-weight:750}
+.app-chrome{border-bottom:1px solid transparent}
+.teacher-header{padding:.15rem 0}.teacher-identity strong{font-size:1.05rem;letter-spacing:-.015em}.teacher-identity span{max-width:22rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.daily-nav button,.tool-nav button{border:1px solid transparent;font-weight:700}.daily-nav button.secondary,.tool-nav button.secondary{background:transparent;color:var(--ink-muted)}.daily-nav button.secondary:hover,.tool-nav button.secondary:hover{background:var(--surface-muted);color:var(--ink)}.daily-nav button:not(.secondary),.tool-nav button:not(.secondary){box-shadow:0 3px 10px rgb(0 0 0/.1)}
+.more-tools{box-shadow:0 2px 10px rgb(0 0 0/.025);overflow:hidden}.more-tools summary{color:var(--ink-muted)}.more-tools[open] summary{color:var(--ink)}
+.workspace-scroll{scroll-behavior:auto}.workspace-scroll>*{animation:workspace-in .16s ease-out}@keyframes workspace-in{from{opacity:.65;transform:translateY(2px)}to{opacity:1;transform:none}}
+.today-shell,.continuity-shell,.correction-shell,.assessment-manager,.bulk-assessment,.setup-shell,.status-panel,.workspace-placeholder{box-shadow:var(--shadow-card)}
+.today-shell>header h1,.continuity-shell>header h1,.correction-shell>header h1{letter-spacing:-.025em}
+.today-section,.continuity-card,.checkpoint-card,.start-card,.judge-card,.setup-card{background:var(--surface);box-shadow:0 2px 10px rgb(0 0 0/.025)}
+.today-section h2{color:var(--ink-muted)}.today-now{border-color:var(--ink)}.today-primary,.continue-primary{box-shadow:0 4px 12px rgb(0 0 0/.11)}
+.form-error{padding:.7rem .8rem;border-radius:var(--radius-sm);background:#fff1f1;border:1px solid #efcaca;line-height:1.4}
+.work-message,.safety-badge{border:1px solid #e2e2dc}
+@media(prefers-reduced-motion:reduce){button,input,select,textarea,summary{transition:none}.workspace-scroll>*{animation:none}}
+@media(max-width:719px){body{background:#f4f4f2}.app-chrome{margin:0 -.65rem;padding:0 .65rem .05rem;border-bottom-color:var(--line)}.teacher-header{padding-top:.05rem}.teacher-identity span{max-width:56vw}.daily-nav{grid-template-columns:repeat(5,minmax(0,1fr))}.daily-nav button{min-width:0;padding:.48rem .15rem;font-size:.75rem}.more-tools{margin-top:.15rem}.workspace-scroll{padding-top:.45rem}.today-shell,.continuity-shell,.correction-shell,.assessment-manager,.setup-shell{border-left:0;border-right:0;border-radius:12px;box-shadow:0 4px 18px rgb(0 0 0/.035)}}
+@media(min-width:720px){.app-chrome{background:rgb(244 244 242/.94);backdrop-filter:blur(10px);border-bottom-color:var(--line)}.workspace-scroll{padding-top:1rem}.daily-nav button{min-width:7.5rem}.more-tools{margin-bottom:.25rem}}
