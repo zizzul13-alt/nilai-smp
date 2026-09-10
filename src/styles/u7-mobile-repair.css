@@ -1,0 +1,27 @@
+/* U7 real-device repair: keep the teacher workspace inside the viewport. */
+.teacher-shell,.app-chrome,.workspace-scroll,.teacher-header,.daily-nav,.more-tools{width:100%;min-width:0}
+.app-chrome,.workspace-scroll{max-width:64rem;margin-inline:auto}
+.teacher-shell{overflow-x:hidden}
+.daily-nav{overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none}
+.daily-nav::-webkit-scrollbar,.tool-nav::-webkit-scrollbar{display:none}
+.more-tools{max-width:100%}
+.tool-nav{display:flex;max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:none}
+.tool-nav button{flex:0 0 auto}
+.workspace-scroll>*{max-width:100%;min-width:0}
+.bulk-assessment,.artifact-shell,.reporting-shell,.setup-shell{width:min(100%,64rem);max-width:100%;margin-inline:auto}
+
+@media(max-width:719px){
+  .teacher-shell{padding:.65rem}
+  .app-chrome{margin:0;padding:0 0 .05rem}
+  .workspace-scroll{padding-inline:0}
+  .daily-nav{display:grid;grid-template-columns:repeat(5,minmax(4.15rem,1fr));gap:.15rem}
+  .daily-nav button{white-space:normal}
+  .more-tools{overflow:hidden}
+  .tool-nav{padding:.25rem 0 .35rem}
+  .bulk-assessment{display:grid;padding:1rem;border:1px solid #deded8;border-radius:12px;background:#fff;box-shadow:0 4px 18px rgb(0 0 0/.035)}
+  .bulk-assessment>p,.bulk-assessment>h2,.bulk-assessment>label{max-width:100%}
+  .bulk-grid{max-width:100%}
+  .artifact-shell,.reporting-shell,.setup-shell{overflow-wrap:anywhere}
+  .artifact-toolbar,.artifact-current,.artifact-object,.checkpoint-card,.setup-card{max-width:100%;min-width:0}
+  input,select,textarea,button{max-width:100%}
+}
