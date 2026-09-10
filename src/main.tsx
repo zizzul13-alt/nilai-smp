@@ -6,6 +6,7 @@ import './styles/daily-driver.css';
 import './styles/reporting.css';
 import './styles/artifacts.css';
 import './styles/product-maturation.css';
+import './styles/u7-mobile-repair.css';
 
 const root = document.getElementById('root');
 
