@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      EXACT_CANDIDATE_SHA: 0ebe9b66cc281fb24df7b23134104feb2d01daa0
+      EXACT_CANDIDATE_SHA: bd6d0b4942a45a00e6b1871c0b72e5c5f46ee063
       VITE_SUPABASE_URL: https://ifnnmmilurqtvvxywrlo.supabase.co
       VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Jx_jctLO1T0Bcn4juuRc0w_coYKu2g_
       CF_ACCOUNT_ID_PRIMARY: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 0ebe9b66cc281fb24df7b23134104feb2d01daa0
+          ref: bd6d0b4942a45a00e6b1871c0b72e5c5f46ee063
 
       - name: Require exact candidate checkout
         shell: bash
