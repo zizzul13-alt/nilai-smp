@@ -5,6 +5,7 @@ import './styles/base.css';
 import './styles/daily-driver.css';
 import './styles/reporting.css';
 import './styles/artifacts.css';
+import './styles/product-maturation.css';
 
 const root = document.getElementById('root');
 
