@@ -1,0 +1,154 @@
+name: ui-u7-production-acceptance
+
+on:
+  push:
+    branches:
+      - ops/ui-u7-production-acceptance-20260910
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nilai-smp-ui-u7-production-acceptance
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_SUPABASE_URL: https://ifnnmmilurqtvvxywrlo.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Jx_jctLO1T0Bcn4juuRc0w_coYKu2g_
+      CF_ACCOUNT_ID_PRIMARY: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ACCOUNT_ID_LEGACY: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_API_TOKEN_LEGACY: ${{ secrets.CF_API_TOKEN }}
+      EXACT_UI_SHA: 97469ea2082afb704b34afef5fa39369ea417a69
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_UI_SHA }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Clean dependency install
+        run: npm ci --no-audit --no-fund
+
+      - name: Require permanent Cloudflare CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          account_id="${CF_ACCOUNT_ID_PRIMARY:-${CF_ACCOUNT_ID_LEGACY:-}}"
+          api_token="${CF_API_TOKEN_PRIMARY:-${CF_API_TOKEN_LEGACY:-}}"
+          if [ -z "$account_id" ] || [ -z "$api_token" ]; then
+            echo "::error::U7_DEPLOY_BLOCKED missing Cloudflare GitHub Actions credentials"
+            exit 78
+          fi
+          echo "::add-mask::$account_id"
+          echo "::add-mask::$api_token"
+          printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
+          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$api_token" >> "$GITHUB_ENV"
+
+      - name: Exact-main candidate preflight
+        run: npm run candidate:preflight
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Deploy exact-main UI to production worker
+        id: deploy
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: wrangler-u7.ndjson
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --message "Nilai SMP UI U7 exact-main ${EXACT_UI_SHA}"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          const records = readFileSync('wrangler-u7.ndjson', 'utf8').split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+          const deploy = [...records].reverse().find(record => record.type === 'deploy');
+          if (!deploy?.version_id) throw new Error('Wrangler output missing deployment version');
+          const url = Array.isArray(deploy.targets) ? deploy.targets.find(target => typeof target === 'string' && target.startsWith('https://')) : null;
+          if (!url) throw new Error('Wrangler output missing HTTPS deployment URL');
+          appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${deploy.version_id}\nurl=${url}\n`);
+          console.log(`U7_DEPLOY PASS worker=${deploy.worker_name ?? 'nilai-smp'} version_id=${deploy.version_id} url=${url}`);
+          NODE
+
+      - name: Bounded URL and SPA smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > smoke-u7.log
+          for attempt in $(seq 1 12); do
+            echo "U7_SMOKE_ATTEMPT attempt=${attempt}/12" | tee -a smoke-u7.log
+            if npm run candidate:smoke -- "${{ steps.deploy.outputs.url }}" 2>&1 | tee -a smoke-u7.log; then
+              echo "U7_SMOKE_READY attempt=${attempt}" | tee -a smoke-u7.log
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::U7_SMOKE_TIMEOUT deployment did not become ready"
+          exit 1
+
+      - name: Browser UI shell acceptance
+        env:
+          DEPLOYED_URL: ${{ steps.deploy.outputs.url }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE' | tee browser-u7.log
+          import { chromium } from '@playwright/test';
+          const browser = await chromium.launch();
+          try {
+            for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+              const page = await browser.newPage({ viewport });
+              const errors = [];
+              page.on('pageerror', error => errors.push(String(error)));
+              const response = await page.goto(process.env.DEPLOYED_URL, { waitUntil: 'domcontentloaded' });
+              if (!response || response.status() !== 200) throw new Error(`root navigation failed for ${viewport.width}px`);
+              await page.waitForSelector('#root', { timeout: 10000 });
+              await page.getByRole('heading', { name: 'Masuk' }).waitFor({ timeout: 10000 });
+              const body = await page.locator('body').innerText();
+              if (body.includes('Nilai SMP · R3')) throw new Error(`user-facing R3 residue remains at ${viewport.width}px`);
+              if (!body.includes('Nilai SMP')) throw new Error(`product identity missing at ${viewport.width}px`);
+              if (errors.length) throw new Error(`pageerror at ${viewport.width}px: ${errors.join(' | ')}`);
+              await page.close();
+            }
+            console.log('U7_PUBLIC_UI_ACCEPTANCE PASS mobile=390x844 desktop=1280x900 product_r3_residue=absent');
+          } finally {
+            await browser.close();
+          }
+          NODE
+
+      - name: Write U7 summary
+        if: success()
+        shell: bash
+        run: |
+          cat > ui-u7-summary.txt <<EOF
+          UI_U7_PUBLIC_DEPLOYMENT=PASS
+          exact_main_sha=${EXACT_UI_SHA}
+          worker_name=nilai-smp
+          deployed_url=${{ steps.deploy.outputs.url }}
+          deployed_version=${{ steps.deploy.outputs.version_id }}
+          public_mobile_desktop_shell=PASS
+          product_facing_r3_residue=ABSENT
+          authenticated_real_device_acceptance=REQUIRES_USER
+          recovery_workstream=PARKED
+          production_cutover=FALSE
+          EOF
+          cat ui-u7-summary.txt
+
+      - name: Upload U7 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-u7-production-acceptance-evidence
+          path: |
+            wrangler-u7.ndjson
+            smoke-u7.log
+            browser-u7.log
+            ui-u7-summary.txt
+          if-no-files-found: warn
+          retention-days: 7
