@@ -9,6 +9,13 @@
 .tool-nav button{flex:0 0 auto}
 .workspace-scroll>*{max-width:100%;min-width:0}
 .bulk-assessment,.artifact-shell,.reporting-shell,.setup-shell{width:min(100%,64rem);max-width:100%;margin-inline:auto}
+.existing-data-browser{display:grid;gap:.8rem;padding:1rem;border:1px solid #deded8;border-radius:14px;background:#fff}
+.existing-data-heading{display:flex;align-items:end;justify-content:space-between;gap:1rem}
+.existing-data-heading h2{margin:.1rem 0}.existing-data-heading>span,.roster-summary span{color:#666861}
+.roster-summary{display:flex;justify-content:space-between;gap:.75rem;padding:.7rem .8rem;border-radius:10px;background:#f1f1ed}
+.student-roster{display:grid;gap:.35rem;margin:0;padding:0;list-style:none;max-height:22rem;overflow:auto}
+.student-roster li{display:flex;justify-content:space-between;align-items:baseline;gap:.75rem;padding:.65rem .75rem;border:1px solid #e3e3dd;border-radius:9px}
+.student-roster small{color:#666861;text-align:right}.empty-state{margin:0;padding:.8rem;border-radius:10px;background:#f7f7f4;color:#666861}
 
 @media(max-width:719px){
   .teacher-shell{padding:.65rem}
@@ -24,4 +31,6 @@
   .artifact-shell,.reporting-shell,.setup-shell{overflow-wrap:anywhere}
   .artifact-toolbar,.artifact-current,.artifact-object,.checkpoint-card,.setup-card{max-width:100%;min-width:0}
   input,select,textarea,button{max-width:100%}
+  .existing-data-heading,.roster-summary,.student-roster li{align-items:stretch;flex-direction:column}
+  .student-roster small{text-align:left}
 }
