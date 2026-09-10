@@ -1,5 +1,6 @@
 import {useEffect,useMemo,useState} from'react';
 import type{SupabaseClient}from'@supabase/supabase-js';
+import {ExistingClassRoster}from'./ExistingClassRoster';
 import{
   createAcademicPeriodForSetup,createAcademicYearForSetup,createClassForSetup,createEnrollmentForSetup,createLessonForSetup,createMaterialForSetup,createStudentForSetup,loadDailyDriverSetup,type DailyDriverSetupContext,
 }from'../services/academic/dailyDriverSetup';
@@ -28,6 +29,7 @@ export function DailyDriverSetup({client,workspaceId,onReady}:Props){
   return<section className="setup-shell">
     <header><p className="eyebrow">Data & setup</p><h1>Siapkan kelas untuk dipakai sehari-hari</h1><p className="muted">Buat hanya data yang benar-benar ada. Schedule tidak dibuat otomatis dan Setup tidak pernah menciptakan Meeting.</p></header>
     <div className="setup-progress"><strong>{ready?'Siap mengajar':'Belum lengkap'}</strong><span>{context.classes.length} kelas · {context.students.length} siswa · {context.enrollments.length} enrollment · {context.lessons.length} lesson</span></div>
+    <ExistingClassRoster context={context}/>
     <div className="setup-grid">
       <section className="setup-card"><h2>1 · Tahun ajaran</h2><input value={year} onChange={e=>setYear(e.target.value)} placeholder="2026/2027"/><button disabled={busy||!year.trim()} onClick={()=>void run(()=>createAcademicYearForSetup(client,workspaceId,year,nextSort(context.years)),()=>setYear(''),'Tahun ajaran tersimpan.')}>Tambah tahun</button></section>
       <section className="setup-card"><h2>2 · Periode</h2><select value={selectedYear} onChange={e=>setSelectedYear(e.target.value)}><option value="">Pilih tahun ajaran</option>{context.years.map(x=><option key={x.id} value={x.id}>{x.display_name}</option>)}</select><input value={period} onChange={e=>setPeriod(e.target.value)} placeholder="Semester 1"/><button disabled={busy||!selectedYear||!period.trim()} onClick={()=>void run(()=>createAcademicPeriodForSetup(client,workspaceId,selectedYear,period,nextSort(periodsForYear)),()=>setPeriod(''),'Periode tersimpan.')}>Tambah periode</button></section>
