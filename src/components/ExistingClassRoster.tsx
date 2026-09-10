@@ -1,6 +1,11 @@
 import {useMemo,useState} from 'react';
 import type{DailyDriverSetupContext}from'../services/academic/dailyDriverSetup';
 
+function visibleStudentIdentifier(student:{nis:string|null;nisn:string|null}){
+  const value=student.nis??student.nisn;
+  return value&&!value.startsWith('legacy:')?value:null;
+}
+
 export function ExistingClassRoster({context}:{context:DailyDriverSetupContext}){
   const[selectedClass,setSelectedClass]=useState(context.classes[0]?.id??'');
   const roster=useMemo(()=>{
@@ -12,7 +17,7 @@ export function ExistingClassRoster({context}:{context:DailyDriverSetupContext})
     {context.classes.length===0?<p className="muted">Belum ada kelas. Tambahkan kelas lewat setup di bawah.</p>:<>
       <label className="field-label">Pilih kelas<select value={selectedClass} onChange={event=>setSelectedClass(event.target.value)}>{context.classes.map(row=><option key={row.id} value={row.id}>{row.display_name}</option>)}</select></label>
       <div className="roster-summary"><strong>{context.classes.find(row=>row.id===selectedClass)?.display_name??'Kelas'}</strong><span>{roster.length} siswa terdaftar</span></div>
-      {roster.length?<ol className="student-roster">{roster.map(student=><li key={student.id}><span>{student.display_name}</span><small>{student.nis??student.nisn??'Tanpa NIS/NISN'}</small></li>)}</ol>:<p className="empty-state">Belum ada siswa yang terdaftar di kelas ini.</p>}
+      {roster.length?<ol className="student-roster">{roster.map(student=>{const identifier=visibleStudentIdentifier(student);return <li key={student.id}><span>{student.display_name}</span>{identifier?<small>{identifier}</small>:null}</li>})}</ol>:<p className="empty-state">Belum ada siswa yang terdaftar di kelas ini.</p>}
     </>}
   </section>;
 }
