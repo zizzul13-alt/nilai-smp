@@ -1,0 +1,107 @@
+name: recovery-target-drill
+
+on:
+  push:
+    branches:
+      - ops/recovery-target-drill-20260910
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nilai-smp-recovery-target-drill
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VITE_SUPABASE_URL: https://pnfhmsfvylhilzbkrjrm.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_pDvibXf1OWwGKSDWKKqU7A_7iENSm2B
+      CF_ACCOUNT_ID_PRIMARY: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ACCOUNT_ID_LEGACY: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_API_TOKEN_LEGACY: ${{ secrets.CF_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Clean dependency install
+        run: npm ci --no-audit --no-fund
+
+      - name: Require Cloudflare CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          account_id="${CF_ACCOUNT_ID_PRIMARY:-${CF_ACCOUNT_ID_LEGACY:-}}"
+          api_token="${CF_API_TOKEN_PRIMARY:-${CF_API_TOKEN_LEGACY:-}}"
+          if [ -z "$account_id" ] || [ -z "$api_token" ]; then
+            echo "::error::RECOVERY_DEPLOY_BLOCKED missing Cloudflare GitHub Actions credentials"
+            exit 78
+          fi
+          echo "::add-mask::$account_id"
+          echo "::add-mask::$api_token"
+          printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
+          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$api_token" >> "$GITHUB_ENV"
+
+      - name: Build isolated recovery candidate
+        run: npm run candidate:build
+
+      - name: Deploy isolated recovery worker
+        id: deploy
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: wrangler-recovery.ndjson
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config wrangler.recovery.jsonc --message "Nilai SMP isolated recovery drill ${GITHUB_SHA}"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          const records = readFileSync('wrangler-recovery.ndjson', 'utf8')
+            .split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+          const deploy = [...records].reverse().find(record => record.type === 'deploy');
+          if (!deploy?.version_id) throw new Error('Wrangler structured output missing version_id');
+          const url = Array.isArray(deploy.targets)
+            ? deploy.targets.find(target => typeof target === 'string' && target.startsWith('https://'))
+            : null;
+          if (!url) throw new Error('Wrangler structured output missing HTTPS deployment URL');
+          appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${deploy.version_id}\nurl=${url}\n`);
+          console.log(`RECOVERY_DEPLOY PASS worker=${deploy.worker_name ?? 'nilai-smp-recovery-drill'} version_id=${deploy.version_id} url=${url}`);
+          NODE
+
+      - name: Smoke isolated recovery worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run candidate:smoke -- "${{ steps.deploy.outputs.url }}"
+
+      - name: Write sanitized recovery deployment evidence
+        if: success()
+        shell: bash
+        run: |
+          cat > recovery-deployment-summary.txt <<EOF
+          RECOVERY_TARGET_DEPLOY=PASS
+          source_candidate_sha=bd6d0b4942a45a00e6b1871c0b72e5c5f46ee063
+          supabase_project_ref=pnfhmsfvylhilzbkrjrm
+          worker_name=nilai-smp-recovery-drill
+          deployed_url=${{ steps.deploy.outputs.url }}
+          PRODUCTION_WORKER_UNTOUCHED=TRUE
+          PRODUCTION_CUTOVER=FALSE
+          EOF
+          cat recovery-deployment-summary.txt
+
+      - name: Upload sanitized recovery deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-target-drill-evidence
+          path: |
+            wrangler-recovery.ndjson
+            recovery-deployment-summary.txt
+          if-no-files-found: warn
+          retention-days: 7
