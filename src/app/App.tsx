@@ -43,7 +43,7 @@ function SignedOut({ client, authError }: { client: SupabaseClient; authError: s
   return (
     <main className="app-shell">
       <section className="auth-card">
-        <p className="eyebrow">Nilai SMP · R3</p>
+        <p className="eyebrow">Nilai SMP</p>
         <h1>Masuk</h1>
         <p className="muted">Masuk lalu lanjutkan pekerjaan terakhir tanpa mencari-cari modul.</p>
         <form onSubmit={submit} className="auth-form">
