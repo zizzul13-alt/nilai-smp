@@ -1,0 +1,112 @@
+name: ui-u7-repair-deploy
+
+on:
+  push:
+    branches:
+      - ops/ui-u7-repair-deploy-20260910
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nilai-smp-ui-u7-repair-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_SUPABASE_URL: https://ifnnmmilurqtvvxywrlo.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Jx_jctLO1T0Bcn4juuRc0w_coYKu2g_
+      CF_ACCOUNT_ID_PRIMARY: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ACCOUNT_ID_LEGACY: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_API_TOKEN_LEGACY: ${{ secrets.CF_API_TOKEN }}
+      EXACT_UI_SHA: 081964fa7766de413c6f463fd953cc9df226cde8
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_UI_SHA }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Clean dependency install
+        run: npm ci --no-audit --no-fund
+
+      - name: Require Cloudflare CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          account_id="${CF_ACCOUNT_ID_PRIMARY:-${CF_ACCOUNT_ID_LEGACY:-}}"
+          api_token="${CF_API_TOKEN_PRIMARY:-${CF_API_TOKEN_LEGACY:-}}"
+          test -n "$account_id" && test -n "$api_token"
+          echo "::add-mask::$account_id"
+          echo "::add-mask::$api_token"
+          printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
+          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$api_token" >> "$GITHUB_ENV"
+
+      - name: Exact-main preflight
+        run: npm run candidate:preflight
+
+      - name: Deploy exact-main U7 repair
+        id: deploy
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: wrangler-u7-repair.ndjson
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --message "Nilai SMP U7 repair exact-main ${EXACT_UI_SHA}"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          const records = readFileSync('wrangler-u7-repair.ndjson','utf8').split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const deploy=[...records].reverse().find(r=>r.type==='deploy');
+          if(!deploy?.version_id) throw new Error('missing deployment version');
+          const url=Array.isArray(deploy.targets)?deploy.targets.find(t=>typeof t==='string'&&t.startsWith('https://')):null;
+          if(!url) throw new Error('missing deployed URL');
+          appendFileSync(process.env.GITHUB_OUTPUT,`version_id=${deploy.version_id}\nurl=${url}\n`);
+          console.log(`U7_REPAIR_DEPLOY PASS version=${deploy.version_id} url=${url}`);
+          NODE
+
+      - name: Bounded production smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          : > smoke-u7-repair.log
+          for attempt in $(seq 1 12); do
+            if npm run candidate:smoke -- "${{ steps.deploy.outputs.url }}" 2>&1 | tee -a smoke-u7-repair.log; then
+              echo "U7_REPAIR_SMOKE PASS attempt=${attempt}" | tee -a smoke-u7-repair.log
+              exit 0
+            fi
+            [ "$attempt" -lt 12 ] && sleep 5
+          done
+          exit 1
+
+      - name: Write evidence summary
+        if: success()
+        shell: bash
+        run: |
+          cat > ui-u7-repair-summary.txt <<EOF
+          UI_U7_REPAIR_DEPLOYMENT=PASS
+          exact_main_sha=${EXACT_UI_SHA}
+          worker_name=nilai-smp
+          deployed_url=${{ steps.deploy.outputs.url }}
+          deployed_version=${{ steps.deploy.outputs.version_id }}
+          real_device_acceptance=REQUIRES_USER
+          EOF
+          cat ui-u7-repair-summary.txt
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-u7-repair-deploy-evidence
+          path: |
+            wrangler-u7-repair.ndjson
+            smoke-u7-repair.log
+            ui-u7-repair-summary.txt
+          if-no-files-found: warn
+          retention-days: 7
