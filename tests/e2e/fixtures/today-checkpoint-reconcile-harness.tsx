@@ -18,6 +18,10 @@ const activeClass:TodayClassContext={
   effective_source:'checkpoint',effective_stopped_at:'Server LAST',effective_next_step:'Server NEXT',effective_recorded_at:'2026-09-06T01:30:00Z',
 };
 
+function emptyQuery(){
+  const builder:any={select(){return builder;},eq(){return builder;},order(){return builder;},then(resolve:any,reject:any){return Promise.resolve({data:[],error:null}).then(resolve,reject);}};
+  return builder;
+}
 function fakeClient(){
   const client:any={
     rpc:async(name:string)=>{
@@ -25,7 +29,7 @@ function fakeClient(){
       if(name==='read_today_active_correction')return failTodayReads?{data:null,error:{message:'synthetic canonical outage'}}:{data:[],error:null};
       return{data:null,error:{message:`unexpected RPC ${name}`}};
     },
-    from(){throw new Error('table query not expected in checkpoint reconciliation harness');},
+    from(table:string){if(table==='planned_schedules'||table==='classes')return emptyQuery();throw new Error(`unexpected table ${table}`);},
   };
   return client as SupabaseClient;
 }
