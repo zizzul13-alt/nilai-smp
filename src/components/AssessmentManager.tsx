@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AcademicClass } from '../domain/academic';
 import {
@@ -15,6 +15,16 @@ export function AssessmentManager({ client, workspaceId }: { client: SupabaseCli
   const [description, setDescription] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [filterClassId, setFilterClassId] = useState('ALL');
+  const [filterQuery, setFilterQuery] = useState('');
+  const filteredAssessments = useMemo(() => {
+    if (!context) return [];
+    const query = filterQuery.trim().toLocaleLowerCase('id-ID');
+    return context.assessments.filter(row =>
+      (filterClassId === 'ALL' || row.class_id === filterClassId)
+      && (!query || row.title.toLocaleLowerCase('id-ID').includes(query))
+    );
+  }, [context, filterClassId, filterQuery]);
 
   async function refresh() {
     const next = await loadAssessmentCreationContext(client, workspaceId);
@@ -112,8 +122,21 @@ export function AssessmentManager({ client, workspaceId }: { client: SupabaseCli
 
       <div className="assessment-list">
         <h3>Penilaian aktif</h3>
-        {context.assessments.length === 0 ? <p>Belum ada.</p> : context.assessments.map(row => (
-          <div key={row.id} className="preview-row">
+        <div className="auth-form bounded-filter">
+          <label>
+            Cari penilaian
+            <input value={filterQuery} onChange={event => setFilterQuery(event.target.value)} placeholder="Judul penilaian" />
+          </label>
+          <label>
+            Filter kelas
+            <select value={filterClassId} onChange={event => setFilterClassId(event.target.value)}>
+              <option value="ALL">Semua kelas</option>
+              {context.classes.map(row => <option key={row.id} value={row.id}>{row.display_name}</option>)}
+            </select>
+          </label>
+        </div>
+        {context.assessments.length === 0 ? <p>Belum ada.</p> : filteredAssessments.length === 0 ? <p>Tidak ada penilaian yang cocok dengan filter.</p> : filteredAssessments.map(row => (
+          <div key={row.id} data-assessment-id={row.id} className="preview-row">
             <strong>{row.title}</strong> · {context.classes.find(cls => cls.id === row.class_id)?.display_name ?? 'Kelas tidak aktif'} · {row.status}
           </div>
         ))}
