@@ -5,7 +5,18 @@ pass(){ printf 'PASS: %s\n' "$1"; }; fail(){ printf 'FAIL: %s\n' "$1" >&2; exit 
 A="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000a\",\"role\":\"authenticated\"}';"
 B="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000b\",\"role\":\"authenticated\"}';"
 
+# Recovery now carries the additive F1 table while preserving portable-v1 compatibility.
+if [[ "$(run "select to_regclass('public.planned_schedules') is not null")" != "t" ]]; then
+  "${PSQL[@]}" -f supabase/migrations/202609110001_f1_planned_timetable.sql >/dev/null
+fi
 "${PSQL[@]}" -f supabase/migrations/202609070001_recovery_portable_backup.sql >/dev/null
+"${PSQL[@]}" -f supabase/migrations/202609110002_f1_planned_timetable_recovery.sql >/dev/null
+
+# Ensure the backup has at least one real planned slot when this lane is run standalone.
+run "$A insert into public.planned_schedules(workspace_id,class_id,weekday,local_start_time,local_end_time,effective_from)
+  select workspace_id,id,3,'10:00','10:40','2026-07-01' from public.classes where id='30000000-0000-0000-0000-000000000001'
+  on conflict do nothing;"
+
 BEFORE="$(run "$A select count(*) from public.assessment_results;")"
 run "$A select public.export_portable_backup()::text;" > /tmp/nilai-portable-backup.json
 [[ -s /tmp/nilai-portable-backup.json ]]||fail 'portable export produced empty file'
@@ -19,9 +30,10 @@ p='/tmp/nilai-portable-backup.json'
 x=json.load(open(p)); x['checksum_sha256']='a'*64
 open('/tmp/nilai-portable-backup-with-checksum.json','w').write(json.dumps(x,separators=(',',':')))
 assert 'artifact_objects' in x['tables'] and 'assessment_results' in x['tables'] and 'report_snapshots' in x['tables']
+assert 'planned_schedules' in x['tables']
 assert 'applied_operations' not in x['tables']
 PY
-pass 'portable manifest includes canonical history but excludes transient AppliedOperation replay metadata'
+pass 'portable manifest includes canonical history and F1 timetable but excludes transient AppliedOperation replay metadata'
 
 RESTORE_DB="nilai_smp_restore_test"
 "${PSQL[@]}" -qc "drop database if exists $RESTORE_DB with (force);"
@@ -46,12 +58,12 @@ SQL
 RESULT="$(restore_from_file 'a7000000-0000-4000-8000-000000000001' | tail -1 | tr -d '[:space:]')"
 [[ "$RESULT" == restored:*:false ]]||fail "restore-to-empty failed ($RESULT)";pass 'restore-to-empty applies portable manifest atomically'
 
-TABLES=(academic_years academic_periods classes students enrollments materials lessons lesson_versions meetings checkpoints activities activity_meetings scoring_profiles assessments assessment_results assessment_attempts correction_sessions continuity_baselines lesson_pacing_plans reporting_policies reporting_cycles report_snapshots report_snapshot_rows audit_events artifacts artifact_versions artifact_objects)
+TABLES=(academic_years academic_periods classes planned_schedules students enrollments materials lessons lesson_versions meetings checkpoints activities activity_meetings scoring_profiles assessments assessment_results assessment_attempts correction_sessions continuity_baselines lesson_pacing_plans reporting_policies reporting_cycles report_snapshots report_snapshot_rows audit_events artifacts artifact_versions artifact_objects)
 for table in "${TABLES[@]}";do
   SRC="$(run "$A select count(*) from public.$table;")"; DST="$("${RPSQL[@]}" -qAtc "$RA select count(*) from public.$table;")"
   [[ "$SRC" == "$DST" ]]||fail "$table restore count mismatch source=$SRC target=$DST"
 done
-pass 'restore preserves canonical row cardinality across full graph'
+pass 'restore preserves canonical row cardinality across full graph including planned timetable'
 SRC_IDS="$(run "$A select string_agg(id::text,',' order by id) from public.students;")";DST_IDS="$("${RPSQL[@]}" -qAtc "$RA select string_agg(id::text,',' order by id) from public.students;")"
 [[ "$SRC_IDS" == "$DST_IDS" ]]||fail 'stable Student IDs changed during restore';pass 'restore preserves stable domain IDs'
 SRC_WS="$(run "$A select id from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000a';")";DST_WS="$("${RPSQL[@]}" -qAtc "$RA select id from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000a';")"
@@ -78,6 +90,6 @@ REPLAY="$(restore_from_file 'a7000000-0000-4000-8000-000000000001' | tail -1 | t
 if restore_from_file 'a7000000-0000-4000-8000-000000000002' >/tmp/recovery-out 2>/tmp/recovery-err;then fail 'second independent restore unexpectedly merged into non-empty target';fi
 pass 'restore refuses non-empty target instead of merging histories'
 B_VISIBLE="$("${RPSQL[@]}" -qAtc "$B select count(*) from public.students;")";[[ "$B_VISIBLE" == '0' ]]||fail 'foreign account can see restored rows';pass 'restored graph remains RLS-owned'
-SCHEMA="$("${RPSQL[@]}" -qAtc "$RA select version from public.app_schema_version where id=1;")";[[ "$SCHEMA" == 'r3.6-recovery.1' ]]||fail 'schema identity not advanced';pass 'schema identity advances to r3.6-recovery.1'
+SCHEMA="$("${RPSQL[@]}" -qAtc "$RA select version from public.app_schema_version where id=1;")";[[ "$SCHEMA" == 'r3.6-recovery.1' ]]||fail 'schema identity not advanced';pass 'schema identity remains rollback-compatible r3.6-recovery.1'
 "${PSQL[@]}" -qc "drop database if exists $RESTORE_DB with (force);"
-printf '\nR3.6-01 portable backup/restore PostgreSQL acceptance completed successfully.\n'
+printf '\nR3.6 + F1 portable backup/restore PostgreSQL acceptance completed successfully.\n'
