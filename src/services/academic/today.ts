@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { PendingOperation } from '../../domain/safeWork';
+import type { PlannedSuggestion } from './plannedTimetable';
 
 export type TodayClassContext={
   class_id:string;class_name:string;
@@ -25,7 +26,6 @@ export async function loadTodayServer(client:SupabaseClient):Promise<TodayServer
   return{classes:(classQ.data??[]) as TodayClassContext[],correction:((correctionQ.data??[])[0]??null) as TodayCorrection|null};
 }
 
-/** Exact-id recovery lookup. Existing meetings RLS is the ownership authority; foreign ids resolve to no row. */
 export async function resolveMeetingClass(client:SupabaseClient,workspaceId:string,meetingId:string):Promise<string|null>{
   const{data,error}=await client.from('meetings').select('class_id').eq('workspace_id',workspaceId).eq('id',meetingId).maybeSingle();
   if(error)throw new Error(`Class untuk checkpoint ini belum dapat ditentukan: ${error.message}`);
@@ -33,7 +33,6 @@ export async function resolveMeetingClass(client:SupabaseClient,workspaceId:stri
   return typeof classId==='string'&&classId?classId:null;
 }
 
-/** pendingForNamespace is created_at ordered; sort again with op_id tie-break so callers get deterministic newest durable fact. */
 export function latestLocalCheckpointForMeeting(safeOps:PendingOperation[],meetingId:string|null){
   if(!meetingId)return null;
   const rows=safeOps.filter(op=>op.operation_kind==='meeting.checkpoint'&&op.entity_id===meetingId).slice().sort((a,b)=>a.created_at.localeCompare(b.created_at)||a.op_id.localeCompare(b.op_id));
@@ -47,11 +46,7 @@ function startOfLocalWeek(input:Date){
   return d;
 }
 
-/**
- * Re-entry rule: context is recent throughout the current and immediately previous local calendar week.
- * It becomes stale only when it predates the start of the previous local week. This avoids hour-level
- * fake precision while treating a clearly abandoned context differently from a normal weekend gap.
- */
+/** Context stays recent through the current and previous local calendar week; anything older is stale. */
 export function classifyReentryAge(recordedAt:string|null,now=new Date()):ReentryAge{
   if(!recordedAt)return'none';
   const previousWeekStart=startOfLocalWeek(now);previousWeekStart.setDate(previousWeekStart.getDate()-7);
@@ -67,17 +62,15 @@ export type TodayPrimaryAction=
 export type TodayAttention={kind:'checkpoint'|'meeting'|'correction'|'safe-work';title:string;detail:string;classId?:string;assessmentId?:string};
 export type TodayModel={primary:TodayPrimaryAction;beforeLeaving:TodayAttention[];later:TodayClassContext[];safeSummary:{pending:number;failed:number;conflict:number};empty:boolean};
 
-export function deriveTodayModel(snapshot:TodayServerSnapshot,safeOps:PendingOperation[],now=new Date()):TodayModel{
+export function deriveTodayModel(snapshot:TodayServerSnapshot,safeOps:PendingOperation[],now=new Date(),planned:PlannedSuggestion={kind:'none'}):TodayModel{
   const active=snapshot.classes.filter(c=>c.active_meeting_id);
   const strongest=snapshot.classes.find(c=>c.effective_stopped_at)||snapshot.classes[0]||null;
   let primary:TodayPrimaryAction=null;
   if(active[0])primary={kind:'continue-class',classId:active[0].class_id,label:'CONTINUE CLASS'};
   else if(snapshot.correction)primary={kind:'resume-correction',assessmentId:snapshot.correction.assessment_id,label:'RESUME CORRECTION'};
-  else if(strongest){
-    primary=classifyReentryAge(strongest.effective_recorded_at,now)==='stale'
-      ?{kind:'quick-update',classId:strongest.class_id,label:'QUICK UPDATE'}
-      :{kind:'start-class',classId:strongest.class_id,label:'START CLASS'};
-  }
+  else if(strongest&&classifyReentryAge(strongest.effective_recorded_at,now)==='stale')primary={kind:'quick-update',classId:strongest.class_id,label:'QUICK UPDATE'};
+  else if(planned.kind!=='none')primary={kind:'start-class',classId:planned.slot.class_id,label:'START CLASS'};
+  else if(strongest)primary={kind:'start-class',classId:strongest.class_id,label:'START CLASS'};
 
   const pending=safeOps.filter(o=>o.status==='PENDING_SAFE').length;
   const failed=safeOps.filter(o=>o.status==='FAILED').length;
