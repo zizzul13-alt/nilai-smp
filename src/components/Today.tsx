@@ -4,19 +4,21 @@ import type{AssessmentJudgementPayload,MeetingCheckpointPayload}from'../domain/s
 import{pendingForNamespace,safeWorkDb}from'../services/safeWork/localQueue';
 import{subscribeSafeWorkChanges}from'../services/safeWork/coordination';
 import{classifyReentryAge,deriveTodayModel,latestLocalCheckpointForMeeting,loadTodayServer,recordContinuityBaseline,resolveMeetingClass,type ReentryKind,type TodayClassContext,type TodayServerSnapshot}from'../services/academic/today';
+import{derivePlannedSuggestion,loadPlannedScheduleContexts,type PlannedSuggestion}from'../services/academic/plannedTimetable';
 
 type Props={client:SupabaseClient;userId:string;workspaceId:string;onOpenContinuity:(classId?:string)=>void;onOpenRapid:(assessmentId?:string)=>void};
 type LoadState={status:'loading'}|{status:'error'}|{status:'ready';snapshot:TodayServerSnapshot;ops:Awaited<ReturnType<typeof pendingForNamespace>>};
 type Editor={classId:string;kind:ReentryKind;stoppedAt:string;nextStep:string};
 const CHECKPOINT_RECONCILE_WARNING='Status checkpoint berubah. Halaman Hari ini belum dapat menyelaraskan konteks server; konteks lokal terakhir tetap ditampilkan.';
+function localNow(){const d=new Date(),pad=(n:number)=>String(n).padStart(2,'0');return{date:`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,weekday:d.getDay()===0?7:d.getDay(),time:`${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`};}
 
 export function Today({client,userId,workspaceId,onOpenContinuity,onOpenRapid}:Props){
-  const[state,setState]=useState<LoadState>({status:'loading'}),[editor,setEditor]=useState<Editor|null>(null),[notice,setNotice]=useState('');
+  const[state,setState]=useState<LoadState>({status:'loading'}),[editor,setEditor]=useState<Editor|null>(null),[notice,setNotice]=useState(''),[planned,setPlanned]=useState<PlannedSuggestion>({kind:'none'});
   const baselineAttempt=useRef<{fingerprint:string;opId:string}|null>(null);
   const localRefreshSeq=useRef(0),checkpointRefreshSeq=useRef(0);
   const refresh=useCallback(async()=>{
     setState({status:'loading'});setNotice('');
-    try{const[snapshot,ops]=await Promise.all([loadTodayServer(client),pendingForNamespace(safeWorkDb,userId,workspaceId)]);setState({status:'ready',snapshot,ops});}
+    try{const[snapshot,ops,slots]=await Promise.all([loadTodayServer(client),pendingForNamespace(safeWorkDb,userId,workspaceId),loadPlannedScheduleContexts(client,workspaceId)]);setPlanned(derivePlannedSuggestion(slots,localNow()));setState({status:'ready',snapshot,ops});}
     catch{setState({status:'error'});}
   },[client,userId,workspaceId]);
   useEffect(()=>{void refresh();},[refresh]);
@@ -49,7 +51,7 @@ export function Today({client,userId,workspaceId,onOpenContinuity,onOpenRapid}:P
     });
   }),[client,state.status,userId,workspaceId]);
 
-  const model=useMemo(()=>state.status==='ready'?deriveTodayModel(state.snapshot,state.ops):null,[state]);
+  const model=useMemo(()=>state.status==='ready'?deriveTodayModel(state.snapshot,state.ops,new Date(),planned):null,[state,planned]);
   const classes=state.status==='ready'?state.snapshot.classes:[];
   const findClass=(id:string)=>classes.find(c=>c.class_id===id)??null;
   const openEditor=(context:TodayClassContext,kind:ReentryKind)=>{baselineAttempt.current=null;setEditor({classId:context.class_id,kind,stoppedAt:'',nextStep:''});setNotice('');};
@@ -69,6 +71,7 @@ export function Today({client,userId,workspaceId,onOpenContinuity,onOpenRapid}:P
   if(!model)return null;
   const primary=model.primary;
   const primaryClass=primary&&'classId'in primary?findClass(primary.classId):null;
+  const plannedPrimary=primary?.kind==='start-class'&&planned.kind!=='none'&&planned.slot.class_id===primary.classId?planned:null;
   const correction=state.snapshot.correction;
   const firstRecovery=state.ops.find(op=>op.operation_kind==='meeting.checkpoint'||op.operation_kind==='assessment.judgement')??null;
   const activeLocalCheckpoint=primary?.kind==='continue-class'&&primaryClass?latestLocalCheckpointForMeeting(state.ops,primaryClass.active_meeting_id):null;
@@ -95,8 +98,9 @@ export function Today({client,userId,workspaceId,onOpenContinuity,onOpenRapid}:P
     <section className="today-section today-now"><h2>SEKARANG</h2>
       {primary?.kind==='continue-class'&&primaryClass?<><strong>{primaryClass.class_name} · Pertemuan aktif</strong><div className="today-memory"><div><small>TERAKHIR</small><b>{activeStoppedAt??'Belum ada checkpoint'}</b></div><div><small>BERIKUTNYA</small><b>{activeNextStep??'Belum dicatat'}</b></div></div>{activeLocalCheckpoint?<p className="safety-badge">{activeLocalCheckpoint.status==='PENDING_SAFE'?'PENDING SAFE · belum terkonfirmasi server':`${activeLocalCheckpoint.status} · konteks lokal belum diterima server`}</p>:null}{primaryClass.active_lesson_title?<p className="muted">Pelajaran: {primaryClass.active_lesson_title}</p>:null}</>:null}
       {primary?.kind==='resume-correction'&&correction?<><strong>{correction.assessment_title}</strong><p>{correction.class_name} · koreksi aktif{correction.active_count>1?` · ${correction.active_count} sesi aktif`:''}</p></>:null}
-      {(primary?.kind==='start-class'||primary?.kind==='quick-update')&&primaryClass?<><strong>{primaryClass.class_name}</strong>{primaryClass.effective_stopped_at?<><p className={classifyReentryAge(primaryClass.effective_recorded_at)==='stale'?'today-stale':''}>{classifyReentryAge(primaryClass.effective_recorded_at)==='stale'?'Konteks lama — cek kembali sebelum dipakai sebagai kebenaran hari ini.':'Konteks terakhir masih baru.'}</p><div className="today-memory"><div><small>TERAKHIR</small><b>{primaryClass.effective_stopped_at}</b></div><div><small>BERIKUTNYA</small><b>{primaryClass.effective_next_step??'Belum dicatat'}</b></div></div></>:<p>Belum ada Pertemuan atau konteks sebelumnya. Tidak perlu jadwal untuk mulai manual.</p>}</>:null}
-      {primary?<button type="button" className="today-primary" onClick={runPrimary}>{primaryLabel}</button>:model.empty?<p><strong>Tidak ada pekerjaan yang perlu perhatian.</strong> Tidak ada jadwal yang perlu dikonfigurasi agar halaman Hari ini tetap aman.</p>:<p><strong>Tidak ada pekerjaan utama sekarang.</strong> Ada hal yang perlu diselesaikan sebelum meninggalkan pekerjaan.</p>}
+      {plannedPrimary?<><strong>{plannedPrimary.slot.class_name}</strong><p className="muted">{plannedPrimary.kind==='likely-now'?'Sesuai jadwal sekarang':'Kelas terdekat berikutnya'} · {plannedPrimary.slot.local_start_time.slice(0,5)}–{plannedPrimary.slot.local_end_time.slice(0,5)}</p>{plannedPrimary.ambiguous.length?<p className="today-stale">Ada {plannedPrimary.ambiguous.length+1} jadwal yang sama-sama mungkin. Pilihan ini hanya saran; pilih kelas manual bila perlu.</p>:null}</>:null}
+      {(primary?.kind==='start-class'||primary?.kind==='quick-update')&&primaryClass&&!plannedPrimary?<><strong>{primaryClass.class_name}</strong>{primaryClass.effective_stopped_at?<><p className={classifyReentryAge(primaryClass.effective_recorded_at)==='stale'?'today-stale':''}>{classifyReentryAge(primaryClass.effective_recorded_at)==='stale'?'Konteks lama — cek kembali sebelum dipakai sebagai kebenaran hari ini.':'Konteks terakhir masih baru.'}</p><div className="today-memory"><div><small>TERAKHIR</small><b>{primaryClass.effective_stopped_at}</b></div><div><small>BERIKUTNYA</small><b>{primaryClass.effective_next_step??'Belum dicatat'}</b></div></div></>:<p>Belum ada Pertemuan atau konteks sebelumnya. Mulai Kelas tetap eksplisit.</p>}</>:null}
+      {primary?<button type="button" className="today-primary" onClick={runPrimary}>{primaryLabel}</button>:model.empty?<p><strong>Tidak ada pekerjaan yang perlu perhatian.</strong> Mulai kelas tetap tersedia secara manual dari Mengajar.</p>:<p><strong>Tidak ada pekerjaan utama sekarang.</strong> Ada hal yang perlu diselesaikan sebelum meninggalkan pekerjaan.</p>}
       {primary?.kind==='quick-update'&&primaryClass?<button type="button" className="secondary" onClick={()=>openEditor(primaryClass,'START_FROM_TODAY')}>MULAI DARI HARI INI</button>:null}
     </section>
 
