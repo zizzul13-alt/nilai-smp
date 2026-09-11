@@ -15,7 +15,7 @@ if [[ "$(run "select to_regclass('public.workspaces') is not null")" != "t" ]]; 
 fi
 
 PRE_VERSION="$(run "select version from public.app_schema_version where id=1")"
-PRE_MEETINGS="$(run "select case when to_regclass('public.meetings') is null then 0 else (select count(*) from public.meetings) end")"
+PRE_MEETINGS="$(run "select count(*) from public.meetings")"
 "${PSQL[@]}" -f supabase/migrations/202609110001_f1_planned_timetable.sql >/dev/null
 
 A="set role authenticated; set request.jwt.claims = '{\"sub\":\"00000000-0000-0000-0000-00000000000a\",\"role\":\"authenticated\"}';"
@@ -26,9 +26,12 @@ BW="(select id from public.workspaces where owner_user_id='00000000-0000-0000-00
 ACLASS="30000000-0000-0000-0000-000000000001"
 BY="f1a00000-0000-4000-8000-000000000001"; BP="f1a00000-0000-4000-8000-000000000002"; BCLASS="f1a00000-0000-4000-8000-000000000003"
 
-# Stable F1-only fixture ids avoid collisions with the earlier shared contract lanes.
-run "$B insert into public.academic_years(id,workspace_id,identity_key,display_name,sort_order) values('$BY',$BW,'f1-b-year','B Year',1) on conflict (id) do nothing; insert into public.academic_periods(id,workspace_id,academic_year_id,identity_key,display_name,sort_order) values('$BP',$BW,'$BY','f1-b-p','B Period',1) on conflict (id) do nothing; insert into public.classes(id,workspace_id,academic_period_id,identity_key,display_name) values('$BCLASS',$BW,'$BP','f1-b-class','B Class') on conflict (id) do nothing;"
+# Test fixtures are setup as the database owner so the matrix tests only the F1 boundary,
+# not whether the pre-existing Academic Spine CRUD policy can create fixture rows.
+run "insert into public.academic_years(id,workspace_id,identity_key,display_name,sort_order) select '$BY',id,'f1-b-year','B Year',901 from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000b' on conflict (id) do nothing; insert into public.academic_periods(id,workspace_id,academic_year_id,identity_key,display_name,sort_order) select '$BP',id,'$BY','f1-b-p','B Period',901 from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000b' on conflict (id) do nothing; insert into public.classes(id,workspace_id,academic_period_id,identity_key,display_name) select '$BCLASS',id,'$BP','f1-b-class','B Class' from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000b' on conflict (id) do nothing;"
 
+expect_value 'A canonical class fixture still exists' "$A select count(*) from public.classes where id='$ACLASS';" '1'
+expect_value 'B adversary class fixture exists for B only' "$B select count(*) from public.classes where id='$BCLASS';" '1'
 expect_value 'A creates owned planned slot' "$A insert into public.planned_schedules(workspace_id,class_id,weekday,local_start_time,local_end_time,effective_from) values($AW,'$ACLASS',1,'08:00','08:40','2026-07-01') returning weekday||':'||local_start_time::text||':'||status;" '1:08:00:00:active'
 expect_value 'A reads own planned slot' "$A select count(*) from public.planned_schedules where class_id='$ACLASS';" '1'
 expect_value 'B cannot read A planned slot' "$B select count(*) from public.planned_schedules where class_id='$ACLASS';" '0'
@@ -42,7 +45,7 @@ expect_fail 'end before start rejected' "$A insert into public.planned_schedules
 expect_fail 'invalid effective date range rejected' "$A insert into public.planned_schedules(workspace_id,class_id,weekday,local_start_time,local_end_time,effective_from,effective_until) values($AW,'$ACLASS',2,'08:00','08:40','2026-08-01','2026-07-01');"
 expect_fail 'exact duplicate active slot rejected' "$A insert into public.planned_schedules(workspace_id,class_id,weekday,local_start_time,local_end_time,effective_from) values($AW,'$ACLASS',1,'08:00','08:40','2026-07-01');"
 expect_value 'overlap remains explicit rather than auto-rewritten' "$A insert into public.planned_schedules(workspace_id,class_id,weekday,local_start_time,local_end_time,effective_from) values($AW,'$ACLASS',1,'08:20','09:00','2026-07-01'); select count(*) from public.planned_schedules where workspace_id=$AW and class_id='$ACLASS';" '2'
-expect_value 'F1 schema does not fabricate meetings' "select case when to_regclass('public.meetings') is null then 0 else (select count(*) from public.meetings) end;" "$PRE_MEETINGS"
+expect_value 'F1 schema does not fabricate meetings' "select count(*) from public.meetings;" "$PRE_MEETINGS"
 expect_value 'additive F1 schema preserves previous compatibility identity' "select version from public.app_schema_version where id=1;" "$PRE_VERSION"
 
 printf '\nF1 Planned Timetable schema + owner/adversary contract matrix completed successfully.\n'
