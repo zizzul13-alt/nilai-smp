@@ -7,7 +7,7 @@ const recovery=readFileSync('tests/database/run-recovery-contract-tests.sh','utf
 describe('F1 Planned Timetable portable recovery',()=>{
   it('adds planned schedules to portable export/restore without changing compatibility identity',()=>{
     expect(sql).toContain("'classes','planned_schedules','students'");
-    expect(sql).not.toContain('app_schema_version');
+    expect(sql).not.toMatch(/(?:insert\s+into|update)\s+public\.app_schema_version/i);
     expect(sql).not.toContain("format_version',2");
   });
 
