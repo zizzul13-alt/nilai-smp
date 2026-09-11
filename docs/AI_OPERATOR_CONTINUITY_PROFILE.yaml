@@ -1,0 +1,176 @@
+schema_version: 1
+project: nilai-smp
+purpose: >-
+  Compact collaboration profile for reduced-context AI sessions. This file
+  describes how to operate on Nilai SMP, not mutable project status.
+
+authority:
+  implementation_truth_precedence:
+    - current_repository_and_merged_implementation
+    - current_repository_contracts_and_status_docs
+    - accepted_governor_decisions
+    - old_chat_handoff_or_memory
+  mutable_project_state_stored_here: false
+
+repository_recovery:
+  sequence:
+    - inspect_current_main_and_active_prs
+    - read_relevant_contract_or_status_docs
+    - reconcile_handoff_against_repository_reality
+    - skip_already_completed_work
+    - continue_from_first_actual_unfinished_step
+  rule: repository_reality_wins
+
+operator_goal:
+  product_priority:
+    - SIMPLE
+    - FAST
+    - MOBILE_FRIENDLY
+    - RELIABLE
+    - SAFE
+    - LOW_MAINTENANCE
+  infrastructure_bias:
+    - free_or_no_credit_card_when_practical
+    - low_operator_attention
+    - no_data_integrity_tradeoff
+
+command_semantics:
+  ACC:
+    means:
+      - accept_current_substantive_result
+      - continue_or_merge_only_if_exit_conditions_are_met
+    does_not_mean:
+      - ignore_unverified_semantics
+      - production_cutover_without_proof
+  GAS:
+    aliases: [gas, lanjut, ayo_gas]
+    means:
+      - continue_already_bounded_work
+      - avoid_low_value_confirmation
+      - repair_within_scope_and_continue
+  RORO_JONGGRANG:
+    aliases: [gaspoll, roro_jonggrang, was_wes_wos, sampai_selesai]
+    means:
+      - execute_full_authorized_chain
+      - include_verification_repair_regression_and_closure
+      - stop_only_at_exit_condition_or_true_blocker
+    boundary: more_execution_not_more_scope
+  DEEP:
+    aliases: [mendalam]
+    means:
+      - inspect_semantics_edge_cases_data_integrity_and_failure_paths
+      - challenge_assumptions
+    does_not_mean:
+      - implementation_authorization
+  READ_ONLY:
+    aliases: [jangan_implement_dulu]
+    means:
+      - inspect_review_compare_only
+      - no_repo_mutation
+  STATUS_CHECK:
+    aliases: [udah, selesai, sudah_selesai]
+    response_shape:
+      - verdict
+      - exact_evidence
+      - blocker_vs_residual
+      - next_required_action_if_any
+  MERGE_IF_PAS:
+    aliases: [kalau_udah_pas_merge_saja, merge_saja_kalau_pas]
+    means:
+      - review_exact_head_diff_and_ci
+      - verify_semantic_exit_conditions
+      - merge_only_if_no_blocker
+  CORRECTION:
+    aliases: [bukan_bukan, wait, lah]
+    means:
+      - recheck_premise
+      - reanchor_on_user_intent
+      - discard_wrong_interpretation
+  CONSTRAINT_PATCH:
+    trigger: followup_brief_or_new_constraint
+    means:
+      - integrate_into_current_work_if_compatible
+      - do_not_restart_without_need
+      - identify_conflict_if_prior_work_is_invalidated
+
+academic_semantic_guardrails:
+  - assessment_not_result
+  - result_not_attempt
+  - workflow_state_not_score
+  - zero_not_blank
+  - missing_not_zero
+  - unchecked_graded_missing_excused_are_distinct
+  - original_makeup_remedial_correction_are_distinct
+  - do_not_infer_attempt_kind_from_result_change
+  - spreadsheet_row_not_student_identity
+  - stable_enrollment_identity_required_for_roundtrip
+  - preview_not_commit
+  - ui_session_not_teaching_meeting
+  - artifact_not_artifact_version_not_artifact_object
+  - archive_not_verified_backup
+
+merge_gate:
+  required_checks:
+    - exact_pr_head_or_expected_sha
+    - typecheck
+    - unit_and_static_contracts
+    - database_contracts_when_applicable
+    - production_build
+    - browser_e2e
+    - production_artifact_e2e_when_relevant
+    - academic_semantics_review
+    - ownership_and_rls_review_when_applicable
+    - atomicity_idempotency_conflict_review_when_applicable
+    - diff_scope_review
+  rule: green_ci_is_necessary_not_sufficient
+
+finding_classes:
+  BLOCKER: prevents_current_exit_condition
+  REPAIRABLE_WITHIN_SCOPE: fix_now_and_continue_when_authorized
+  RESIDUAL: real_but_nonblocking
+  PARK_IDEA: future_possible_not_active
+  OUT_OF_SCOPE: report_do_not_implement
+
+accepted_output_characteristics:
+  - verdict_near_top
+  - repository_grounded
+  - exact_pr_commit_run_or_file_evidence
+  - semantic_correctness_over_surface_success
+  - blockers_separated_from_residuals
+  - full_authorized_chain_carried_to_completion
+  - exact_commands_when_human_must_operate
+  - concise_copy_paste_ready_handoffs
+
+execution_workflow:
+  - INSPECT
+  - RECONCILE
+  - DEFINE_BOUNDED_CONTRACT
+  - IMPLEMENT
+  - TARGETED_VERIFY
+  - ADVERSARIAL_REVIEW
+  - REPAIR
+  - FULL_REGRESSION
+  - DIFF_REVIEW
+  - EXACT_HEAD_VERIFY
+  - MERGE_OR_REPORT_BLOCKER
+
+anti_patterns:
+  - trust_stale_handoff_over_repo
+  - merge_only_because_ci_is_green
+  - fabricate_attempt_kind_or_academic_meaning
+  - treat_preview_as_commit
+  - weaken_tests_to_make_pr_pass
+  - hide_rls_or_ownership_failure
+  - silently_expand_post_r3_scope
+  - ask_for_confirmation_on_every_routine_repair
+  - stop_at_plan_when_execution_is_already_authorized
+  - claim_done_without_exact_head_or_runtime_evidence
+
+reduced_context_boot:
+  read_in_order:
+    - AGENTS.md
+    - docs/AI_OPERATOR_CONTINUITY_PROFILE.yaml
+    - active_workstream_contract_or_status_doc
+    - task_handoff_if_any
+    - repository_code_tests_pr_ci_evidence
+  load_full_playbook_when: collaboration_or_command_semantics_are_ambiguous
