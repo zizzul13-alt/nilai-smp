@@ -3,13 +3,15 @@ import{readFileSync}from'node:fs';
 
 const assessments=readFileSync('src/components/AssessmentManager.tsx','utf8');
 const rapid=readFileSync('src/components/RapidCorrection.tsx','utf8');
+const compact=(value:string)=>value.replace(/\s+/g,'');
 
 describe('F3 bounded search/filter contracts',()=>{
   it('filters assessments locally by title/class while retaining canonical assessment identity',()=>{
-    expect(assessments).toContain("filterClassId==='ALL'||row.class_id===filterClassId");
-    expect(assessments).toContain("row.title.toLocaleLowerCase('id-ID').includes(q)");
-    expect(assessments).toContain('data-assessment-id={row.id}');
-    expect(assessments).not.toContain('createAssessment(client,workspaceId,{academicClass:filter');
+    const source=compact(assessments);
+    expect(source).toContain("filterClassId==='ALL'||row.class_id===filterClassId");
+    expect(source).toContain("row.title.toLocaleLowerCase('id-ID').includes(query)");
+    expect(source).toContain('data-assessment-id={row.id}');
+    expect(source).not.toContain('academicClass:filter');
   });
 
   it('retains existing correction-local student search whose target remains enrollment id',()=>{
