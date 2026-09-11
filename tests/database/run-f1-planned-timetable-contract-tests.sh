@@ -24,9 +24,9 @@ ANON="set role anon; set request.jwt.claims = '{\"role\":\"anon\"}';"
 AW="(select id from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000a')"
 BW="(select id from public.workspaces where owner_user_id='00000000-0000-0000-0000-00000000000b')"
 ACLASS="30000000-0000-0000-0000-000000000001"
-BY="91000000-0000-0000-0000-000000000001"; BP="92000000-0000-0000-0000-000000000001"; BCLASS="93000000-0000-0000-0000-000000000001"
+BY="f1a00000-0000-4000-8000-000000000001"; BP="f1a00000-0000-4000-8000-000000000002"; BCLASS="f1a00000-0000-4000-8000-000000000003"
 
-# Stable fixture for adversary ownership; tolerate an earlier focused rerun.
+# Stable F1-only fixture ids avoid collisions with the earlier shared contract lanes.
 run "$B insert into public.academic_years(id,workspace_id,identity_key,display_name,sort_order) values('$BY',$BW,'f1-b-year','B Year',1) on conflict (id) do nothing; insert into public.academic_periods(id,workspace_id,academic_year_id,identity_key,display_name,sort_order) values('$BP',$BW,'$BY','f1-b-p','B Period',1) on conflict (id) do nothing; insert into public.classes(id,workspace_id,academic_period_id,identity_key,display_name) values('$BCLASS',$BW,'$BP','f1-b-class','B Class') on conflict (id) do nothing;"
 
 expect_value 'A creates owned planned slot' "$A insert into public.planned_schedules(workspace_id,class_id,weekday,local_start_time,local_end_time,effective_from) values($AW,'$ACLASS',1,'08:00','08:40','2026-07-01') returning weekday||':'||local_start_time::text||':'||status;" '1:08:00:00:active'
