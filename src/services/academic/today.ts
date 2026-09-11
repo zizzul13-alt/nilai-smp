@@ -46,6 +46,7 @@ function startOfLocalWeek(input:Date){
   return d;
 }
 
+/** Context stays recent through the current and previous local calendar week; anything older is stale. */
 export function classifyReentryAge(recordedAt:string|null,now=new Date()):ReentryAge{
   if(!recordedAt)return'none';
   const previousWeekStart=startOfLocalWeek(now);previousWeekStart.setDate(previousWeekStart.getDate()-7);
