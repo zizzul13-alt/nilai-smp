@@ -10,6 +10,7 @@ import { Reporting } from '../components/Reporting';
 import { Artifacts } from '../components/Artifacts';
 import { BackupRestore } from '../components/BackupRestore';
 import { DailyDriverSetup } from '../components/DailyDriverSetup';
+import { PlannedTimetable } from '../components/PlannedTimetable';
 import { SafeWorkSummary } from '../components/SafeWorkSummary';
 import { WorkspaceBootstrapGate } from '../components/WorkspaceBootstrapGate';
 import { readBrowserConfig } from '../config/env';
@@ -57,7 +58,7 @@ function SignedOut({ client, authError }: { client: SupabaseClient; authError: s
   );
 }
 
-type WorkspaceMode='today'|'continuity'|'assessments'|'rapid'|'bulk'|'reporting'|'artifacts'|'recovery'|'setup';
+type WorkspaceMode='today'|'continuity'|'assessments'|'rapid'|'bulk'|'reporting'|'artifacts'|'recovery'|'setup'|'timetable';
 
 function SignedIn({ client, email, userId }: { client: SupabaseClient; email: string; userId: string }) {
   const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
@@ -115,10 +116,11 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
               <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Penilaian</button>
               <button type="button" className={mode === 'reporting' ? '' : 'secondary'} onClick={() => setMode('reporting')}>Laporan</button>
             </nav>
-            <details className="more-tools" open={['bulk','artifacts','recovery','setup'].includes(mode)}>
+            <details className="more-tools" open={['bulk','artifacts','recovery','setup','timetable'].includes(mode)}>
               <summary>Data, dokumen & alat lain</summary>
               <div className="tool-nav">
                 <button type="button" className={mode === 'setup' ? '' : 'secondary'} onClick={() => setMode('setup')}>Data & Pengaturan</button>
+                <button type="button" className={mode === 'timetable' ? '' : 'secondary'} onClick={() => setMode('timetable')}>Jadwal Mengajar</button>
                 <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Entri Massal / Impor</button>
                 <button type="button" className={mode === 'artifacts' ? '' : 'secondary'} onClick={() => setMode('artifacts')}>Dokumen</button>
                 <button type="button" className={mode === 'recovery' ? '' : 'secondary'} onClick={() => setMode('recovery')}>Pemulihan</button>
@@ -136,6 +138,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
             {mode === 'artifacts' ? <Artifacts client={client} workspaceId={workspaceId} /> : null}
             {mode === 'recovery' ? <BackupRestore client={client} /> : null}
             {mode === 'setup' ? <DailyDriverSetup client={client} workspaceId={workspaceId} onReady={()=>setMode('today')} /> : null}
+            {mode === 'timetable' ? <PlannedTimetable client={client} workspaceId={workspaceId} /> : null}
           </div>
         </main>
       )}
