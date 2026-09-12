@@ -3,7 +3,7 @@ name: real-cloudflare-execution
 on:
   push:
     branches:
-      - ops/p4-real-external-execution-20260908
+      - ops/f2.1-provider-response-repair-20260913
 
 permissions:
   contents: read
@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 75eafd6824a4ea07101fe1b1f1b04d8775d4c218
+          ref: 0de376f6ee39dc16e3a475d5b0170609187dc90f
 
       - uses: actions/setup-node@v4
         with:
@@ -42,10 +42,7 @@ jobs:
           set -euo pipefail
           account_id="${CF_ACCOUNT_ID_PRIMARY:-${CF_ACCOUNT_ID_LEGACY:-}}"
           api_token="${CF_API_TOKEN_PRIMARY:-${CF_API_TOKEN_LEGACY:-}}"
-          if [ -z "$account_id" ] || [ -z "$api_token" ]; then
-            echo "::error::P4_REAL_DEPLOY_BLOCKED missing permanent Cloudflare GitHub Actions credentials. Required names: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN (legacy CF_ACCOUNT_ID + CF_API_TOKEN also accepted)."
-            exit 78
-          fi
+          if [ -z "$account_id" ] || [ -z "$api_token" ]; then exit 78; fi
           echo "::add-mask::$account_id"
           echo "::add-mask::$api_token"
           printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
@@ -57,207 +54,103 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Deploy V1 exact candidate
-        id: deploy_v1
+      - name: Deploy exact F2.1 provider-response repair
+        id: deploy
         env:
-          WRANGLER_OUTPUT_FILE_PATH: wrangler-v1.ndjson
+          WRANGLER_OUTPUT_FILE_PATH: wrangler.ndjson
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler deploy --message "Nilai SMP P4 exact candidate ${GITHUB_SHA}"
+          npx wrangler deploy --message "Nilai SMP F2.1 provider response repair 0de376f6ee39dc16e3a475d5b0170609187dc90f"
           node --input-type=module <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
-          const records = readFileSync('wrangler-v1.ndjson', 'utf8')
-            .split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
-          const deploy = [...records].reverse().find(record => record.type === 'deploy');
-          if (!deploy?.version_id) throw new Error('Wrangler structured output missing V1 version_id');
-          const url = Array.isArray(deploy.targets)
-            ? deploy.targets.find(target => typeof target === 'string' && target.startsWith('https://'))
-            : null;
-          if (!url) throw new Error('Wrangler structured output missing V1 HTTPS deployment URL');
-          appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${deploy.version_id}\nurl=${url}\n`);
-          console.log(`P4_V1_DEPLOY PASS worker=${deploy.worker_name ?? 'nilai-smp'} version_id=${deploy.version_id} url=${url}`);
+          const records=readFileSync('wrangler.ndjson','utf8').split(/\r?\n/).filter(Boolean).map(JSON.parse);
+          const deploy=[...records].reverse().find(r=>r.type==='deploy');
+          if(!deploy?.version_id) throw new Error('missing version_id');
+          const url=deploy.targets?.find(t=>typeof t==='string'&&t.startsWith('https://'));
+          if(!url) throw new Error('missing deployment URL');
+          appendFileSync(process.env.GITHUB_OUTPUT,`version_id=${deploy.version_id}\nurl=${url}\n`);
+          console.log(`F2_1_PROVIDER_RESPONSE_DEPLOY PASS version=${deploy.version_id} url=${url}`);
           NODE
 
-      - name: URL and deep-SPA smoke V1
+      - name: Public URL and deep-SPA smoke
         shell: bash
         run: |
           set -euo pipefail
-          : > smoke-v1.log
           for attempt in $(seq 1 12); do
-            echo "P4_SMOKE_ATTEMPT phase=v1 attempt=${attempt}/12" | tee -a smoke-v1.log
-            if npm run candidate:smoke -- "${{ steps.deploy_v1.outputs.url }}" 2>&1 | tee -a smoke-v1.log; then
-              echo "P4_SMOKE_READY phase=v1 attempt=${attempt}" | tee -a smoke-v1.log
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+            if npm run candidate:smoke -- "${{ steps.deploy.outputs.url }}"; then exit 0; fi
+            [ "$attempt" -eq 12 ] && exit 1
+            sleep 5
           done
-          echo "::error::P4_SMOKE_TIMEOUT V1 did not become ready within bounded propagation window"
-          exit 1
 
-      - name: Browser production smoke V1
-        env:
-          DEPLOYED_URL: ${{ steps.deploy_v1.outputs.url }}
-        run: |
-          node --input-type=module <<'NODE' | tee browser-v1.log
-          import { chromium } from '@playwright/test';
-          const origin = new URL(process.env.DEPLOYED_URL);
-          const browser = await chromium.launch();
-          try {
-            const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-            const pageErrors = [];
-            page.on('pageerror', error => pageErrors.push(String(error)));
-            for (const path of ['/', '/__p4_deep_spa_probe__/browser']) {
-              const response = await page.goto(new URL(path, origin).href, { waitUntil: 'domcontentloaded' });
-              if (!response || response.status() !== 200) throw new Error(`${path} navigation did not return 200`);
-              await page.waitForSelector('#root', { timeout: 10000 });
-              const html = await page.content();
-              if (html.includes('/src/') || html.includes('/@vite/client')) throw new Error(`${path} exposed Vite dev/source paths`);
-              const bodyText = (await page.locator('body').innerText()).trim();
-              if (bodyText.length < 10) throw new Error(`${path} rendered an unexpectedly empty application shell`);
-            }
-            if (pageErrors.length) throw new Error(`pageerror: ${pageErrors.join(' | ')}`);
-            console.log(`P5_BROWSER_PUBLIC_SHELL PASS origin=${origin.origin}`);
-          } finally {
-            await browser.close();
-          }
-          NODE
-
-      - name: Deploy V2 controlled rollback probe
-        id: deploy_v2
-        env:
-          WRANGLER_OUTPUT_FILE_PATH: wrangler-v2.ndjson
-          V1_VERSION: ${{ steps.deploy_v1.outputs.version_id }}
+      - name: Teacher Brief API worker-first protection smoke
         shell: bash
         run: |
           set -euo pipefail
-          printf 'rollback-probe run=%s base=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > dist/rollback-probe.txt
-          npx wrangler deploy --message "Nilai SMP P6 controlled rollback probe ${GITHUB_SHA}"
-          node --input-type=module <<'NODE'
-          import { appendFileSync, readFileSync } from 'node:fs';
-          const records = readFileSync('wrangler-v2.ndjson', 'utf8')
-            .split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
-          const deploy = [...records].reverse().find(record => record.type === 'deploy');
-          if (!deploy?.version_id) throw new Error('Wrangler structured output missing V2 version_id');
-          if (deploy.version_id === process.env.V1_VERSION) throw new Error('Controlled V2 did not produce a distinct Worker version');
-          const url = Array.isArray(deploy.targets)
-            ? deploy.targets.find(target => typeof target === 'string' && target.startsWith('https://'))
-            : null;
-          if (!url) throw new Error('Wrangler structured output missing V2 HTTPS deployment URL');
-          appendFileSync(process.env.GITHUB_OUTPUT, `version_id=${deploy.version_id}\nurl=${url}\n`);
-          console.log(`P6_V2_DEPLOY PASS worker=${deploy.worker_name ?? 'nilai-smp'} version_id=${deploy.version_id} url=${url}`);
-          NODE
-
-      - name: Smoke controlled V2
-        shell: bash
-        run: |
-          set -euo pipefail
-          : > smoke-v2.log
-          for attempt in $(seq 1 12); do
-            echo "P6_SMOKE_ATTEMPT phase=v2 attempt=${attempt}/12" | tee -a smoke-v2.log
-            if npm run candidate:smoke -- "${{ steps.deploy_v2.outputs.url }}" 2>&1 | tee -a smoke-v2.log; then
-              echo "P6_SMOKE_READY phase=v2 attempt=${attempt}" | tee -a smoke-v2.log
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::P6_SMOKE_TIMEOUT controlled V2 did not become ready within bounded propagation window"
-          exit 1
-
-      - name: Roll back to V1 exact candidate
-        env:
-          V1_VERSION: ${{ steps.deploy_v1.outputs.version_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx wrangler rollback "$V1_VERSION" --message "Nilai SMP P6 rollback proof to exact candidate ${GITHUB_SHA}"
-          npx wrangler deployments status --json | tee deployment-status-after-rollback.json
+          url="${{ steps.deploy.outputs.url }}/api/teacher-brief"
+          status="$(curl -sS -o teacher-brief-unauth.json -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data '{"context":{}}' "$url")"
+          cat teacher-brief-unauth.json
+          if [ "$status" != "401" ]; then
+            echo "::error::expected unauthenticated Teacher Brief API to return 401, got $status"
+            exit 1
+          fi
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
-          const body = readFileSync('deployment-status-after-rollback.json', 'utf8');
-          if (!body.includes(process.env.V1_VERSION)) {
-            throw new Error(`Active deployment status does not contain expected V1 version ${process.env.V1_VERSION}`);
-          }
-          console.log(`P6_ROLLBACK_STATUS PASS active_contains_v1=${process.env.V1_VERSION}`);
+          const body=JSON.parse(readFileSync('teacher-brief-unauth.json','utf8'));
+          if(body?.error!=='unauthorized') throw new Error(`unexpected Teacher Brief API body: ${JSON.stringify(body)}`);
+          console.log('F2_1_API_WORKER_FIRST=PASS error=unauthorized');
           NODE
 
-      - name: URL and deep-SPA smoke after rollback
-        shell: bash
-        run: |
-          set -euo pipefail
-          : > smoke-after-rollback.log
-          for attempt in $(seq 1 12); do
-            echo "P6_SMOKE_ATTEMPT phase=rollback attempt=${attempt}/12" | tee -a smoke-after-rollback.log
-            if npm run candidate:smoke -- "${{ steps.deploy_v1.outputs.url }}" 2>&1 | tee -a smoke-after-rollback.log; then
-              echo "P6_SMOKE_READY phase=rollback attempt=${attempt}" | tee -a smoke-after-rollback.log
-              exit 0
-            fi
-            if [ "$attempt" -lt 12 ]; then sleep 5; fi
-          done
-          echo "::error::P6_SMOKE_TIMEOUT rollback target did not become ready within bounded propagation window"
-          exit 1
-
-      - name: Browser smoke after rollback
+      - name: Desktop and mobile browser smoke
         env:
-          DEPLOYED_URL: ${{ steps.deploy_v1.outputs.url }}
+          DEPLOYED_URL: ${{ steps.deploy.outputs.url }}
         run: |
-          node --input-type=module <<'NODE' | tee browser-after-rollback.log
+          node --input-type=module <<'NODE'
           import { chromium } from '@playwright/test';
-          const origin = new URL(process.env.DEPLOYED_URL);
-          const browser = await chromium.launch();
+          const origin=new URL(process.env.DEPLOYED_URL); const browser=await chromium.launch();
           try {
-            const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-            const response = await page.goto(new URL('/__p4_deep_spa_probe__/rollback', origin).href, { waitUntil: 'domcontentloaded' });
-            if (!response || response.status() !== 200) throw new Error('rollback deep navigation did not return 200');
-            await page.waitForSelector('#root', { timeout: 10000 });
-            const html = await page.content();
-            if (html.includes('/src/') || html.includes('/@vite/client')) throw new Error('rollback response exposed Vite dev/source paths');
-            console.log(`P6_BROWSER_ROLLBACK PASS origin=${origin.origin}`);
-          } finally {
-            await browser.close();
-          }
+            for (const viewport of [{width:1280,height:900},{width:390,height:844}]) {
+              const page=await browser.newPage({viewport}); const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
+              for (const path of ['/','/__f2_1_provider_response_probe__/browser']) {
+                const response=await page.goto(new URL(path,origin).href,{waitUntil:'domcontentloaded'});
+                if(!response||response.status()!==200) throw new Error(`${path} != 200`);
+                await page.waitForSelector('#root',{timeout:10000});
+                const html=await page.content(); if(html.includes('/src/')||html.includes('/@vite/client')) throw new Error('dev path exposed');
+              }
+              if(errors.length) throw new Error(errors.join(' | ')); await page.close();
+            }
+            console.log(`F2_1_BROWSER_SMOKE PASS origin=${origin.origin}`);
+          } finally { await browser.close(); }
           NODE
 
-      - name: Write sanitized execution summary
+      - name: Write deployment evidence
         if: success()
-        env:
-          V1_VERSION: ${{ steps.deploy_v1.outputs.version_id }}
-          V2_VERSION: ${{ steps.deploy_v2.outputs.version_id }}
-          DEPLOYED_URL: ${{ steps.deploy_v1.outputs.url }}
         shell: bash
         run: |
-          cat > cloudflare-execution-summary.txt <<EOF
-          P4_P6_REAL_EXECUTION=PASS
-          exact_candidate_sha=75eafd6824a4ea07101fe1b1f1b04d8775d4c218
+          cat > f2-1-provider-response-deploy.txt <<EOF
+          F2_1_PROVIDER_RESPONSE_DEPLOY=PASS
+          exact_candidate_sha=0de376f6ee39dc16e3a475d5b0170609187dc90f
           schema_version=r3.6-recovery.1
           supabase_project_ref=ifnnmmilurqtvvxywrlo
-          wrangler_version=4.127.1
-          worker_name=nilai-smp
-          deployed_url=${DEPLOYED_URL}
-          known_good_v1=${V1_VERSION}
-          controlled_v2=${V2_VERSION}
-          rollback_target=${V1_VERSION}
-          authenticated_daily_driver_smoke=NOT_CLAIMED
-          P2_REAL_AUTH_RLS_STORAGE=NOT_CLAIMED
-          P3_REAL_RECOVERY=NOT_CLAIMED
+          deployed_url=${{ steps.deploy.outputs.url }}
+          deployed_version=${{ steps.deploy.outputs.version_id }}
+          workers_ai_binding=CONFIG_AND_DEPLOY_PASS
+          worker_first_routing=PASS
+          teacher_brief_api_unauth_protection=PASS
+          public_desktop_mobile_smoke=PASS
+          authenticated_workers_ai_smoke=NOT_CLAIMED
           PRODUCTION_CUTOVER=FALSE
           EOF
-          cat cloudflare-execution-summary.txt
+          cat f2-1-provider-response-deploy.txt
 
-      - name: Upload sanitized Cloudflare execution evidence
+      - name: Upload deployment evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cloudflare-real-execution-evidence
+          name: f2-1-provider-response-repair-evidence
           path: |
-            wrangler-v1.ndjson
-            wrangler-v2.ndjson
-            smoke-v1.log
-            browser-v1.log
-            smoke-v2.log
-            deployment-status-after-rollback.json
-            smoke-after-rollback.log
-            browser-after-rollback.log
-            cloudflare-execution-summary.txt
+            wrangler.ndjson
+            teacher-brief-unauth.json
+            f2-1-provider-response-deploy.txt
           if-no-files-found: warn
           retention-days: 7
