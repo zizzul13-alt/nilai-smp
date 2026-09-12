@@ -13,7 +13,7 @@ export type TeacherBriefContext={
   assessment_attention:{unchecked:number;missing:number;total:number};
   reporting_attention:{open:number;finalized:number;total:number};
 };
-export type TeacherBriefNarrative={headline:string;priorities:string[];source:'deterministic'|'provider'};
+export type TeacherBriefNarrative={headline:string;priorities:string[];source:'deterministic'|'provider';fallback_reason?:string};
 export type TeacherBriefNarrator=(context:TeacherBriefContext)=>Promise<{headline:string;priorities:string[]}>;
 type ResultStateRow={state:'UNCHECKED'|'GRADED'|'MISSING'|'EXCUSED'|string};
 type PacingRow={normal_meetings:number;available_meetings:number;correction_reserve:number};
@@ -56,4 +56,4 @@ export function deterministicTeacherBrief(context:TeacherBriefContext):TeacherBr
   if(context.reporting_attention.open)priorities.push(`${context.reporting_attention.open} siklus laporan masih OPEN.`);
   return{headline:priorities.length?'Ada pekerjaan yang layak diperhatikan.':'Tidak ada perhatian utama dari konteks kanonik yang dibaca.',priorities,source:'deterministic'};
 }
-export async function narrateTeacherBrief(context:TeacherBriefContext,narrator?:TeacherBriefNarrator):Promise<TeacherBriefNarrative>{if(!narrator)return deterministicTeacherBrief(context);try{const result=await narrator(context);return{headline:result.headline,priorities:result.priorities,source:'provider'};}catch{return deterministicTeacherBrief(context);}}
+export async function narrateTeacherBrief(context:TeacherBriefContext,narrator?:TeacherBriefNarrator):Promise<TeacherBriefNarrative>{if(!narrator)return deterministicTeacherBrief(context);try{const result=await narrator(context);return{headline:result.headline,priorities:result.priorities,source:'provider'};}catch(error){return{...deterministicTeacherBrief(context),fallback_reason:error instanceof Error?error.message:'AI_ADVISORY_FAILED'};}}
