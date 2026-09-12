@@ -8,12 +8,12 @@ type State={status:'loading'}|{status:'error';message:string}|{status:'ready';co
 
 function workersAiNarrator(client:SupabaseClient):TeacherBriefNarrator{return async context=>{
   const[{data:{session}},configResult]=await Promise.all([client.auth.getSession(),Promise.resolve(readBrowserConfig())]);
-  if(!session?.access_token)throw new Error('Sesi autentikasi tidak tersedia untuk AI advisory.');
-  if(!configResult.ok)throw new Error('Konfigurasi browser tidak tersedia untuk AI advisory.');
+  if(!session?.access_token)throw new Error('AUTH_SESSION_MISSING');
+  if(!configResult.ok)throw new Error('BROWSER_CONFIG_MISSING');
   const response=await fetch('/api/teacher-brief',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'X-Supabase-Publishable-Key':configResult.config.supabasePublishableKey},body:JSON.stringify({context})});
-  if(!response.ok)throw new Error(`AI advisory gagal (${response.status}).`);
+  if(!response.ok){let code='HTTP_ERROR';try{const value=await response.json() as {error?:unknown};if(typeof value.error==='string'&&/^[a-z0-9_]+$/i.test(value.error))code=value.error.toUpperCase();}catch{/* bounded diagnostic only */}throw new Error(`${code}_${response.status}`);}
   const value=await response.json() as {headline?:unknown;priorities?:unknown};
-  if(typeof value.headline!=='string'||!Array.isArray(value.priorities)||!value.priorities.every(item=>typeof item==='string'))throw new Error('AI advisory mengembalikan bentuk yang tidak valid.');
+  if(typeof value.headline!=='string'||!Array.isArray(value.priorities)||!value.priorities.every(item=>typeof item==='string'))throw new Error('INVALID_AI_RESPONSE_SHAPE');
   return{headline:value.headline,priorities:value.priorities as string[]};
 };}
 
@@ -39,6 +39,6 @@ export function TeacherBrief({client,userId,workspaceId}:{client:SupabaseClient;
     <section className="today-section"><h2>PRIORITAS</h2>{narrative.priorities.length?<div className="today-list">{narrative.priorities.map((item,index)=><div className="today-item" key={`${index}-${item}`}><strong>{index+1}</strong><span>{item}</span></div>)}</div>:<p>Tidak ada perhatian utama yang terdeteksi dari konteks yang dibaca.</p>}</section>
     <section className="today-section"><h2>BUKTI RINGKAS</h2><div className="today-memory"><div><small>MEETING AKTIF</small><b>{context.active_meetings.length}</b></div><div><small>KOREKSI AKTIF</small><b>{context.active_correction?'1':'0'}</b></div><div><small>SAFE WORK</small><b>{context.pending_safe_summary.pending+context.pending_safe_summary.failed+context.pending_safe_summary.conflict}</b></div><div><small>UNCHECKED</small><b>{context.assessment_attention.unchecked}</b></div><div><small>MISSING</small><b>{context.assessment_attention.missing}</b></div><div><small>PACING COMPRESSED</small><b>{context.pacing_attention.compressed}</b></div><div><small>LAPORAN OPEN</small><b>{context.reporting_attention.open}</b></div></div></section>
     {context.continuity_attention.length?<section className="today-section"><h2>KONTINUITAS</h2><div className="today-list">{context.continuity_attention.map(item=><div className="today-item" key={`${item.class_id}-${item.reason}`}><strong>{item.class_name}</strong><span>{item.reason==='NO_CHECKPOINT'?'Meeting aktif belum punya checkpoint kanonik.':'Konteks terakhir sudah lama; verifikasi sebelum dipakai.'}</span></div>)}</div></section>:null}
-    <p className="muted">Dibuat {new Date(context.generated_at).toLocaleString('id-ID')} · sumber narasi: {narrative.source==='deterministic'?'deterministik (fallback)':'Cloudflare Workers AI'}.</p>
+    <p className="muted">Dibuat {new Date(context.generated_at).toLocaleString('id-ID')} · sumber narasi: {narrative.source==='deterministic'?'deterministik (fallback)':'Cloudflare Workers AI'}.{narrative.source==='deterministic'&&narrative.fallback_reason?` · diagnostik: ${narrative.fallback_reason}`:''}</p>
   </section>;
 }
