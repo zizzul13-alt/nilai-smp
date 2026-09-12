@@ -1,9 +1,15 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "nilai-smp",
+  "main": "./worker/index.ts",
   "compatibility_date": "2026-09-03",
+  "ai": {
+    "binding": "AI"
+  },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
   }
 }
