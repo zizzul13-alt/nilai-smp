@@ -41,10 +41,11 @@ async function teacherBrief(request:Request,env:Env){
   try{context=(JSON.parse(raw) as {context:BriefContext}).context;}catch{return json({error:'invalid_json'},400);}
   if(!context||!Array.isArray(context.active_meetings)||!context.assessment_attention||!context.pending_safe_summary)return json({error:'invalid_context'},400);
   const safeContext={...context,active_meetings:context.active_meetings.map(({class_id,class_name})=>({class_id,class_name})),active_correction:context.active_correction?{assessment_title:context.active_correction.assessment_title,class_id:context.active_correction.class_id,class_name:context.active_correction.class_name}:null};
-  const result=await env.AI.run(MODEL,{messages:[
+  let result:unknown;
+  try{result=await env.AI.run(MODEL,{messages:[
     {role:'system',content:'Anda adalah asisten ringkas untuk guru SMP. Data yang diberikan adalah konteks kanonik read-only. Jangan menciptakan fakta, nilai, siswa, Meeting, deadline, atau tindakan. Jangan mengubah data. Tulis Bahasa Indonesia yang singkat dan praktis. Kembalikan JSON saja: {"headline":"...","priorities":["..."]}. Maksimal 5 prioritas. Jika tidak ada perhatian nyata, katakan demikian.'},
     {role:'user',content:`Ringkas konteks berikut tanpa menambah fakta:\n${JSON.stringify(safeContext)}`}
-  ],max_tokens:450,temperature:0.2});
+  ],max_tokens:450,temperature:0.2});}catch{return json({error:'ai_provider_failed'},502);}
   const responseText=typeof result==='object'&&result!==null&&'response' in result?String((result as {response:unknown}).response):'';
   try{const narrative=extractJson(responseText);if(!validNarrative(narrative))throw new Error('invalid-shape');return json(narrative);}catch{return json({error:'invalid_provider_response'},502);}
 }
