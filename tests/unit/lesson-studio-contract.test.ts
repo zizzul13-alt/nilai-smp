@@ -8,6 +8,7 @@ const studio=readFileSync('src/components/LessonStudio.tsx','utf8');
 const teaching=readFileSync('src/components/TeachingContinuity.tsx','utf8');
 const service=readFileSync('src/services/academic/lessonStudio.ts','utf8');
 const packageService=readFileSync('src/services/academic/lessonPackage.ts','utf8');
+const worker=readFileSync('worker/index.ts','utf8');
 
 function version(lessonId:string,versionNumber:number):LessonVersion{
   return{id:`${lessonId}-${versionNumber}`,workspace_id:'W',lesson_id:lessonId,version_number:versionNumber,content_text:`v${versionNumber}`,created_at:'2026-09-14T00:00:00Z'};
@@ -26,7 +27,7 @@ describe('Lesson Studio vertical slice',()=>{
     expect(app).toContain('Siapkan Materi');
     expect(app).toContain("mode === 'lesson'");
     expect(studio).toContain('Simpan sebagai versi baru');
-    expect(studio).toContain('LessonVersion append-only');
+    expect(studio).toContain('Buat semua dari judul');
     expect(studio).toContain('Buka Mengajar');
     expect(studio).toContain('Buka Dokumen');
   });
@@ -39,13 +40,25 @@ describe('Lesson Studio vertical slice',()=>{
     expect(app).toContain('onOpenLessonStudio');
   });
 
-  it('keeps AI package generation draft-first, exact-source and explicit-save only',()=>{
-    expect(studio).toContain('Buat draf paket AI');
+  it('supports one-click title-first draft generation without auto-saving canonical data',()=>{
+    expect(studio).toContain('generateLessonSeed');
+    expect(studio).toContain('generateAllFromTitle');
+    expect(studio).toContain('Draf lengkap selesai dari judul');
+    expect(packageService).toContain("'/api/lesson-seed'");
+    expect(worker).toContain("url.pathname==='/api/lesson-seed'");
+    expect(worker).toContain('lesson_content');
+    expect(studio).not.toContain('createAssessment(');
+  });
+
+  it('keeps six-output package generation draft-first, exact-source and explicit-save only',()=>{
+    for(const label of['RPP','Modul Ajar','LKPD','Bahan Ajar','Tugas','Ulangan'])expect(studio).toContain(label);
     expect(studio).toContain('Simpan paket ke Dokumen');
-    expect(studio).toContain('Belum tersimpan ke Artifact');
+    expect(studio).toContain('tidak otomatis menjadi Penilaian');
     expect(studio).toContain('contentMatchesLatest');
     expect(packageService).toContain("sourceKind:'LESSON_VERSION'");
     expect(packageService).toContain('lessonVersionId:input.source.lessonVersionId');
+    expect(packageService).toContain("key:'TUGAS'");
+    expect(packageService).toContain("key:'ULANGAN'");
     expect(packageService).toContain('generatorProvider:input.draft.provider');
     expect(packageService).toContain('appendArtifactVersion');
     expect(packageService).toContain('createArtifact');
