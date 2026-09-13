@@ -3,7 +3,13 @@ name: real-cloudflare-execution
 on:
   push:
     branches:
-      - ops/p4-real-external-execution-20260908
+      - 'ops/production-acceptance-*'
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact commit SHA to deploy and roll back to
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -27,7 +33,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 75eafd6824a4ea07101fe1b1f1b04d8775d4c218
+          ref: ${{ inputs.candidate_sha || github.sha }}
+
+      - name: Resolve exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          exact_candidate_sha="$(git rev-parse HEAD)"
+          echo "EXACT_CANDIDATE_SHA=$exact_candidate_sha" >> "$GITHUB_ENV"
+          echo "P4_EXACT_CANDIDATE sha=$exact_candidate_sha"
 
       - uses: actions/setup-node@v4
         with:
@@ -64,7 +78,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler deploy --message "Nilai SMP P4 exact candidate ${GITHUB_SHA}"
+          npx wrangler deploy --message "Nilai SMP P4 exact candidate ${EXACT_CANDIDATE_SHA}"
           node --input-type=module <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
           const records = readFileSync('wrangler-v1.ndjson', 'utf8')
@@ -131,8 +145,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'rollback-probe run=%s base=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > dist/rollback-probe.txt
-          npx wrangler deploy --message "Nilai SMP P6 controlled rollback probe ${GITHUB_SHA}"
+          printf 'rollback-probe run=%s base=%s\n' "$GITHUB_RUN_ID" "$EXACT_CANDIDATE_SHA" > dist/rollback-probe.txt
+          npx wrangler deploy --message "Nilai SMP P6 controlled rollback probe ${EXACT_CANDIDATE_SHA}"
           node --input-type=module <<'NODE'
           import { appendFileSync, readFileSync } from 'node:fs';
           const records = readFileSync('wrangler-v2.ndjson', 'utf8')
@@ -170,7 +184,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler rollback "$V1_VERSION" --message "Nilai SMP P6 rollback proof to exact candidate ${GITHUB_SHA}"
+          npx wrangler rollback "$V1_VERSION" --message "Nilai SMP P6 rollback proof to exact candidate ${EXACT_CANDIDATE_SHA}"
           npx wrangler deployments status --json | tee deployment-status-after-rollback.json
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
@@ -228,7 +242,7 @@ jobs:
         run: |
           cat > cloudflare-execution-summary.txt <<EOF
           P4_P6_REAL_EXECUTION=PASS
-          exact_candidate_sha=75eafd6824a4ea07101fe1b1f1b04d8775d4c218
+          exact_candidate_sha=${EXACT_CANDIDATE_SHA}
           schema_version=r3.6-recovery.1
           supabase_project_ref=ifnnmmilurqtvvxywrlo
           wrangler_version=4.127.1
