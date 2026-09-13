@@ -1,5 +1,6 @@
 import{useEffect,useMemo,useState}from'react';
 import type{SupabaseClient}from'@supabase/supabase-js';
+import{createLessonForSetup}from'../services/academic/dailyDriverSetup';
 import{appendLessonVersion,latestLessonVersion,loadLessonStudio,type LessonStudioContext}from'../services/academic/lessonStudio';
 import{generateLessonPackage,generateLessonSeed,newLessonPackageSaveIds,planLessonPackageSave,saveLessonPackageArtifacts,type LessonPackageDraft,type LessonPackageProfile,type LessonPackageSavePlan,type LessonPackageSource}from'../services/academic/lessonPackage';
 
@@ -28,6 +29,8 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
   const[lessonId,setLessonId]=useState('');
   const[content,setContent]=useState('');
   const[draftId,setDraftId]=useState(()=>crypto.randomUUID());
+  const[newLessonTitle,setNewLessonTitle]=useState('');
+  const[newMaterialId,setNewMaterialId]=useState('');
   const[profile,setProfile]=useState<LessonPackageProfile>(blankProfile);
   const[packageDraft,setPackageDraft]=useState<LessonPackageDraft|null>(null);
   const[packageBasisContent,setPackageBasisContent]=useState('');
@@ -44,6 +47,7 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
     const id=preferred&&next.lessons.some(lesson=>lesson.id===preferred)?preferred:(next.lessons[0]?.id??'');
     setLessonId(id);
     setContent(id?(latestLessonVersion(next.lessonVersions,id)?.content_text??''):'');
+    setNewMaterialId(current=>current&&next.materials.some(material=>material.id===current)?current:(next.materials[0]?.id??''));
   }
 
   async function refresh(preferred?:string){
@@ -85,6 +89,37 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
     setNotice(null);
   }
 
+  async function createDraftBundle(lessonTitle:string,materialTitle:string){
+    const seed=await generateLessonSeed(client,{lessonTitle,materialTitle,profile});
+    const seededContent=seed.lesson_content.trim();
+    setContent(seededContent);setDraftId(crypto.randomUUID());
+    const draft=await generateLessonPackage(client,{source:{lessonTitle,materialTitle,contentText:seededContent},profile});
+    setPackageDraft(draft);setPackageBasisContent(seededContent);setPackageSaveIds(newLessonPackageSaveIds());setPackageSavePlan(null);setPackageSaveStarted(false);setPackageSaved(false);
+    return seededContent;
+  }
+
+  async function createLessonAndGenerate(){
+    const title=newLessonTitle.trim();
+    const material=context?.materials.find(item=>item.id===newMaterialId)??null;
+    if(!title||!material||busy)return;
+    setBusy(true);setNotice(null);clearPackage();
+    let createdId:string|null=null;
+    try{
+      const created=await createLessonForSetup(client,workspaceId,material.id,title);
+      createdId=created.id;
+      const next=await loadLessonStudio(client,workspaceId);
+      setContext(next);selectFrom(next,created.id);setNewLessonTitle('');
+      try{
+        await createDraftBundle(created.title,material.title);
+        setNotice({kind:'info',text:`Pelajaran “${created.title}” dibuat. Draf isi materi + RPP + Modul Ajar + LKPD + Bahan Ajar + Tugas + Ulangan sudah siap review. Belum ada LessonVersion atau Dokumen yang tersimpan.`});
+      }catch(error){
+        setNotice({kind:'error',text:`Pelajaran “${created.title}” sudah dibuat, tetapi AI belum menyelesaikan semua draf. Anda tetap bisa menulis/simpan materi secara manual lalu mencoba lagi. ${error instanceof Error?error.message:String(error)}`});
+      }
+    }catch(error){
+      setNotice({kind:'error',text:`${createdId?'Pelajaran mungkin sudah dibuat; muat ulang sebelum mencoba lagi. ':''}${error instanceof Error?error.message:String(error)}`});
+    }finally{setBusy(false);}
+  }
+
   async function save(){
     if(!lessonId||!content.trim()||busy)return;
     setBusy(true);setNotice(null);
@@ -110,17 +145,13 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
     if(!selectedLesson||busy)return;
     setBusy(true);setNotice(null);clearPackage();
     try{
-      const seed=await generateLessonSeed(client,{lessonTitle:selectedLesson.title,materialTitle:selectedMaterial?.title??'',profile});
-      const seededContent=seed.lesson_content.trim();
-      setContent(seededContent);setDraftId(crypto.randomUUID());
       try{
-        const draft=await generateLessonPackage(client,{source:{lessonTitle:selectedLesson.title,materialTitle:selectedMaterial?.title??'',contentText:seededContent},profile});
-        setPackageDraft(draft);setPackageBasisContent(seededContent);setPackageSaveIds(newLessonPackageSaveIds());setPackageSavePlan(null);setPackageSaveStarted(false);setPackageSaved(false);
+        await createDraftBundle(selectedLesson.title,selectedMaterial?.title??'');
         setNotice({kind:'info',text:'Draf lengkap selesai dari judul: isi materi + RPP + Modul Ajar + LKPD + Bahan Ajar + Tugas + Ulangan. Review isi materi, simpan sebagai LessonVersion, lalu simpan paket ke Dokumen.'});
       }catch(error){
-        setNotice({kind:'error',text:`Draf materi sudah dibuat dari judul, tetapi paket dokumen belum berhasil. Review/simpan materi dulu atau coba Buat paket dari versi tersimpan. ${error instanceof Error?error.message:String(error)}`});
+        setNotice({kind:'error',text:`AI belum menyelesaikan semua draf. Jika isi materi sudah muncul, Anda dapat review/simpan materi lalu mencoba Buat paket dari versi tersimpan. ${error instanceof Error?error.message:String(error)}`});
       }
-    }catch(error){setNotice({kind:'error',text:error instanceof Error?error.message:String(error)});}finally{setBusy(false);}
+    }finally{setBusy(false);}
   }
 
   async function generatePackage(){
@@ -163,8 +194,12 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
   return<section className="continuity-shell lesson-studio-shell">
     <header><p className="eyebrow">Siapkan Materi</p><h1>Dari judul sampai bahan siap review</h1><p className="muted">Bisa mulai dari judul saja atau menulis materi sendiri. AI hanya membuat draf; LessonVersion dan Dokumen baru menjadi kanonik setelah Anda menyimpannya secara eksplisit.</p></header>
 
-    {context.lessons.length===0?<div className="continuity-empty"><strong>Belum ada Pelajaran.</strong><p>Buat nama Materi dan Pelajaran dulu di Data & Pengaturan. Setelah judul ada, Anda bisa membuat seluruh draf dari judul tersebut di sini.</p><button type="button" onClick={onOpenSetup}>Buka Data & Pengaturan</button></div>:<>
-      <div className="checkpoint-card lesson-package-card"><h2>Mulai cepat dari judul</h2><p className="muted">Pelajaran terpilih: <strong>{selectedLesson?.title}</strong>. Satu klik membuat draft isi materi, RPP, Modul Ajar, LKPD, Bahan Ajar, Tugas, dan Ulangan. Tidak ada yang otomatis disimpan atau diberikan ke siswa.</p>
+    <div className="checkpoint-card lesson-package-card"><h2>Topik baru</h2><p className="muted">Ketik judul/topik, pilih Materi induk, lalu buat Pelajaran + seluruh draf dalam satu tindakan. Pelajaran identity dibuat karena Anda menekan tombol; isi AI tetap draf sampai disimpan sebagai LessonVersion.</p>
+      {context.materials.length?<><div className="setup-grid"><label className="field-label">Materi induk<select value={newMaterialId} onChange={event=>setNewMaterialId(event.target.value)}>{context.materials.map(material=><option key={material.id} value={material.id}>{material.title}</option>)}</select></label><label className="field-label">Judul/topik baru<input value={newLessonTitle} maxLength={240} onChange={event=>setNewLessonTitle(event.target.value)} placeholder="mis. Sistem Pernapasan Manusia"/></label></div><button type="button" disabled={busy||!newMaterialId||!newLessonTitle.trim()} onClick={()=>void createLessonAndGenerate()}>{busy?'Memproses…':'Buat Pelajaran + semua draf'}</button></>:<><p>Belum ada Materi induk. Buat satu dulu di Data & Pengaturan; setelah itu judul/topik baru bisa dibuat langsung dari sini.</p><button type="button" className="secondary" onClick={onOpenSetup}>Buka Data & Pengaturan</button></>}
+    </div>
+
+    {context.lessons.length===0?<div className="continuity-empty"><strong>Belum ada Pelajaran.</strong><p>Gunakan Topik baru di atas setelah Materi induk tersedia, atau buat struktur secara manual di Data & Pengaturan.</p></div>:<>
+      <div className="checkpoint-card lesson-package-card"><h2>Pelajaran yang sudah ada</h2><p className="muted">Pelajaran terpilih: <strong>{selectedLesson?.title}</strong>. Anda bisa membuat ulang seluruh draf dari judul, atau hanya membuat paket dari LessonVersion yang sudah tersimpan.</p>
         <div className="setup-grid">
           <label className="field-label">Mata pelajaran (opsional)<input disabled={packageSaveStarted} value={profile.subject} onChange={event=>patchProfile('subject',event.target.value)} placeholder="mis. IPA"/></label>
           <label className="field-label">Kelas/target (opsional)<input disabled={packageSaveStarted} value={profile.classLabel} onChange={event=>patchProfile('classLabel',event.target.value)} placeholder="mis. VIII"/></label>
@@ -181,7 +216,7 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
           return <optgroup key={material.id} label={material.title}>{lessons.map(lesson=><option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}</optgroup>;
         })}</select></label>
         {selectedLesson?<p className="muted">{selectedMaterial?.title??'Materi'} → {selectedLesson.title}{latest?` · versi terbaru v${latest.version_number}`:' · belum punya versi isi'}</p>:null}
-        <label className="field-label">Isi pelajaran<textarea rows={16} maxLength={50000} value={content} onChange={event=>{setContent(event.target.value);setDraftId(crypto.randomUUID());clearPackage();setNotice(null);}} placeholder="Tulis sendiri, atau gunakan Buat semua dari judul di atas…"/></label>
+        <label className="field-label">Isi pelajaran<textarea rows={16} maxLength={50000} value={content} onChange={event=>{setContent(event.target.value);setDraftId(crypto.randomUUID());clearPackage();setNotice(null);}} placeholder="Tulis sendiri, atau gunakan Buat semua dari judul…"/></label>
         {!contentMatchesLatest&&latest?<p className="today-stale">Ada perubahan yang belum menjadi LessonVersion. Simpan versi baru sebelum paket dapat menjadi Dokumen.</p>:null}
         {!latest&&content.trim()?<p className="today-stale">Draf ini belum menjadi LessonVersion v1. Review lalu simpan sebelum menyimpan paket.</p>:null}
         <div className="today-actions"><button type="button" disabled={busy||!lessonId||!content.trim()} onClick={()=>void save()}>{busy?'Memproses…':'Simpan sebagai versi baru'}</button><button type="button" className="secondary" onClick={()=>{setContent(latest?.content_text??'');setDraftId(crypto.randomUUID());clearPackage();setNotice(null);}}>Kembalikan ke versi terbaru</button></div>
