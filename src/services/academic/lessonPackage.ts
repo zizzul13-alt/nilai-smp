@@ -3,45 +3,72 @@ import{readBrowserConfig}from'../../config/env';
 import{appendArtifactVersion,createArtifact,loadArtifactWorkspace,type ArtifactType}from'../artifacts/artifacts';
 
 export type LessonPackageProfile={subject:string;classLabel:string;duration:string;notes:string};
-export type LessonPackageSource={lessonId:string;lessonVersionId:string;lessonTitle:string;materialTitle:string;versionNumber:number;contentText:string};
-export type LessonPackageDraft={rpp:string;modul_ajar:string;lkpd:string;bahan_ajar:string;provider:string;model:string};
-export type LessonPackageOutputKey='RPP'|'MODUL_AJAR'|'LKPD'|'BAHAN_AJAR';
+export type LessonPackageGenerationSource={lessonTitle:string;materialTitle:string;contentText:string};
+export type LessonPackageSource=LessonPackageGenerationSource&{lessonId:string;lessonVersionId:string;versionNumber:number};
+export type LessonPackageDraft={rpp:string;modul_ajar:string;lkpd:string;bahan_ajar:string;tugas:string;ulangan:string;provider:string;model:string};
+export type LessonSeedDraft={lesson_content:string;provider:string;model:string};
+export type LessonPackageOutputKey='RPP'|'MODUL_AJAR'|'LKPD'|'BAHAN_AJAR'|'TUGAS'|'ULANGAN';
 export type LessonPackageSaveIds=Record<LessonPackageOutputKey,string>;
 export type LessonPackageSaveTarget={mode:'create'}|{mode:'append';artifactId:string;expectedRevision:number};
 export type LessonPackageSavePlan=Record<LessonPackageOutputKey,LessonPackageSaveTarget>;
 
-type OutputSpec={key:LessonPackageOutputKey;artifactType:ArtifactType;titlePrefix:string;field:keyof Pick<LessonPackageDraft,'rpp'|'modul_ajar'|'lkpd'|'bahan_ajar'>};
+type DraftTextField=keyof Pick<LessonPackageDraft,'rpp'|'modul_ajar'|'lkpd'|'bahan_ajar'|'tugas'|'ulangan'>;
+type OutputSpec={key:LessonPackageOutputKey;artifactType:ArtifactType;titlePrefix:string;field:DraftTextField};
 const OUTPUTS:OutputSpec[]=[
   {key:'RPP',artifactType:'RPP',titlePrefix:'RPP',field:'rpp'},
   {key:'MODUL_AJAR',artifactType:'MODUL_AJAR',titlePrefix:'Modul Ajar',field:'modul_ajar'},
   {key:'LKPD',artifactType:'LKPD',titlePrefix:'LKPD',field:'lkpd'},
   {key:'BAHAN_AJAR',artifactType:'OTHER',titlePrefix:'Bahan Ajar',field:'bahan_ajar'},
+  {key:'TUGAS',artifactType:'OTHER',titlePrefix:'Tugas',field:'tugas'},
+  {key:'ULANGAN',artifactType:'OTHER',titlePrefix:'Ulangan',field:'ulangan'},
 ];
 
 export function lessonPackageTemplateKey(kind:LessonPackageOutputKey,lessonId:string){return`lesson-package-v1:${kind.toLowerCase()}:${lessonId}`;}
-export function newLessonPackageSaveIds():LessonPackageSaveIds{return{RPP:crypto.randomUUID(),MODUL_AJAR:crypto.randomUUID(),LKPD:crypto.randomUUID(),BAHAN_AJAR:crypto.randomUUID()};}
+export function newLessonPackageSaveIds():LessonPackageSaveIds{return{RPP:crypto.randomUUID(),MODUL_AJAR:crypto.randomUUID(),LKPD:crypto.randomUUID(),BAHAN_AJAR:crypto.randomUUID(),TUGAS:crypto.randomUUID(),ULANGAN:crypto.randomUUID()};}
 
 function validDraft(value:unknown):value is LessonPackageDraft{
   if(!value||typeof value!=='object')return false;
   const row=value as Record<string,unknown>;
-  const textKeys=['rpp','modul_ajar','lkpd','bahan_ajar']as const;
+  const textKeys=['rpp','modul_ajar','lkpd','bahan_ajar','tugas','ulangan']as const;
   return textKeys.every(key=>typeof row[key]==='string'&&(row[key]as string).trim().length>0&&(row[key]as string).length<=18000)
     &&typeof row.provider==='string'&&row.provider.length>0&&row.provider.length<=120
     &&typeof row.model==='string'&&row.model.length>0&&row.model.length<=200;
 }
+function validSeed(value:unknown):value is LessonSeedDraft{
+  if(!value||typeof value!=='object')return false;
+  const row=value as Record<string,unknown>;
+  return typeof row.lesson_content==='string'&&row.lesson_content.trim().length>0&&row.lesson_content.length<=50_000
+    &&typeof row.provider==='string'&&row.provider.length>0&&row.provider.length<=120
+    &&typeof row.model==='string'&&row.model.length>0&&row.model.length<=200;
+}
 
-export async function generateLessonPackage(client:SupabaseClient,input:{source:LessonPackageSource;profile:LessonPackageProfile}){
-  if(!input.source.contentText.trim())throw new Error('LessonVersion sumber masih kosong.');
+async function authHeaders(client:SupabaseClient){
   const[{data:{session}},configResult]=await Promise.all([client.auth.getSession(),Promise.resolve(readBrowserConfig())]);
   if(!session?.access_token)throw new Error('Sesi masuk tidak tersedia untuk membuat draf AI.');
   if(!configResult.ok)throw new Error('Konfigurasi browser belum siap untuk membuat draf AI.');
-  const response=await fetch('/api/lesson-package',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'X-Supabase-Publishable-Key':configResult.config.supabasePublishableKey},body:JSON.stringify(input)});
+  return{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'X-Supabase-Publishable-Key':configResult.config.supabasePublishableKey};
+}
+async function aiPost(client:SupabaseClient,path:string,body:unknown,label:string){
+  const headers=await authHeaders(client);
+  const response=await fetch(path,{method:'POST',headers,body:JSON.stringify(body)});
   if(!response.ok){
     let code='HTTP_ERROR';
     try{const value=await response.json()as{error?:unknown};if(typeof value.error==='string'&&/^[a-z0-9_]+$/i.test(value.error))code=value.error.toUpperCase();}catch{/* bounded diagnostic */}
-    throw new Error(`Draf paket belum dapat dibuat: ${code} (${response.status}).`);
+    throw new Error(`${label} belum dapat dibuat: ${code} (${response.status}).`);
   }
-  const value=await response.json()as unknown;
+  return response.json()as Promise<unknown>;
+}
+
+export async function generateLessonSeed(client:SupabaseClient,input:{lessonTitle:string;materialTitle:string;profile:LessonPackageProfile}){
+  if(!input.lessonTitle.trim())throw new Error('Judul/topik pelajaran wajib diisi.');
+  const value=await aiPost(client,'/api/lesson-seed',input,'Draf materi');
+  if(!validSeed(value))throw new Error('Draf materi dari AI tidak memiliki bentuk yang valid.');
+  return value;
+}
+
+export async function generateLessonPackage(client:SupabaseClient,input:{source:LessonPackageGenerationSource;profile:LessonPackageProfile}){
+  if(!input.source.contentText.trim())throw new Error('Isi materi sumber masih kosong.');
+  const value=await aiPost(client,'/api/lesson-package',input,'Draf paket');
   if(!validDraft(value))throw new Error('Draf paket dari AI tidak memiliki bentuk yang valid.');
   return value;
 }
