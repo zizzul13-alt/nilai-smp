@@ -32,14 +32,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch'
         with:
           ref: ${{ inputs.candidate_sha || github.sha }}
 
+      - uses: actions/checkout@v4
+        if: github.event_name == 'push'
+        with:
+          ref: ${{ github.event.before }}
+
       - name: Resolve exact candidate
+        env:
+          EXPECTED_PUSH_CANDIDATE: ${{ github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
           exact_candidate_sha="$(git rev-parse HEAD)"
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$exact_candidate_sha" != "$EXPECTED_PUSH_CANDIDATE" ]; then
+            echo "::error::P4_EXACT_CANDIDATE_MISMATCH checked_out=$exact_candidate_sha expected_parent=$EXPECTED_PUSH_CANDIDATE"
+            exit 1
+          fi
           echo "EXACT_CANDIDATE_SHA=$exact_candidate_sha" >> "$GITHUB_ENV"
           echo "P4_EXACT_CANDIDATE sha=$exact_candidate_sha"
 
