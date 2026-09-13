@@ -16,15 +16,16 @@ describe('R3.7-01 Daily Driver integration',()=>{
     expect(setupService).not.toContain('attempt_kind');
     expect(setupService.toLowerCase()).not.toContain('schedule');
   });
-  it('provides a complete fresh-account academic setup path',()=>{
+  it('provides a complete fresh-account academic setup path with Indonesian teacher copy',()=>{
     for(const table of ['academic_years','academic_periods','classes','students','enrollments','materials','lessons'])expect(setupService).toContain(`'${table}'`);
     expect(setup).toContain('Tahun ajaran');
     expect(setup).toContain('Periode');
     expect(setup).toContain('Kelas');
     expect(setup).toContain('Siswa');
-    expect(setup).toContain('Enrollment');
-    expect(setup).toContain('Materi & Lesson');
-    expect(setup).toContain('Setup tidak pernah menciptakan Meeting');
+    expect(setup).toContain('Keanggotaan kelas');
+    expect(setup).toContain('Materi & pelajaran');
+    expect(setup).toContain('Jadwal tidak dibuat otomatis dan pengaturan ini tidak pernah membuat pertemuan');
+    expect(setup).toContain('Kembali ke Hari ini');
   });
   it('keeps Today primary and exposes the existing work surfaces without architecture knowledge',()=>{
     expect(app).toContain("useState<WorkspaceMode>('today')");
