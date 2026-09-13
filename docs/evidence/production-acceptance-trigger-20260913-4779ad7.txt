@@ -1,0 +1,3 @@
+Production acceptance trigger only.
+Exact candidate is the parent commit of this trigger: 4779ad702db9f455c2e95539c5e6da03db55651d.
+This file is not part of the deployed exact-candidate checkout.
