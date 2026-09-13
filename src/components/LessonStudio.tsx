@@ -1,7 +1,7 @@
 import{useEffect,useMemo,useState}from'react';
 import type{SupabaseClient}from'@supabase/supabase-js';
 import{appendLessonVersion,latestLessonVersion,loadLessonStudio,type LessonStudioContext}from'../services/academic/lessonStudio';
-import{generateLessonPackage,newLessonPackageSaveIds,saveLessonPackageArtifacts,type LessonPackageDraft,type LessonPackageProfile,type LessonPackageSource}from'../services/academic/lessonPackage';
+import{generateLessonPackage,newLessonPackageSaveIds,planLessonPackageSave,saveLessonPackageArtifacts,type LessonPackageDraft,type LessonPackageProfile,type LessonPackageSavePlan,type LessonPackageSource}from'../services/academic/lessonPackage';
 
 type Props={
   client:SupabaseClient;
@@ -24,12 +24,13 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
   const[profile,setProfile]=useState<LessonPackageProfile>(blankProfile);
   const[packageDraft,setPackageDraft]=useState<LessonPackageDraft|null>(null);
   const[packageSaveIds,setPackageSaveIds]=useState<ReturnType<typeof newLessonPackageSaveIds>|null>(null);
+  const[packageSavePlan,setPackageSavePlan]=useState<LessonPackageSavePlan|null>(null);
   const[packageSaveStarted,setPackageSaveStarted]=useState(false);
   const[packageSaved,setPackageSaved]=useState(false);
   const[busy,setBusy]=useState(false);
   const[notice,setNotice]=useState<Notice>(null);
 
-  function clearPackage(){setPackageDraft(null);setPackageSaveIds(null);setPackageSaveStarted(false);setPackageSaved(false);}
+  function clearPackage(){setPackageDraft(null);setPackageSaveIds(null);setPackageSavePlan(null);setPackageSaveStarted(false);setPackageSaved(false);}
 
   function selectFrom(next:LessonStudioContext,preferred?:string){
     const id=preferred&&next.lessons.some(lesson=>lesson.id===preferred)?preferred:(next.lessons[0]?.id??'');
@@ -102,7 +103,7 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
     setBusy(true);setNotice(null);
     try{
       const draft=await generateLessonPackage(client,{source,profile});
-      setPackageDraft(draft);setPackageSaveIds(newLessonPackageSaveIds());setPackageSaveStarted(false);setPackageSaved(false);
+      setPackageDraft(draft);setPackageSaveIds(newLessonPackageSaveIds());setPackageSavePlan(null);setPackageSaveStarted(false);setPackageSaved(false);
       setNotice({kind:'info',text:'Draf AI selesai. Belum ada dokumen kanonik yang disimpan — review/edit dulu lalu tekan Simpan paket ke Dokumen.'});
     }catch(error){setNotice({kind:'error',text:error instanceof Error?error.message:String(error)});}finally{setBusy(false);}
   }
@@ -117,13 +118,16 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
     const source=sourceForLatest();
     if(!source||!packageDraft||!packageSaveIds||busy||packageSaved)return;
     if(!contentMatchesLatest){setNotice({kind:'error',text:'LessonVersion sumber berubah. Buat ulang draf paket dari versi terbaru sebelum menyimpan.'});return;}
-    setPackageSaveStarted(true);setBusy(true);setNotice(null);
+    setBusy(true);setNotice(null);
     try{
-      const saved=await saveLessonPackageArtifacts(client,{workspaceId,source,profile,draft:packageDraft,operationIds:packageSaveIds});
+      const plan=packageSavePlan??await planLessonPackageSave(client,workspaceId,source.lessonId);
+      if(!packageSavePlan)setPackageSavePlan(plan);
+      setPackageSaveStarted(true);
+      const saved=await saveLessonPackageArtifacts(client,{source,profile,draft:packageDraft,operationIds:packageSaveIds,plan});
       setPackageSaved(true);
       setNotice({kind:'info',text:`Paket tersimpan: ${saved.length} dokumen memakai provenance Lesson v${source.versionNumber}. Regenerasi berikutnya akan membuat ArtifactVersion baru, bukan menimpa riwayat.`});
     }catch(error){
-      setNotice({kind:'error',text:`Penyimpanan paket belum selesai. Draf dikunci supaya retry memakai operation id yang sama. ${error instanceof Error?error.message:String(error)}`});
+      setNotice({kind:'error',text:`Penyimpanan paket belum selesai. Jika percobaan RPC sudah dimulai, draf dan save plan tetap dikunci supaya retry memakai operation id serta jalur create/append yang sama. ${error instanceof Error?error.message:String(error)}`});
     }finally{setBusy(false);}
   }
 
@@ -158,7 +162,7 @@ export function LessonStudio({client,workspaceId,onOpenSetup,onOpenArtifacts,onO
         {!latest?<p className="muted">Simpan LessonVersion pertama dulu.</p>:null}
       </div>
 
-      {packageDraft?<div className="checkpoint-card lesson-package-preview"><div className="continuity-status"><strong>Review draf paket</strong><span>{packageDraft.provider} · {packageDraft.model}</span></div><p className="muted">Belum tersimpan ke Artifact sampai tombol Simpan paket ditekan. Setelah percobaan simpan dimulai, draf dikunci agar retry tidak mengubah payload operation id.</p>{packageFields.map(field=><label className="field-label" key={field.key}>{field.label}<textarea rows={10} disabled={packageSaveStarted} value={packageDraft[field.key]} onChange={event=>editPackage(field.key,event.target.value)}/></label>)}<div className="today-actions"><button type="button" disabled={busy||packageSaved||packageFields.some(field=>!packageDraft[field.key].trim())} onClick={()=>void savePackage()}>{packageSaved?'Paket tersimpan':packageSaveStarted?'Coba simpan paket lagi':'Simpan paket ke Dokumen'}</button><button type="button" className="secondary" onClick={onOpenArtifacts}>Buka Dokumen</button></div></div>:null}
+      {packageDraft?<div className="checkpoint-card lesson-package-preview"><div className="continuity-status"><strong>Review draf paket</strong><span>{packageDraft.provider} · {packageDraft.model}</span></div><p className="muted">Belum tersimpan ke Artifact sampai tombol Simpan paket ditekan. Setelah percobaan simpan dimulai, draf dikunci agar retry tidak mengubah payload operation id maupun jalur create/append.</p>{packageFields.map(field=><label className="field-label" key={field.key}>{field.label}<textarea rows={10} disabled={packageSaveStarted} value={packageDraft[field.key]} onChange={event=>editPackage(field.key,event.target.value)}/></label>)}<div className="today-actions"><button type="button" disabled={busy||packageSaved||packageFields.some(field=>!packageDraft[field.key].trim())} onClick={()=>void savePackage()}>{packageSaved?'Paket tersimpan':packageSaveStarted?'Coba simpan paket lagi':'Simpan paket ke Dokumen'}</button><button type="button" className="secondary" onClick={onOpenArtifacts}>Buka Dokumen</button></div></div>:null}
 
       <div className="checkpoint-card"><h2>Lanjutkan dari sumber yang sama</h2><p className="muted">Mengajar memakai exact LessonVersion yang dipilih. Dokumen yang dibuat dari paket di atas menyimpan provenance ke LessonVersion yang sama.</p><div className="today-actions"><button type="button" onClick={onOpenTeaching}>Buka Mengajar</button><button type="button" className="secondary" onClick={onOpenArtifacts}>Buka Dokumen</button><button type="button" className="secondary" onClick={onOpenSetup}>Data & Pengaturan</button></div></div>
     </>}
