@@ -32,6 +32,14 @@ describe('Lesson Studio vertical slice',()=>{
     expect(studio).toContain('Buka Dokumen');
   });
 
+  it('allows a new topic title to create one explicit Lesson identity and then AI drafts',()=>{
+    expect(studio).toContain('Judul/topik baru');
+    expect(studio).toContain('Buat Pelajaran + semua draf');
+    expect(studio).toContain('createLessonForSetup');
+    expect(studio).toContain('createLessonAndGenerate');
+    expect(studio).toContain('Pelajaran identity dibuat karena Anda menekan tombol');
+  });
+
   it('renders the exact selected LessonVersion in teaching instead of inventing lesson content',()=>{
     expect(teaching).toContain('Materi Pelajaran');
     expect(teaching).toContain('teachingVersion.content_text');
@@ -40,14 +48,14 @@ describe('Lesson Studio vertical slice',()=>{
     expect(app).toContain('onOpenLessonStudio');
   });
 
-  it('supports one-click title-first draft generation without auto-saving canonical data',()=>{
+  it('supports one-click title-first draft generation without auto-saving generated content',()=>{
     expect(studio).toContain('generateLessonSeed');
     expect(studio).toContain('generateAllFromTitle');
-    expect(studio).toContain('Draf lengkap selesai dari judul');
     expect(packageService).toContain("'/api/lesson-seed'");
     expect(worker).toContain("url.pathname==='/api/lesson-seed'");
     expect(worker).toContain('lesson_content');
     expect(studio).not.toContain('createAssessment(');
+    expect(studio).not.toContain('createArtifact(');
   });
 
   it('keeps six-output package generation draft-first, exact-source and explicit-save only',()=>{
