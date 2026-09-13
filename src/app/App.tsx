@@ -134,7 +134,7 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
           <div className="workspace-scroll" ref={workspaceRef} tabIndex={-1}>
             {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
             {mode === 'today' ? <Today client={client} userId={userId} workspaceId={workspaceId} onOpenContinuity={openContinuity} onOpenRapid={openRapid} /> : null}
-            {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialClassId={continuityTarget} /> : null}
+            {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialClassId={continuityTarget} onOpenLessonStudio={()=>setMode('lesson')} /> : null}
             {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
             {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialAssessmentId={rapidTarget} /> : null}
             {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}

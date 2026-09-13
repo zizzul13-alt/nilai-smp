@@ -7,6 +7,8 @@ const app=readFileSync('src/app/App.tsx','utf8');
 const studio=readFileSync('src/components/LessonStudio.tsx','utf8');
 const teaching=readFileSync('src/components/TeachingContinuity.tsx','utf8');
 const service=readFileSync('src/services/academic/lessonStudio.ts','utf8');
+const packageService=readFileSync('src/services/academic/lessonPackage.ts','utf8');
+const worker=readFileSync('worker/index.ts','utf8');
 
 function version(lessonId:string,versionNumber:number):LessonVersion{
   return{id:`${lessonId}-${versionNumber}`,workspace_id:'W',lesson_id:lessonId,version_number:versionNumber,content_text:`v${versionNumber}`,created_at:'2026-09-14T00:00:00Z'};
@@ -25,9 +27,17 @@ describe('Lesson Studio vertical slice',()=>{
     expect(app).toContain('Siapkan Materi');
     expect(app).toContain("mode === 'lesson'");
     expect(studio).toContain('Simpan sebagai versi baru');
-    expect(studio).toContain('LessonVersion append-only');
+    expect(studio).toContain('Buat semua dari judul');
     expect(studio).toContain('Buka Mengajar');
     expect(studio).toContain('Buka Dokumen');
+  });
+
+  it('allows a new topic title to create one explicit Lesson identity and then AI drafts',()=>{
+    expect(studio).toContain('Judul/topik baru');
+    expect(studio).toContain('Buat Pelajaran + semua draf');
+    expect(studio).toContain('createLessonForSetup');
+    expect(studio).toContain('createLessonAndGenerate');
+    expect(studio).toContain('Pelajaran identity dibuat karena Anda menekan tombol');
   });
 
   it('renders the exact selected LessonVersion in teaching instead of inventing lesson content',()=>{
@@ -35,12 +45,39 @@ describe('Lesson Studio vertical slice',()=>{
     expect(teaching).toContain('teachingVersion.content_text');
     expect(teaching).toContain('BELUM ADA VERSI');
     expect(teaching).toContain('lesson_version_id');
+    expect(app).toContain('onOpenLessonStudio');
   });
 
-  it('does not smuggle AI generation into the first canonical authoring slice',()=>{
-    expect(studio).toContain('AI belum dipakai di langkah ini');
-    expect(service.toLowerCase()).not.toContain('openai');
-    expect(service.toLowerCase()).not.toContain('gemini');
-    expect(service.toLowerCase()).not.toContain('workers ai');
+  it('supports one-click title-first draft generation without auto-saving generated content',()=>{
+    expect(studio).toContain('generateLessonSeed');
+    expect(studio).toContain('generateAllFromTitle');
+    expect(packageService).toContain("'/api/lesson-seed'");
+    expect(worker).toContain("url.pathname==='/api/lesson-seed'");
+    expect(worker).toContain('lesson_content');
+    expect(studio).not.toContain('createAssessment(');
+    expect(studio).not.toContain('createArtifact(');
+  });
+
+  it('keeps six-output package generation draft-first, exact-source and explicit-save only',()=>{
+    for(const label of['RPP','Modul Ajar','LKPD','Bahan Ajar','Tugas','Ulangan'])expect(studio).toContain(label);
+    expect(studio).toContain('Simpan paket ke Dokumen');
+    expect(studio).toContain('tidak otomatis menjadi Penilaian');
+    expect(studio).toContain('contentMatchesLatest');
+    expect(packageService).toContain("sourceKind:'LESSON_VERSION'");
+    expect(packageService).toContain('lessonVersionId:input.source.lessonVersionId');
+    expect(packageService).toContain("key:'TUGAS'");
+    expect(packageService).toContain("key:'ULANGAN'");
+    expect(packageService).toContain('generatorProvider:input.draft.provider');
+    expect(packageService).toContain('appendArtifactVersion');
+    expect(packageService).toContain('createArtifact');
+    expect(packageService).not.toContain("from('lesson_versions').update");
+  });
+
+  it('freezes create-vs-append planning before the first artifact RPC so lost-ack retry cannot switch operation kind',()=>{
+    expect(studio).toContain('packageSavePlan??await planLessonPackageSave');
+    expect(studio).toContain('setPackageSavePlan(plan)');
+    expect(packageService).toContain("mode:'append'");
+    expect(packageService).toContain("mode:'create'");
+    expect(packageService).toContain('const target=input.plan[spec.key]');
   });
 });
