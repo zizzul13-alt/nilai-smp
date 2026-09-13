@@ -10,9 +10,7 @@ const service=readFileSync('src/services/academic/lessonStudio.ts','utf8');
 const packageService=readFileSync('src/services/academic/lessonPackage.ts','utf8');
 const worker=readFileSync('worker/index.ts','utf8');
 
-function version(lessonId:string,versionNumber:number):LessonVersion{
-  return{id:`${lessonId}-${versionNumber}`,workspace_id:'W',lesson_id:lessonId,version_number:versionNumber,content_text:`v${versionNumber}`,created_at:'2026-09-14T00:00:00Z'};
-}
+function version(lessonId:string,versionNumber:number):LessonVersion{return{id:`${lessonId}-${versionNumber}`,workspace_id:'W',lesson_id:lessonId,version_number:versionNumber,content_text:`v${versionNumber}`,created_at:'2026-09-14T00:00:00Z'};}
 
 describe('Lesson Studio vertical slice',()=>{
   it('keeps LessonVersion append-only and derives the next version per Lesson',()=>{
@@ -23,21 +21,23 @@ describe('Lesson Studio vertical slice',()=>{
     expect(service).not.toContain("from('lesson_versions').delete");
   });
 
-  it('exposes a teacher-facing material preparation workspace',()=>{
+  it('exposes teacher-facing preparation with deep mode as the primary path',()=>{
     expect(app).toContain('Siapkan Materi');
     expect(app).toContain("mode === 'lesson'");
+    expect(studio).toContain('Buat mendalam + semua draf');
+    expect(studio).toContain('Buat cepat');
+    expect(studio).toContain('Planning pass · Mendalam');
     expect(studio).toContain('Simpan sebagai versi baru');
-    expect(studio).toContain('Buat semua dari judul');
     expect(studio).toContain('Buka Mengajar');
     expect(studio).toContain('Buka Dokumen');
   });
 
   it('allows a new topic title to create one explicit Lesson identity and then AI drafts',()=>{
     expect(studio).toContain('Judul/topik baru');
-    expect(studio).toContain('Buat Pelajaran + semua draf');
     expect(studio).toContain('createLessonForSetup');
     expect(studio).toContain('createLessonAndGenerate');
-    expect(studio).toContain('Pelajaran identity dibuat karena Anda menekan tombol');
+    expect(studio).not.toContain('createAssessment(');
+    expect(studio).not.toContain('createArtifact(');
   });
 
   it('renders the exact selected LessonVersion in teaching instead of inventing lesson content',()=>{
@@ -48,17 +48,28 @@ describe('Lesson Studio vertical slice',()=>{
     expect(app).toContain('onOpenLessonStudio');
   });
 
-  it('supports one-click title-first draft generation without auto-saving generated content',()=>{
-    expect(studio).toContain('generateLessonSeed');
-    expect(studio).toContain('generateAllFromTitle');
-    expect(packageService).toContain("'/api/lesson-seed'");
-    expect(worker).toContain("url.pathname==='/api/lesson-seed'");
-    expect(worker).toContain('lesson_content');
-    expect(studio).not.toContain('createAssessment(');
-    expect(studio).not.toContain('createArtifact(');
+  it('uses a real multi-pass deep pipeline rather than one six-document call',()=>{
+    expect(packageService).toContain('generateLessonDeepBundle');
+    expect(packageService).toContain("'/api/lesson-deep-plan'");
+    expect(packageService).toContain("'/api/lesson-deep-content'");
+    expect(packageService).toContain("'/api/lesson-assessment-blueprint'");
+    expect(packageService).toContain("'/api/lesson-deep-document'");
+    expect(packageService).toContain('Promise.all(DOCUMENT_FIELDS');
+    expect(worker).toContain("url.pathname==='/api/lesson-deep-plan'");
+    expect(worker).toContain("url.pathname==='/api/lesson-deep-content'");
+    expect(worker).toContain("url.pathname==='/api/lesson-assessment-blueprint'");
+    expect(worker).toContain("url.pathname==='/api/lesson-deep-document'");
+    expect(worker).toContain("if(input.kind==='ULANGAN'&&!input.assessmentBlueprint?.trim())");
   });
 
-  it('keeps six-output package generation draft-first, exact-source and explicit-save only',()=>{
+  it('keeps quick mode available as a fallback instead of replacing the proven path',()=>{
+    expect(packageService).toContain("'/api/lesson-seed'");
+    expect(packageService).toContain("'/api/lesson-package'");
+    expect(worker).toContain("url.pathname==='/api/lesson-seed'");
+    expect(worker).toContain("url.pathname==='/api/lesson-package'");
+  });
+
+  it('keeps six outputs draft-first, exact-source and explicit-save only',()=>{
     for(const label of['RPP','Modul Ajar','LKPD','Bahan Ajar','Tugas','Ulangan'])expect(studio).toContain(label);
     expect(studio).toContain('Simpan paket ke Dokumen');
     expect(studio).toContain('tidak otomatis menjadi Penilaian');
@@ -67,7 +78,7 @@ describe('Lesson Studio vertical slice',()=>{
     expect(packageService).toContain('lessonVersionId:input.source.lessonVersionId');
     expect(packageService).toContain("key:'TUGAS'");
     expect(packageService).toContain("key:'ULANGAN'");
-    expect(packageService).toContain('generatorProvider:input.draft.provider');
+    expect(packageService).toContain("generation_mode:input.draft.generation_mode??'quick'");
     expect(packageService).toContain('appendArtifactVersion');
     expect(packageService).toContain('createArtifact');
     expect(packageService).not.toContain("from('lesson_versions').update");
