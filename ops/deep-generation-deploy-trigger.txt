@@ -1,0 +1,3 @@
+Trigger exact-main Cloudflare deployment for deep lesson generation.
+Candidate: 50d4b4dde577ec191e1dc20bd00479e1baf09c83
+Date: 2026-09-14
