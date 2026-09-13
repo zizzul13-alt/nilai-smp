@@ -20,11 +20,17 @@
 @media(max-width:719px){
   .teacher-shell{padding:.65rem}
   .app-chrome{margin:0;padding:0 0 .05rem}
+  .teacher-header{grid-template-columns:minmax(0,1fr) auto auto;gap:.3rem;margin-bottom:.35rem}
+  .teacher-identity{min-width:0}
+  .teacher-identity span{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .teacher-header .safe-summary{grid-column:auto;justify-self:end;min-height:34px;padding:.35rem .5rem;font-size:.72rem;white-space:nowrap}
+  .teacher-header .compact-action{min-height:34px;padding:.35rem .55rem}
   .workspace-scroll{padding-inline:0}
-  .daily-nav{display:grid;grid-template-columns:repeat(5,minmax(4.15rem,1fr));gap:.15rem}
+  .daily-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.15rem;overflow:visible}
   .daily-nav button{white-space:normal}
   .more-tools{overflow:hidden}
-  .tool-nav{padding:.25rem 0 .35rem}
+  .tool-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.3rem;overflow:visible;padding:.25rem 0 .35rem}
+  .tool-nav button{width:100%;min-width:0;white-space:normal}
   .bulk-assessment{display:grid;padding:1rem;border:1px solid #deded8;border-radius:12px;background:#fff;box-shadow:0 4px 18px rgb(0 0 0/.035)}
   .bulk-assessment>p,.bulk-assessment>h2,.bulk-assessment>label{max-width:100%}
   .bulk-grid{max-width:100%}
