@@ -66,7 +66,7 @@ describe('R3.6 portable recovery contracts',()=>{
     expect(service).toContain('verifyPortableBackup(input)');
     expect(service).toContain("manifestHash!==backup.checksum_sha256");
     expect(service).toContain("String(meta.sha256)!==hash");
-    expect(ui).toContain('Restore verified backup');
+    expect(ui).toContain('Pulihkan cadangan terverifikasi');
   });
   it('keeps binary base64 out of the canonical restore RPC payload',()=>{
     expect(service).toContain('const{artifact_payloads:_,...serverManifest}=backup');
@@ -97,7 +97,7 @@ describe('R3.6 portable recovery contracts',()=>{
     const results=Array.from({length:1800},(_,i)=>({id:`r-${i}`,assessment_id:`a-${i}`,enrollment_id:`e-${i}`,class_id:`c-${i}`,state:'GRADED',score:i%101}));
     const blob=makeHumanEscapeXlsx(sampleBackup({assessment_results:results}));
     expect(blob.size).toBeGreaterThan(125_000);
-    expect(ui).toContain('Download Excel human escape');
+    expect(ui).toContain('Unduh Excel darurat');
     expect(docs).toContain('not round-trip canonical restoration');
   });
 });
