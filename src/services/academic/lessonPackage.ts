@@ -79,6 +79,13 @@ async function aiPost(client:SupabaseClient,path:string,body:unknown,label:strin
   }
   return response.json()as Promise<unknown>;
 }
+function isInvalidProviderResponse(error:unknown){return error instanceof Error&&error.message.includes('INVALID_PROVIDER_RESPONSE (502)');}
+async function aiPostWithProviderRetry(client:SupabaseClient,path:string,body:unknown,label:string){
+  try{return await aiPost(client,path,body,label);}catch(error){
+    if(!isInvalidProviderResponse(error))throw error;
+    return aiPost(client,path,body,`${label} (retry)`);
+  }
+}
 
 export async function generateLessonSeed(client:SupabaseClient,input:{lessonTitle:string;materialTitle:string;profile:LessonPackageProfile}){
   if(!input.lessonTitle.trim())throw new Error('Judul/topik pelajaran wajib diisi.');
@@ -95,38 +102,41 @@ export async function generateLessonPackage(client:SupabaseClient,input:{source:
 }
 
 async function generateDeepPlan(client:SupabaseClient,input:{lessonTitle:string;materialTitle:string;profile:LessonPackageProfile;sourceContent?:string}){
-  const raw=await aiPost(client,'/api/lesson-deep-plan',input,'Planning pass mendalam');
+  const raw=await aiPostWithProviderRetry(client,'/api/lesson-deep-plan',input,'Planning pass mendalam');
   const value=validPlanEnvelope(raw);
   if(!value)throw new Error('Planning pass AI tidak memiliki bentuk yang valid.');
   return value;
 }
 
 async function generateDeepContent(client:SupabaseClient,input:{lessonTitle:string;materialTitle:string;profile:LessonPackageProfile;plan:LessonDeepPlan}){
-  const raw=await aiPost(client,'/api/lesson-deep-content',input,'Materi mendalam');
+  const raw=await aiPostWithProviderRetry(client,'/api/lesson-deep-content',input,'Materi mendalam');
   const value=validTextEnvelope(raw);
   if(!value)throw new Error('Materi mendalam AI tidak memiliki bentuk yang valid.');
   return value;
 }
 
 async function generateAssessmentBlueprint(client:SupabaseClient,input:{source:LessonPackageGenerationSource;profile:LessonPackageProfile;plan:LessonDeepPlan}){
-  const raw=await aiPost(client,'/api/lesson-assessment-blueprint',input,'Blueprint ulangan');
+  const raw=await aiPostWithProviderRetry(client,'/api/lesson-assessment-blueprint',input,'Blueprint ulangan');
   const value=validBlueprintEnvelope(raw);
   if(!value)throw new Error('Blueprint ulangan AI tidak memiliki bentuk yang valid.');
   return value;
 }
 
 async function generateDeepDocument(client:SupabaseClient,input:{source:LessonPackageGenerationSource;profile:LessonPackageProfile;plan:LessonDeepPlan;kind:LessonPackageOutputKey;assessmentBlueprint?:string}){
-  const raw=await aiPost(client,'/api/lesson-deep-document',input,`Draf ${input.kind}`);
+  const raw=await aiPostWithProviderRetry(client,'/api/lesson-deep-document',input,`Draf ${input.kind}`);
   const value=validTextEnvelope(raw);
   if(!value)throw new Error(`Draf ${input.kind} AI tidak memiliki bentuk yang valid.`);
   return value;
 }
 
 async function generateDeepDocuments(client:SupabaseClient,input:{source:LessonPackageGenerationSource;profile:LessonPackageProfile;plan:LessonDeepPlan}):Promise<LessonPackageDraft>{
-  const regularPromise=Promise.all(DOCUMENT_FIELDS.map(async spec=>({spec,value:await generateDeepDocument(client,{...input,kind:spec.kind})})));
+  const regular:Array<{spec:{kind:LessonPackageOutputKey;field:DraftTextField};value:{text:string;provider:string;model:string}}>=[];
+  for(const spec of DOCUMENT_FIELDS){
+    const value=await generateDeepDocument(client,{...input,kind:spec.kind});
+    regular.push({spec,value});
+  }
   const blueprint=await generateAssessmentBlueprint(client,input);
-  const ulanganPromise=generateDeepDocument(client,{...input,kind:'ULANGAN',assessmentBlueprint:blueprint.blueprint});
-  const[regular,ulangan]=await Promise.all([regularPromise,ulanganPromise]);
+  const ulangan=await generateDeepDocument(client,{...input,kind:'ULANGAN',assessmentBlueprint:blueprint.blueprint});
   const draft={}as Pick<LessonPackageDraft,DraftTextField>;
   for(const item of regular)draft[item.spec.field]=item.value.text;
   draft.ulangan=ulangan.text;
