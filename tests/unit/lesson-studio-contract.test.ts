@@ -39,7 +39,7 @@ describe('Lesson Studio vertical slice',()=>{
     expect(app).toContain('onOpenLessonStudio');
   });
 
-  it('keeps AI package generation draft-first and explicit-save only',()=>{
+  it('keeps AI package generation draft-first, exact-source and explicit-save only',()=>{
     expect(studio).toContain('Buat draf paket AI');
     expect(studio).toContain('Simpan paket ke Dokumen');
     expect(studio).toContain('Belum tersimpan ke Artifact');
@@ -50,5 +50,13 @@ describe('Lesson Studio vertical slice',()=>{
     expect(packageService).toContain('appendArtifactVersion');
     expect(packageService).toContain('createArtifact');
     expect(packageService).not.toContain("from('lesson_versions').update");
+  });
+
+  it('freezes create-vs-append planning before the first artifact RPC so lost-ack retry cannot switch operation kind',()=>{
+    expect(studio).toContain('packageSavePlan??await planLessonPackageSave');
+    expect(studio).toContain('setPackageSavePlan(plan)');
+    expect(packageService).toContain("mode:'append'");
+    expect(packageService).toContain("mode:'create'");
+    expect(packageService).toContain('const target=input.plan[spec.key]');
   });
 });
