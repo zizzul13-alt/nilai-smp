@@ -21,7 +21,7 @@ import { checkpointSafetyNotice, withCheckpointRefreshFailure } from '../service
 import { subscribeSafeWorkChanges } from '../services/safeWork/coordination';
 import type { SafeWorkSyncWorker } from '../services/safeWork/syncWorker';
 
-type Props={client:SupabaseClient;worker:SafeWorkSyncWorker;userId:string;workspaceId:string;initialClassId?:string};
+type Props={client:SupabaseClient;worker:SafeWorkSyncWorker;userId:string;workspaceId:string;initialClassId?:string;onOpenLessonStudio?:()=>void};
 type Notice={kind:'info'|'error';text:string}|null;
 
 function checkpointPayload(op:PendingOperation){return op.payload as MeetingCheckpointPayload;}
@@ -31,7 +31,7 @@ function chooseClass(continuity:ContinuityContext,current:string,initialClassId?
   return continuity.classes[0]?.id??'';
 }
 
-export function TeachingContinuity({client,worker,userId,workspaceId,initialClassId}:Props){
+export function TeachingContinuity({client,worker,userId,workspaceId,initialClassId,onOpenLessonStudio}:Props){
   const[context,setContext]=useState<ContinuityContext|null>(null);
   const[classId,setClassId]=useState(initialClassId??'');
   const[lessonId,setLessonId]=useState('');
@@ -89,6 +89,10 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
   const activeMeeting=selected?.activeMeeting??null;
   const activeLessons=useMemo(()=>context?.core.lessons.filter(l=>l.status==='active')??[],[context]);
   const versions=useMemo(()=>context?.core.lessonVersions.filter(v=>v.lesson_id===lessonId).sort((a,b)=>b.version_number-a.version_number)??[],[context,lessonId]);
+  const draftLesson=useMemo(()=>activeLessons.find(lesson=>lesson.id===lessonId)??null,[activeLessons,lessonId]);
+  const draftVersion=useMemo(()=>versions.find(version=>version.id===lessonVersionId)??null,[versions,lessonVersionId]);
+  const teachingLesson=activeMeeting?selected?.lesson??null:draftLesson;
+  const teachingVersion=activeMeeting?selected?.lessonVersion??null:draftVersion;
   const pacingLessonId=activeMeeting?activeMeeting.lesson_id:(lessonId||null);
   const pacingLessonVersionId=activeMeeting?activeMeeting.lesson_version_id:(lessonVersionId||null);
   const actualPacingMeetings=useMemo(()=>pacingLessonId&&context?countActualLessonMeetings(context.core.meetings,classId,pacingLessonId):0,[context,classId,pacingLessonId]);
@@ -105,7 +109,12 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
   function changeClass(value:string){
     setClassId(value);setLessonId('');setLessonVersionId('');setStartOpId(null);setLifecycleAttempt(null);setNotice(null);
   }
-  function changeLesson(value:string){setLessonId(value);setLessonVersionId('');setStartOpId(null);}
+  function changeLesson(value:string){
+    setLessonId(value);
+    const latest=context?.core.lessonVersions.filter(version=>version.lesson_id===value).sort((a,b)=>b.version_number-a.version_number)[0]??null;
+    setLessonVersionId(latest?.id??'');
+    setStartOpId(null);
+  }
 
   async function startClass(){
     if(!classId||busy)return;
@@ -203,6 +212,7 @@ export function TeachingContinuity({client,worker,userId,workspaceId,initialClas
     {!selected?<div className="continuity-empty"><strong>Belum ada Kelas aktif.</strong><p>Buat/aktifkan Kelas melalui data akademik sebelum memulai Pertemuan.</p></div>:<>
       <div className={`continuity-card continuity-card--${selected.state}`}><div className="continuity-status"><strong>{selected.classroom.display_name}</strong><span>{activeMeeting?'SEDANG BERJALAN':selected.latestActualMeeting?selected.latestActualMeeting.status.toUpperCase():'BELUM ADA PERTEMUAN'}</span></div><div className="continuity-memory"><div><small>TERAKHIR</small><strong>{visibleStopped??'Belum ada checkpoint'}</strong></div><div><small>BERIKUTNYA</small><strong>{visibleNext??'Belum dicatat'}</strong></div></div>{selected.effectiveContext?.source==='baseline'?<p className="safety-badge">BASELINE MASUK ULANG · riwayat Pertemuan/Checkpoint lama tetap utuh</p>:null}{selected.lesson?<p className="muted">Pelajaran: {selected.lesson.title}{selected.lessonVersion?` · v${selected.lessonVersion.version_number}`:''}</p>:null}{latestLocal?<p className="safety-badge">{latestLocal.status} · konteks lokal terbaru</p>:null}</div>
       {activeMeeting?<><button type="button" className="continue-primary" onClick={()=>stoppedInput.current?.focus()}>LANJUTKAN KELAS</button><div className="checkpoint-card"><h2>Checkpoint</h2><label className="field-label">BERHENTI DI<input ref={stoppedInput} value={stoppedAt} onChange={e=>setStoppedAt(e.target.value)} placeholder="Halaman 37, contoh gaya gesek nomor 2" /></label><label className="field-label">LANGKAH BERIKUTNYA<input value={nextStep} onChange={e=>setNextStep(e.target.value)} placeholder="Bahas nomor 3 lalu latihan mandiri" /></label><button type="button" disabled={busy||!stoppedAt.trim()} onClick={()=>void saveCheckpoint()}>Simpan checkpoint</button><div className="meeting-actions"><button type="button" className="secondary" disabled={busy||currentMeetingPending.length>0} onClick={()=>void changeMeetingStatus('cancelled')}>Batalkan Pertemuan</button><button type="button" disabled={busy||currentMeetingPending.length>0} onClick={()=>void changeMeetingStatus('completed')}>Selesaikan Kelas</button></div></div></>:<div className="start-card"><h2>Mulai Kelas</h2>{selected.latestActualMeeting||selected.latestBaseline?<p className="muted">Konteks sebelumnya adalah riwayat/baseline. Mulai Kelas membuat Pertemuan aktual baru tanpa menghapus TERAKHIR/BERIKUTNYA terakhir.</p>:<p className="muted">Belum ada Pertemuan sebelumnya untuk Kelas ini.</p>}<label className="field-label">Pelajaran (opsional)<select value={lessonId} onChange={e=>changeLesson(e.target.value)}><option value="">Tanpa Pelajaran</option>{activeLessons.map(l=><option key={l.id} value={l.id}>{l.title}</option>)}</select></label>{lessonId?<label className="field-label">Versi Pelajaran tepat (opsional)<select value={lessonVersionId} onChange={e=>{setLessonVersionId(e.target.value);setStartOpId(null);}}><option value="">Tanpa pin versi</option>{versions.map(v=><option key={v.id} value={v.id}>v{v.version_number}</option>)}</select></label>:null}<button type="button" className="continue-primary" disabled={busy} onClick={()=>void startClass()}>MULAI KELAS</button></div>}
+      {teachingLesson?<div className="checkpoint-card lesson-teaching-view"><div className="continuity-status"><strong>Materi Pelajaran · {teachingLesson.title}</strong><span>{teachingVersion?`v${teachingVersion.version_number}`:'BELUM ADA VERSI'}</span></div>{teachingVersion?<div className="artifact-text">{teachingVersion.content_text||'— isi pelajaran kosong —'}</div>:<><p className="muted">Pelajaran ini belum memakai exact LessonVersion, jadi belum ada isi kanonik yang bisa ditampilkan di mode mengajar.</p>{onOpenLessonStudio?<button type="button" className="secondary" onClick={onOpenLessonStudio}>Siapkan Materi</button>:null}</>}</div>:null}
       {pacingLessonId?<PacingPanel client={client} workspaceId={workspaceId} classId={classId} lessonId={pacingLessonId} lessonVersionId={pacingLessonVersionId} actualMeetingCount={actualPacingMeetings}/>:null}
       {selectedClassPending.length?<div className="recovery-panel"><h2>Pemulihan checkpoint</h2>{selectedClassPending.map(op=>{const p=checkpointPayload(op);return <div className="recovery-item" key={op.op_id}><strong>{op.status}</strong><span>TERAKHIR: {p.stopped_at}</span><span>BERIKUTNYA: {p.next_step??'—'}</span><small>{op.last_error_code??'Belum dikonfirmasi server'}</small>{op.status!=='CONFLICT'?<button type="button" className="secondary" disabled={busy} onClick={()=>void retryCheckpoint(op.op_id)}>Coba sinkronkan lagi</button>:null}</div>;})}</div>:null}
     </>}
