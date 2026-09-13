@@ -1,0 +1,4 @@
+Trigger-only evidence marker for exact-main Cloudflare execution.
+
+Candidate parent SHA: fef8001ddc106eaa2881a51f5c23932fc12840ee
+Purpose: deploy and rollback-smoke the merged Lesson Studio vertical slice without changing application code.
