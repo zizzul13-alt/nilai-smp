@@ -7,6 +7,8 @@ export type LessonPackageSource={lessonId:string;lessonVersionId:string;lessonTi
 export type LessonPackageDraft={rpp:string;modul_ajar:string;lkpd:string;bahan_ajar:string;provider:string;model:string};
 export type LessonPackageOutputKey='RPP'|'MODUL_AJAR'|'LKPD'|'BAHAN_AJAR';
 export type LessonPackageSaveIds=Record<LessonPackageOutputKey,string>;
+export type LessonPackageSaveTarget={mode:'create'}|{mode:'append';artifactId:string;expectedRevision:number};
+export type LessonPackageSavePlan=Record<LessonPackageOutputKey,LessonPackageSaveTarget>;
 
 type OutputSpec={key:LessonPackageOutputKey;artifactType:ArtifactType;titlePrefix:string;field:keyof Pick<LessonPackageDraft,'rpp'|'modul_ajar'|'lkpd'|'bahan_ajar'>};
 const OUTPUTS:OutputSpec[]=[
@@ -22,7 +24,7 @@ export function newLessonPackageSaveIds():LessonPackageSaveIds{return{RPP:crypto
 function validDraft(value:unknown):value is LessonPackageDraft{
   if(!value||typeof value!=='object')return false;
   const row=value as Record<string,unknown>;
-  const textKeys=['rpp','modul_ajar','lkpd','bahan_ajar'] as const;
+  const textKeys=['rpp','modul_ajar','lkpd','bahan_ajar']as const;
   return textKeys.every(key=>typeof row[key]==='string'&&(row[key]as string).trim().length>0&&(row[key]as string).length<=18000)
     &&typeof row.provider==='string'&&row.provider.length>0&&row.provider.length<=120
     &&typeof row.model==='string'&&row.model.length>0&&row.model.length<=200;
@@ -44,26 +46,36 @@ export async function generateLessonPackage(client:SupabaseClient,input:{source:
   return value;
 }
 
-export async function saveLessonPackageArtifacts(client:SupabaseClient,input:{workspaceId:string;source:LessonPackageSource;profile:LessonPackageProfile;draft:LessonPackageDraft;operationIds:LessonPackageSaveIds}){
-  const workspace=await loadArtifactWorkspace(client,input.workspaceId);
+export async function planLessonPackageSave(client:SupabaseClient,workspaceId:string,lessonId:string):Promise<LessonPackageSavePlan>{
+  const workspace=await loadArtifactWorkspace(client,workspaceId);
+  const plan={}as LessonPackageSavePlan;
+  for(const spec of OUTPUTS){
+    const templateKey=lessonPackageTemplateKey(spec.key,lessonId);
+    const existing=workspace.versions
+      .filter(version=>version.template_key===templateKey)
+      .sort((a,b)=>b.version_no-a.version_no)
+      .map(version=>workspace.artifacts.find(artifact=>artifact.id===version.artifact_id))
+      .find(artifact=>artifact?.status==='active');
+    plan[spec.key]=existing?{mode:'append',artifactId:existing.id,expectedRevision:existing.revision}:{mode:'create'};
+  }
+  return plan;
+}
+
+export async function saveLessonPackageArtifacts(client:SupabaseClient,input:{source:LessonPackageSource;profile:LessonPackageProfile;draft:LessonPackageDraft;operationIds:LessonPackageSaveIds;plan:LessonPackageSavePlan}){
   const saved:Array<{kind:LessonPackageOutputKey;artifactId:string;versionId:string|null;versionNo:number|null;replayed:boolean}>=[];
 
   for(const spec of OUTPUTS){
     const canonicalText=input.draft[spec.field].trim();
     if(!canonicalText)throw new Error(`${spec.titlePrefix} kosong; paket belum disimpan.`);
     const templateKey=lessonPackageTemplateKey(spec.key,input.source.lessonId);
-    const existing=workspace.versions
-      .filter(version=>version.template_key===templateKey)
-      .sort((a,b)=>b.version_no-a.version_no)
-      .map(version=>({version,artifact:workspace.artifacts.find(artifact=>artifact.id===version.artifact_id)}))
-      .find(item=>item.artifact?.status==='active');
     const structuredContent={package_version:1,output_kind:spec.key,generator_model:input.draft.model,lesson_version_number:input.source.versionNumber,profile:input.profile};
-    const common={sourceKind:'LESSON_VERSION' as const,lessonId:input.source.lessonId,lessonVersionId:input.source.lessonVersionId,reportSnapshotId:null,canonicalText,structuredContent,templateKey,generatorProvider:input.draft.provider};
+    const common={sourceKind:'LESSON_VERSION'as const,lessonId:input.source.lessonId,lessonVersionId:input.source.lessonVersionId,reportSnapshotId:null,canonicalText,structuredContent,templateKey,generatorProvider:input.draft.provider};
+    const target=input.plan[spec.key];
 
-    if(existing?.artifact){
-      const result=await appendArtifactVersion(client,{opId:input.operationIds[spec.key],artifactId:existing.artifact.id,expectedRevision:existing.artifact.revision,...common});
-      if(result.outcome==='conflict')throw new Error(`${spec.titlePrefix} berubah di tempat lain. Muat ulang Dokumen lalu coba lagi.`);
-      saved.push({kind:spec.key,artifactId:existing.artifact.id,versionId:result.version_id,versionNo:result.version_no,replayed:result.replayed});
+    if(target.mode==='append'){
+      const result=await appendArtifactVersion(client,{opId:input.operationIds[spec.key],artifactId:target.artifactId,expectedRevision:target.expectedRevision,...common});
+      if(result.outcome==='conflict')throw new Error(`${spec.titlePrefix} berubah di tempat lain. Muat ulang Dokumen lalu buat ulang draf sebelum mencoba lagi.`);
+      saved.push({kind:spec.key,artifactId:target.artifactId,versionId:result.version_id,versionNo:result.version_no,replayed:result.replayed});
       continue;
     }
 
