@@ -66,10 +66,17 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
   const [schema, setSchema] = useState<SchemaCompatibility | null>(null);
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [mode, setMode] = useState<WorkspaceMode>('today');
+  const [adminOpen,setAdminOpen]=useState(false);
   const [continuityTarget,setContinuityTarget]=useState<string|undefined>(undefined);
   const [rapidTarget,setRapidTarget]=useState<string|undefined>(undefined);
   const workspaceRef=useRef<HTMLDivElement>(null);
   const worker = useMemo(()=>new SafeWorkSyncWorker(safeWorkDb,client),[client]);
+
+  const todayArea=mode==='today'||mode==='brief';
+  const prepareArea=mode==='lesson'||mode==='artifacts';
+  const teachingArea=mode==='continuity'||mode==='timetable';
+  const gradingArea=mode==='rapid'||mode==='assessments'||mode==='bulk';
+  const adminArea=mode==='setup'||mode==='recovery';
 
   useEffect(() => {
     let active = true;
@@ -95,8 +102,9 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
     }
     setLogoutError(await signOut(client));
   }
-  function openContinuity(classId?:string){setContinuityTarget(classId);setMode('continuity');}
-  function openRapid(assessmentId?:string){setRapidTarget(assessmentId);setMode('rapid');}
+  function openMode(next:WorkspaceMode){setAdminOpen(false);setMode(next);}
+  function openContinuity(classId?:string){setAdminOpen(false);setContinuityTarget(classId);setMode('continuity');}
+  function openRapid(assessmentId?:string){setAdminOpen(false);setRapidTarget(assessmentId);setMode('rapid');}
 
   if (!schema) return <main className="app-shell"><StatusPanel title="Memeriksa kompatibilitas data…"><p>Memverifikasi versi schema.</p></StatusPanel></main>;
   if (schema.status === 'incompatible') return <main className="app-shell"><StatusPanel title="Database belum kompatibel" tone="error"><p>{schema.reason}</p><button onClick={logout}>Keluar</button></StatusPanel></main>;
@@ -108,41 +116,74 @@ function SignedIn({ client, email, userId }: { client: SupabaseClient; email: st
           <div className="app-chrome">
             <header className="teacher-header">
               <div className="teacher-identity"><strong>Nilai SMP</strong><span>{email}</span></div>
-              <SafeWorkSummary userId={userId} workspaceId={workspaceId} onOpen={()=>setMode('today')} />
-              <button type="button" className="secondary compact-action" onClick={logout}>Keluar</button>
-            </header>
-            <nav className="daily-nav" aria-label="Pekerjaan utama">
-              <button type="button" className={mode === 'today' ? '' : 'secondary'} onClick={() => setMode('today')}>Hari ini</button>
-              <button type="button" className={mode === 'continuity' ? '' : 'secondary'} onClick={() => openContinuity()}>Mengajar</button>
-              <button type="button" className={mode === 'rapid' ? '' : 'secondary'} onClick={() => openRapid()}>Koreksi cepat</button>
-              <button type="button" className={mode === 'assessments' ? '' : 'secondary'} onClick={() => setMode('assessments')}>Penilaian</button>
-              <button type="button" className={mode === 'reporting' ? '' : 'secondary'} onClick={() => setMode('reporting')}>Laporan</button>
-            </nav>
-            <details className="more-tools" open={['bulk','artifacts','recovery','setup','lesson','timetable','brief'].includes(mode)}>
-              <summary>Data, dokumen & alat lain</summary>
-              <div className="tool-nav">
-                <button type="button" className={mode === 'lesson' ? '' : 'secondary'} onClick={() => setMode('lesson')}>Siapkan Materi</button>
-                <button type="button" className={mode === 'brief' ? '' : 'secondary'} onClick={() => setMode('brief')}>Brief Guru</button>
-                <button type="button" className={mode === 'setup' ? '' : 'secondary'} onClick={() => setMode('setup')}>Data & Pengaturan</button>
-                <button type="button" className={mode === 'timetable' ? '' : 'secondary'} onClick={() => setMode('timetable')}>Jadwal Mengajar</button>
-                <button type="button" className={mode === 'bulk' ? '' : 'secondary'} onClick={() => setMode('bulk')}>Entri Massal / Impor</button>
-                <button type="button" className={mode === 'artifacts' ? '' : 'secondary'} onClick={() => setMode('artifacts')}>Dokumen</button>
-                <button type="button" className={mode === 'recovery' ? '' : 'secondary'} onClick={() => setMode('recovery')}>Pemulihan</button>
+              <div className="teacher-actions">
+                <SafeWorkSummary userId={userId} workspaceId={workspaceId} onOpen={()=>openMode('today')} />
+                <div className="admin-menu">
+                  <button type="button" className={`secondary compact-action admin-trigger${adminArea?' admin-trigger--active':''}`} aria-label="Data & Pengaturan" aria-expanded={adminOpen} aria-controls="admin-popover" title="Data & Pengaturan" onClick={()=>setAdminOpen(open=>!open)}>⚙︎</button>
+                  {adminOpen ? (
+                    <div className="admin-popover" id="admin-popover" role="menu" aria-label="Administrasi">
+                      <button type="button" role="menuitem" className={mode==='setup'?'':'secondary'} onClick={()=>openMode('setup')}>Data & Pengaturan</button>
+                      <button type="button" role="menuitem" className={mode==='recovery'?'':'secondary'} onClick={()=>openMode('recovery')}>Pemulihan</button>
+                    </div>
+                  ) : null}
+                </div>
+                <button type="button" className="secondary compact-action" onClick={logout}>Keluar</button>
               </div>
-            </details>
+            </header>
+
+            <nav className="daily-nav" aria-label="Pekerjaan utama">
+              <button type="button" className={`nav-item${todayArea?' nav-item--active':''}`} aria-current={todayArea?'page':undefined} onClick={() => openMode('today')}>Hari ini</button>
+              <button type="button" className={`nav-item${prepareArea?' nav-item--active':''}`} aria-current={prepareArea?'page':undefined} onClick={() => openMode('lesson')}>Siapkan</button>
+              <button type="button" className={`nav-item${teachingArea?' nav-item--active':''}`} aria-current={teachingArea?'page':undefined} onClick={() => openContinuity()}>Mengajar</button>
+              <button type="button" className={`nav-item${gradingArea?' nav-item--active':''}`} aria-current={gradingArea?'page':undefined} onClick={() => openRapid()}>Nilai</button>
+              <button type="button" className={`nav-item${mode==='reporting'?' nav-item--active':''}`} aria-current={mode==='reporting'?'page':undefined} onClick={() => openMode('reporting')}>Laporan</button>
+            </nav>
+
+            {todayArea ? (
+              <nav className="context-nav" aria-label="Hari ini">
+                <button type="button" className={mode==='today'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('today')}>Ringkasan</button>
+                <button type="button" className={mode==='brief'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('brief')}>Brief Guru</button>
+              </nav>
+            ) : null}
+            {prepareArea ? (
+              <nav className="context-nav" aria-label="Siapkan">
+                <button type="button" className={mode==='lesson'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('lesson')}>Materi</button>
+                <button type="button" className={mode==='artifacts'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('artifacts')}>Dokumen</button>
+              </nav>
+            ) : null}
+            {teachingArea ? (
+              <nav className="context-nav" aria-label="Mengajar">
+                <button type="button" className={mode==='continuity'?'context-tab context-tab--active':'context-tab'} onClick={()=>openContinuity()}>Kelas</button>
+                <button type="button" className={mode==='timetable'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('timetable')}>Jadwal</button>
+              </nav>
+            ) : null}
+            {gradingArea ? (
+              <nav className="context-nav" aria-label="Nilai">
+                <button type="button" className={mode==='rapid'?'context-tab context-tab--active':'context-tab'} onClick={()=>openRapid()}>Koreksi Cepat</button>
+                <button type="button" className={mode==='assessments'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('assessments')}>Penilaian</button>
+                <button type="button" className={mode==='bulk'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('bulk')}>Entri Massal</button>
+              </nav>
+            ) : null}
+            {adminArea ? (
+              <nav className="context-nav context-nav--admin" aria-label="Administrasi">
+                <button type="button" className={mode==='setup'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('setup')}>Data & Pengaturan</button>
+                <button type="button" className={mode==='recovery'?'context-tab context-tab--active':'context-tab'} onClick={()=>openMode('recovery')}>Pemulihan</button>
+              </nav>
+            ) : null}
           </div>
+
           <div className="workspace-scroll" ref={workspaceRef} tabIndex={-1}>
             {logoutError ? <p className="form-error" role="alert">Gagal keluar: {logoutError}</p> : null}
             {mode === 'today' ? <Today client={client} userId={userId} workspaceId={workspaceId} onOpenContinuity={openContinuity} onOpenRapid={openRapid} /> : null}
-            {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialClassId={continuityTarget} onOpenLessonStudio={()=>setMode('lesson')} /> : null}
+            {mode === 'continuity' ? <TeachingContinuity client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialClassId={continuityTarget} onOpenLessonStudio={()=>openMode('lesson')} /> : null}
             {mode === 'assessments' ? <AssessmentManager client={client} workspaceId={workspaceId} /> : null}
             {mode === 'rapid' ? <RapidCorrection client={client} worker={worker} userId={userId} workspaceId={workspaceId} initialAssessmentId={rapidTarget} /> : null}
             {mode === 'bulk' ? <BulkAssessment client={client} workspaceId={workspaceId} /> : null}
             {mode === 'reporting' ? <Reporting client={client} workspaceId={workspaceId} /> : null}
             {mode === 'artifacts' ? <Artifacts client={client} workspaceId={workspaceId} /> : null}
             {mode === 'recovery' ? <BackupRestore client={client} /> : null}
-            {mode === 'setup' ? <DailyDriverSetup client={client} workspaceId={workspaceId} onReady={()=>setMode('today')} /> : null}
-            {mode === 'lesson' ? <LessonStudio client={client} workspaceId={workspaceId} onOpenSetup={()=>setMode('setup')} onOpenArtifacts={()=>setMode('artifacts')} onOpenTeaching={()=>openContinuity()} /> : null}
+            {mode === 'setup' ? <DailyDriverSetup client={client} workspaceId={workspaceId} onReady={()=>openMode('today')} /> : null}
+            {mode === 'lesson' ? <LessonStudio client={client} workspaceId={workspaceId} onOpenSetup={()=>openMode('setup')} onOpenArtifacts={()=>openMode('artifacts')} onOpenTeaching={()=>openContinuity()} /> : null}
             {mode === 'timetable' ? <PlannedTimetable client={client} workspaceId={workspaceId} /> : null}
             {mode === 'brief' ? <TeacherBrief client={client} userId={userId} workspaceId={workspaceId} /> : null}
           </div>
