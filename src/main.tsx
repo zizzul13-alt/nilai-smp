@@ -8,6 +8,7 @@ import './styles/artifacts.css';
 import './styles/lesson-studio.css';
 import './styles/product-maturation.css';
 import './styles/u7-mobile-repair.css';
+import './styles/workflow-navigation.css';
 
 const root = document.getElementById('root');
 
