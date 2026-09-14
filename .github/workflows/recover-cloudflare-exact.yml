@@ -1,0 +1,83 @@
+name: recover-cloudflare-exact
+
+on:
+  push:
+    branches:
+      - 'ops/recovery-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nilai-smp-real-cloudflare-execution
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VITE_SUPABASE_URL: https://ifnnmmilurqtvvxywrlo.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_Jx_jctLO1T0Bcn4juuRc0w_coYKu2g_
+      CF_ACCOUNT_ID_PRIMARY: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CF_ACCOUNT_ID_LEGACY: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN_PRIMARY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_API_TOKEN_LEGACY: ${{ secrets.CF_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.before }}
+
+      - name: Resolve exact recovery candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          exact_candidate_sha="$(git rev-parse HEAD)"
+          if [ "$exact_candidate_sha" != "${{ github.event.before }}" ]; then
+            echo "::error::RECOVERY_EXACT_CANDIDATE_MISMATCH checked_out=$exact_candidate_sha expected=${{ github.event.before }}"
+            exit 1
+          fi
+          echo "EXACT_CANDIDATE_SHA=$exact_candidate_sha" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Clean dependency install
+        run: npm ci --no-audit --no-fund
+
+      - name: Require Cloudflare credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          account_id="${CF_ACCOUNT_ID_PRIMARY:-${CF_ACCOUNT_ID_LEGACY:-}}"
+          api_token="${CF_API_TOKEN_PRIMARY:-${CF_API_TOKEN_LEGACY:-}}"
+          test -n "$account_id"
+          test -n "$api_token"
+          echo "::add-mask::$account_id"
+          echo "::add-mask::$api_token"
+          printf 'CLOUDFLARE_ACCOUNT_ID=%s\n' "$account_id" >> "$GITHUB_ENV"
+          printf 'CLOUDFLARE_API_TOKEN=%s\n' "$api_token" >> "$GITHUB_ENV"
+
+      - name: Exact candidate preflight
+        run: npm run candidate:preflight
+
+      - name: Redeploy exact candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --message "Nilai SMP recovery exact candidate ${EXACT_CANDIDATE_SHA}"
+
+      - name: Smoke recovered production
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if npm run candidate:smoke -- "https://nilai-smp.z-izzul13.workers.dev"; then
+              echo "RECOVERY_REDEPLOY_SMOKE PASS attempt=${attempt} candidate=${EXACT_CANDIDATE_SHA}"
+              exit 0
+            fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo "::error::RECOVERY_REDEPLOY_SMOKE_TIMEOUT"
+          exit 1
