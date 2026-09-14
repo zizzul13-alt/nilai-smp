@@ -10,22 +10,25 @@ test('serves the built SPA artifact on deep re-entry without Vite dev runtime',a
   expect(await page.locator('script[src*="/src/main.tsx"]').count()).toBe(0);
 });
 
-test('final mobile CSS cascade keeps teacher navigation discoverable and primary action above fold',async({page},testInfo)=>{
+test('final mobile CSS cascade keeps workflow navigation visible without hiding the primary action',async({page},testInfo)=>{
   test.skip(testInfo.project.name!=='mobile-production','mobile acceptance lock');
   await page.goto('/');
   await page.evaluate(()=>{
-    document.body.innerHTML=`<main class="teacher-shell"><div class="app-chrome"><header class="teacher-header"><div class="teacher-identity"><strong>Nilai SMP</strong><span>guru@example.test</span></div><span class="safe-summary safe-summary--saved">Antrean lokal kosong</span><button type="button" class="secondary compact-action">Keluar</button></header><nav class="daily-nav" aria-label="Pekerjaan utama"><button>Hari ini</button><button class="secondary">Mengajar</button><button class="secondary">Koreksi cepat</button><button class="secondary">Penilaian</button><button class="secondary">Laporan</button></nav><details class="more-tools" open><summary>Data, dokumen & alat lain</summary><div class="tool-nav"><button class="secondary">Brief Guru</button><button class="secondary">Data & Pengaturan</button><button class="secondary">Jadwal Mengajar</button><button class="secondary">Entri Massal / Impor</button><button class="secondary">Dokumen</button><button class="secondary">Pemulihan</button></div></details></div><div class="workspace-scroll"><section class="today-shell"><header><p class="eyebrow">Hari ini · ringkasan</p><h1>Apa yang penting sekarang?</h1></header><section class="today-section today-now"><h2>SEKARANG</h2><strong>VIII A</strong><button type="button" class="today-primary">MULAI KELAS</button></section></section></div></main>`;
+    document.body.innerHTML=`<main class="teacher-shell"><div class="app-chrome"><header class="teacher-header"><div class="teacher-identity"><strong>Nilai SMP</strong><span>guru@example.test</span></div><div class="teacher-actions"><span class="safe-summary safe-summary--saved">Antrean lokal kosong</span><div class="admin-menu"><button type="button" class="secondary compact-action admin-trigger">⚙︎</button></div><button type="button" class="secondary compact-action">Keluar</button></div></header><nav class="daily-nav" aria-label="Pekerjaan utama"><button class="nav-item nav-item--active">Hari ini</button><button class="nav-item">Siapkan</button><button class="nav-item">Mengajar</button><button class="nav-item">Nilai</button><button class="nav-item">Laporan</button></nav><nav class="context-nav" aria-label="Hari ini"><button class="context-tab context-tab--active">Ringkasan</button><button class="context-tab">Brief Guru</button></nav></div><div class="workspace-scroll"><section class="today-shell"><header><p class="eyebrow">Hari ini · ringkasan</p><h1>Apa yang penting sekarang?</h1></header><section class="today-section today-now"><h2>SEKARANG</h2><strong>VIII A</strong><button type="button" class="today-primary">MULAI KELAS</button></section></section></div></main>`;
   });
   const metrics=await page.evaluate(()=>{
     const nav=document.querySelector('.daily-nav');
-    const tools=document.querySelector('.tool-nav');
+    const context=document.querySelector('.context-nav');
     const chrome=document.querySelector('.app-chrome');
     const primary=document.querySelector('.today-primary');
-    if(!nav||!tools||!chrome||!primary)throw new Error('acceptance fixture incomplete');
-    return{navClient:nav.clientWidth,navScroll:nav.scrollWidth,toolsClient:tools.clientWidth,toolsScroll:tools.scrollWidth,chromeBottom:chrome.getBoundingClientRect().bottom,primaryBottom:primary.getBoundingClientRect().bottom,viewport:window.innerHeight};
+    if(!nav||!context||!chrome||!primary)throw new Error('acceptance fixture incomplete');
+    const navRect=nav.getBoundingClientRect();
+    return{navClient:nav.clientWidth,navScroll:nav.scrollWidth,contextClient:context.clientWidth,contextScroll:context.scrollWidth,chromeBottom:chrome.getBoundingClientRect().bottom,primaryBottom:primary.getBoundingClientRect().bottom,navTop:navRect.top,navBottom:navRect.bottom,viewport:window.innerHeight};
   });
   expect(metrics.navScroll).toBeLessThanOrEqual(metrics.navClient+1);
-  expect(metrics.toolsScroll).toBeLessThanOrEqual(metrics.toolsClient+1);
-  expect(metrics.chromeBottom).toBeLessThan(metrics.viewport*.55);
-  expect(metrics.primaryBottom).toBeLessThan(metrics.viewport);
+  expect(metrics.contextScroll).toBeLessThanOrEqual(metrics.contextClient+1);
+  expect(metrics.chromeBottom).toBeLessThan(metrics.viewport*.5);
+  expect(metrics.navBottom).toBeLessThanOrEqual(metrics.viewport+1);
+  expect(metrics.navTop).toBeGreaterThan(metrics.viewport*.7);
+  expect(metrics.primaryBottom).toBeLessThan(metrics.navTop);
 });
