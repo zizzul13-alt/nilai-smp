@@ -1,0 +1,2 @@
+Trigger exact-main Cloudflare deployment for graceful deep-generation fallback hotfix.
+Candidate main: 54cd5b95de4be87f00322308f1d7733cbae0950d
