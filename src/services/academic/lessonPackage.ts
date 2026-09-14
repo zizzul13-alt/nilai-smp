@@ -80,6 +80,7 @@ async function aiPost(client:SupabaseClient,path:string,body:unknown,label:strin
   return response.json()as Promise<unknown>;
 }
 function isInvalidProviderResponse(error:unknown){return error instanceof Error&&error.message.includes('INVALID_PROVIDER_RESPONSE (502)');}
+function isRecoverableDeepGenerationError(error:unknown){return error instanceof Error&&(isInvalidProviderResponse(error)||error.message.includes('AI_PROVIDER_FAILED (502)')||error.message.includes('tidak memiliki bentuk yang valid'));}
 async function aiPostWithProviderRetry(client:SupabaseClient,path:string,body:unknown,label:string){
   try{return await aiPost(client,path,body,label);}catch(error){
     if(!isInvalidProviderResponse(error))throw error;
@@ -89,14 +90,14 @@ async function aiPostWithProviderRetry(client:SupabaseClient,path:string,body:un
 
 export async function generateLessonSeed(client:SupabaseClient,input:{lessonTitle:string;materialTitle:string;profile:LessonPackageProfile}){
   if(!input.lessonTitle.trim())throw new Error('Judul/topik pelajaran wajib diisi.');
-  const value=await aiPost(client,'/api/lesson-seed',input,'Draf materi');
+  const value=await aiPostWithProviderRetry(client,'/api/lesson-seed',input,'Draf materi');
   if(!validSeed(value))throw new Error('Draf materi dari AI tidak memiliki bentuk yang valid.');
   return{...value,generation_mode:'quick' as const};
 }
 
 export async function generateLessonPackage(client:SupabaseClient,input:{source:LessonPackageGenerationSource;profile:LessonPackageProfile}){
   if(!input.source.contentText.trim())throw new Error('Isi materi sumber masih kosong.');
-  const value=await aiPost(client,'/api/lesson-package',input,'Draf paket');
+  const value=await aiPostWithProviderRetry(client,'/api/lesson-package',input,'Draf paket');
   if(!validDraft(value))throw new Error('Draf paket dari AI tidak memiliki bentuk yang valid.');
   return{...value,generation_mode:'quick' as const};
 }
@@ -109,10 +110,16 @@ async function generateDeepPlan(client:SupabaseClient,input:{lessonTitle:string;
 }
 
 async function generateDeepContent(client:SupabaseClient,input:{lessonTitle:string;materialTitle:string;profile:LessonPackageProfile;plan:LessonDeepPlan}){
-  const raw=await aiPostWithProviderRetry(client,'/api/lesson-deep-content',input,'Materi mendalam');
-  const value=validTextEnvelope(raw);
-  if(!value)throw new Error('Materi mendalam AI tidak memiliki bentuk yang valid.');
-  return value;
+  try{
+    const raw=await aiPostWithProviderRetry(client,'/api/lesson-deep-content',input,'Materi mendalam');
+    const value=validTextEnvelope(raw);
+    if(!value)throw new Error('Materi mendalam AI tidak memiliki bentuk yang valid.');
+    return value;
+  }catch(error){
+    if(!isRecoverableDeepGenerationError(error))throw error;
+    const fallback=await generateLessonSeed(client,{lessonTitle:input.lessonTitle,materialTitle:input.materialTitle,profile:input.profile});
+    return{text:fallback.lesson_content,provider:fallback.provider,model:fallback.model};
+  }
 }
 
 async function generateAssessmentBlueprint(client:SupabaseClient,input:{source:LessonPackageGenerationSource;profile:LessonPackageProfile;plan:LessonDeepPlan}){
@@ -130,13 +137,31 @@ async function generateDeepDocument(client:SupabaseClient,input:{source:LessonPa
 }
 
 async function generateDeepDocuments(client:SupabaseClient,input:{source:LessonPackageGenerationSource;profile:LessonPackageProfile;plan:LessonDeepPlan}):Promise<LessonPackageDraft>{
+  let quickFallback:Promise<LessonPackageDraft>|null=null;
+  function getQuickFallback(){
+    if(!quickFallback)quickFallback=generateLessonPackage(client,{source:input.source,profile:input.profile});
+    return quickFallback;
+  }
   const regular:Array<{spec:{kind:LessonPackageOutputKey;field:DraftTextField};value:{text:string;provider:string;model:string}}>=[];
   for(const spec of DOCUMENT_FIELDS){
-    const value=await generateDeepDocument(client,{...input,kind:spec.kind});
+    let value:{text:string;provider:string;model:string};
+    try{value=await generateDeepDocument(client,{...input,kind:spec.kind});}
+    catch(error){
+      if(!isRecoverableDeepGenerationError(error))throw error;
+      const quick=await getQuickFallback();
+      value={text:quick[spec.field],provider:quick.provider,model:quick.model};
+    }
     regular.push({spec,value});
   }
-  const blueprint=await generateAssessmentBlueprint(client,input);
-  const ulangan=await generateDeepDocument(client,{...input,kind:'ULANGAN',assessmentBlueprint:blueprint.blueprint});
+  let ulangan:{text:string;provider:string;model:string};
+  try{
+    const blueprint=await generateAssessmentBlueprint(client,input);
+    ulangan=await generateDeepDocument(client,{...input,kind:'ULANGAN',assessmentBlueprint:blueprint.blueprint});
+  }catch(error){
+    if(!isRecoverableDeepGenerationError(error))throw error;
+    const quick=await getQuickFallback();
+    ulangan={text:quick.ulangan,provider:quick.provider,model:quick.model};
+  }
   const draft={}as Pick<LessonPackageDraft,DraftTextField>;
   for(const item of regular)draft[item.spec.field]=item.value.text;
   draft.ulangan=ulangan.text;
